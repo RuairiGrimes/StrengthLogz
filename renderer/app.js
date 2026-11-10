@@ -1305,52 +1305,97 @@ function evaluateGoalDesktop(goal) {
   const name = goal.exerciseName || goal.exercise;
   const bw = isBW(name);
   const sessions = sessionsFor(name);
-  const bestSess = sessions.reduce((m, s) => (s.e1rm !== null && (!m || s.e1rm > m.e1rm) ? s : m), null);
-  const latestSess = sessions[sessions.length - 1] || null;
-  const bestE1rm = bestSess?.e1rm || 0;
-  const recentE1rm = latestSess?.e1rm || bestE1rm;
-  const currentWorkingE1rm = recentE1rm > 0 ? Math.max(recentE1rm, bestE1rm * 0.92) : 40;
+  const nowMs = sessions.length ? Math.max(...sessions.map((s) => s.t), Date.now()) : Date.now();
+  const ninetyDaysMs = 90 * 86400000;
+  let recentSessions = sessions.filter((s) => (nowMs - s.t) >= 0 && (nowMs - s.t) <= ninetyDaysMs).slice(-4);
+  if (!recentSessions.length && sessions.length) recentSessions = sessions.slice(-1);
+
+  const createdIso = goal.createdDate ? toSortableIso(goal.createdDate) : '';
+  const sessionsSinceStart = createdIso
+    ? sessions.filter((s) => toSortableIso(s.date) >= createdIso)
+    : [];
+
+  // Anchor to sessions logged since goal start, or manual starting baseline, or recent sessions (never 12-month-old PRs)
+  const activeSessions = sessionsSinceStart.length
+    ? sessionsSinceStart
+    : (goal.baselineE1rmKg > 0 ? [] : recentSessions);
+
+  const recentBestE1rm = recentSessions.reduce((m, s) => (s.e1rm && s.e1rm > m ? s.e1rm : m), 0);
+  const activeBestE1rm = activeSessions.reduce((m, s) => (s.e1rm && s.e1rm > m ? s.e1rm : m), 0);
+
+  const currentE1rm = sessionsSinceStart.length
+    ? Math.max(activeBestE1rm, goal.baselineE1rmKg || 0)
+    : (goal.baselineE1rmKg > 0 ? goal.baselineE1rmKg : recentBestE1rm);
 
   const targetE1rm = goal.goalType === 'SETS_REPS'
     ? round(BodyWeightUtils.calculateE1rm(name, today(), goal.targetWeightKg || 0, Math.max(1, goal.targetReps || 8)))
     : round(goal.targetE1rmKg || 0);
 
-  const startBase = goal.baselineE1rmKg > 0 ? goal.baselineE1rmKg : currentWorkingE1rm * 0.88;
-  const rawPct = targetE1rm > startBase
-    ? Math.round(((Math.max(bestE1rm, recentE1rm) - startBase) / (targetE1rm - startBase)) * 100)
-    : (Math.max(bestE1rm, recentE1rm) >= targetE1rm ? 100 : 0);
+  let isAchieved = !!goal.achievedDate;
+  if (!isAchieved && activeSessions.length) {
+    if (goal.goalType === 'SETS_REPS') {
+      const tw = goal.targetWeightKg || 0;
+      const tr = goal.targetReps || 8;
+      const ts = goal.targetSets || 3;
+      const hitSetsReps = activeSessions.some((sess) =>
+        sess.sets.filter((s) => (s.reps || 0) >= tr && Number(s.weight || 0) >= tw - 0.01).length >= ts
+      );
+      isAchieved = hitSetsReps || (targetE1rm > 0 && activeBestE1rm >= targetE1rm + 2.5);
+    } else {
+      isAchieved = targetE1rm > 0 && activeBestE1rm >= targetE1rm - 0.05;
+    }
+  }
 
-  const isAchieved = !!goal.achievedDate || (targetE1rm > 0 && Math.max(bestE1rm, recentE1rm) >= targetE1rm);
-  const progressPct = isAchieved ? 100 : Math.max(0, Math.min(100, rawPct));
+  const rawRatio = targetE1rm > 0 ? Math.round((currentE1rm / targetE1rm) * 100) : 0;
+  const progressPct = isAchieved ? 100 : Math.max(0, Math.min(99, rawRatio));
 
   const targetHeadline = goal.goalType === 'SETS_REPS'
     ? `${goal.targetSets || 3} × ${goal.targetReps || 8} @ ${bw ? (goal.targetWeightKg === 0 ? 'BW' : `BW+${fmt(goal.targetWeightKg)}kg`) : `${fmt(goal.targetWeightKg)}kg`}`
     : `${fmt(targetE1rm)} kg 1RM`;
 
-  const step = (exInfo(name).category === 'Arms' || name.toLowerCase().includes('raise')) ? 1.25 : 2.5;
-  let nextSets = 3, nextReps = 5, nextWeight = round((currentWorkingE1rm / (1 + 5 / 30)) * 0.97, step);
+  // Prescribe weights strictly scaled to current working strength (never inflated by 12-month PRs)
+  const workingBaseE1rm = currentE1rm > 0 ? currentE1rm : Math.max(20, targetE1rm * 0.78);
+  const bwKg = BodyWeightUtils.weightOn(today());
+  const step = (exInfo(name).category === 'Arms' || name.toLowerCase().includes('raise') || workingBaseE1rm < 45) ? 1.25 : 2.5;
+  const calcLoadFor = (e1rmVal, repsCount) => {
+    const total = e1rmVal / (1 + repsCount / 30);
+    const ext = bw ? Math.max(0, total - bwKg) : total;
+    return bw && ext <= 0 ? 0 : Math.max(step, round(ext, step));
+  };
+
+  let nextSets = 3;
+  let nextReps = 5;
+  let nextWeight = calcLoadFor(workingBaseE1rm * 0.96, 5);
   if (goal.goalType === 'SETS_REPS') {
     nextSets = goal.targetSets || 3;
     nextReps = goal.targetReps || 8;
-    const baseW = round(currentWorkingE1rm / (1 + nextReps / 30), step);
-    nextWeight = Math.min(goal.targetWeightKg || baseW, Math.max(step, baseW));
+    const wCap = goal.targetWeightKg > 0 ? goal.targetWeightKg : 9999;
+    nextWeight = Math.min(wCap, calcLoadFor(workingBaseE1rm, nextReps));
   }
-  const nextSessionSummary = `${nextSets} × ${nextReps} @ ${bw && nextWeight === 0 ? 'BW' : fmt(nextWeight) + 'kg'}`;
+  const nextSessionSummary = `${nextSets} × ${nextReps} @ ${bw && nextWeight === 0 ? 'BW' : `${bw ? 'BW+' : ''}${fmt(nextWeight)}kg`}`;
 
-  // 4-Phase milestones
-  const phases = [
-    { title: 'Phase 1: Accumulation', prescription: `${nextSets} × ${nextReps + 2} @ ${fmt(Math.max(0, nextWeight - step * 2))}kg` },
-    { title: 'Phase 2: Intensification', prescription: `${nextSets} × ${nextReps} @ ${fmt(nextWeight)}kg` },
-    { title: 'Phase 3: Realization', prescription: `${nextSets} × ${Math.max(3, nextReps - 2)} @ ${fmt(nextWeight + step)}kg` },
-    { title: 'Phase 4: Goal Attempt', prescription: targetHeadline },
-  ];
+  // 4-Phase milestones scaled cleanly from current working strength -> target
+  const phases = [0.25, 0.5, 0.75, 1.0].map((frac, idx) => {
+    const titles = ['Phase 1: Accumulation', 'Phase 2: Strength Transition', 'Phase 3: Heavy Overload', 'Phase 4: Goal Attempt'];
+    const phaseReps = idx < 3 ? [8, 6, 4][idx] : (goal.goalType === 'SETS_REPS' ? nextReps : 3);
+    const phaseSets = idx === 3 && goal.goalType === 'SETS_REPS' ? nextSets : 3;
+    const span = Math.max(2.5, targetE1rm - workingBaseE1rm);
+    const phaseE1rm = workingBaseE1rm + span * frac;
+    const phaseW = (idx === 3 && goal.goalType === 'SETS_REPS' && goal.targetWeightKg > 0)
+      ? goal.targetWeightKg
+      : calcLoadFor(phaseE1rm, phaseReps);
+    return {
+      title: titles[idx],
+      prescription: idx === 3 ? targetHeadline : `${phaseSets} × ${phaseReps} @ ${bw && phaseW === 0 ? 'BW' : `${bw ? 'BW+' : ''}${fmt(phaseW)}kg`}`,
+    };
+  });
 
   return {
     goal,
     name,
     bw,
     category: exInfo(name).category || 'Other',
-    bestE1rm: round(bestE1rm),
+    bestE1rm: round(currentE1rm),
     targetE1rm,
     targetHeadline,
     progressPct,
@@ -1409,7 +1454,7 @@ function renderGoals() {
           </span>
         </div>
         <div class="muted small font-bold">
-          Best: ${e.bestE1rm}kg • ${e.progressPct}%
+          Current: ${e.bestE1rm}kg • ${e.progressPct}%
         </div>
       </div>
 
@@ -1542,7 +1587,21 @@ async function openGoalModal(existingGoal = null) {
   const isSetsReps = existingGoal?.goalType === 'SETS_REPS';
   const defaultEx = existingGoal?.exerciseName || exNames[0] || 'Bench Press';
 
-  const res = await modal({
+  const recentBaselineFor = (exName) => {
+    const sess = sessionsFor(exName);
+    const latest = sess[sess.length - 1] || null;
+    if (!latest) return { w: 0, r: 5, e1rm: 0, date: '' };
+    const topW = latest.top ?? 0;
+    const topR = latest.best?.reps || latest.sets.find((s) => (s.reps || 0) > 0)?.reps || 5;
+    return { w: topW, r: topR, e1rm: latest.e1rm || 0, date: shortDate(latest.date) };
+  };
+
+  const initRec = recentBaselineFor(defaultEx);
+  const initCurrW = existingGoal?.baselineWeightKg > 0 ? existingGoal.baselineWeightKg : initRec.w;
+  const initCurrR = existingGoal?.baselineReps > 0 ? existingGoal.baselineReps : initRec.r;
+  const initCurrE = existingGoal?.baselineE1rmKg > 0 ? existingGoal.baselineE1rmKg : initRec.e1rm;
+
+  const pModal = modal({
     title: existingGoal ? 'Edit Strength Goal' : 'Create Strength Goal',
     wide: true,
     html: `
@@ -1550,7 +1609,7 @@ async function openGoalModal(existingGoal = null) {
         <label style="flex:1;">Exercise
           <input type="text" id="m-goal-ex" list="exercise-list" value="${esc(defaultEx)}" ${existingGoal ? 'disabled' : ''} />
         </label>
-        <label style="width:180px;">Goal Mode
+        <label style="width:190px;">Goal Mode
           <select id="m-goal-mode">
             <option value="E1RM" ${!isSetsReps ? 'selected' : ''}>Estimated 1RM</option>
             <option value="SETS_REPS" ${isSetsReps ? 'selected' : ''}>Sets × Reps @ Weight</option>
@@ -1558,29 +1617,90 @@ async function openGoalModal(existingGoal = null) {
         </label>
       </div>
 
-      <div id="m-mode-1rm" class="${isSetsReps ? 'hidden' : ''}">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span class="small font-bold uppercase muted">Current Strength (Starting Point)</span>
+          <span id="m-goal-recent-hint" class="muted small"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 0.8fr 1fr;gap:10px;">
+          <label>Curr Weight (kg)<input type="number" step="0.5" min="0" id="m-goal-curr-w" value="${initCurrW || ''}" placeholder="e.g. 80" /></label>
+          <label>Curr Reps<input type="number" min="1" max="50" id="m-goal-curr-r" value="${initCurrR || 5}" /></label>
+          <label>Starting 1RM (kg)<input type="number" step="0.5" min="0" id="m-goal-curr-e1rm" value="${initCurrE ? round(initCurrE) : ''}" placeholder="Auto or custom" /></label>
+        </div>
+      </div>
+
+      <div id="m-mode-1rm" style="display:${isSetsReps ? 'none' : 'block'};">
         <label>Target 1-Rep Max (kg)
-          <input type="number" step="0.5" id="m-goal-1rm" value="${existingGoal?.targetE1rmKg || 100}" />
+          <input type="number" step="0.5" id="m-goal-1rm" value="${existingGoal?.targetE1rmKg || (initCurrE ? round(initCurrE * 1.075, 2.5) : 100)}" />
         </label>
       </div>
 
-      <div id="m-mode-sets-reps" class="${!isSetsReps ? 'hidden' : ''}" style="display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:10px;">
-        <label>Sets<input type="number" id="m-goal-sets" value="${existingGoal?.targetSets || 3}" min="1" max="15" /></label>
-        <label>Reps<input type="number" id="m-goal-reps" value="${existingGoal?.targetReps || 8}" min="1" max="50" /></label>
-        <label>Weight (kg)<input type="number" step="0.5" id="m-goal-weight" value="${existingGoal?.targetWeightKg || 80}" /></label>
+      <div id="m-mode-sets-reps" style="display:${isSetsReps ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1.4fr;gap:10px;">
+        <label>Target Sets<input type="number" id="m-goal-sets" value="${existingGoal?.targetSets || 3}" min="1" max="15" /></label>
+        <label>Target Reps<input type="number" id="m-goal-reps" value="${existingGoal?.targetReps || 8}" min="1" max="50" /></label>
+        <label>Target Weight (kg)<input type="number" step="0.5" id="m-goal-weight" value="${existingGoal?.targetWeightKg || (initCurrW ? round(initCurrW + 5, 2.5) : 80)}" /></label>
       </div>
 
       <label style="margin-top:12px;">Notes / Focus (Optional)
-        <input type="text" id="m-goal-notes" value="${esc(existingGoal?.notes || '')}" placeholder="e.g. Pause bench at bottom, hit before summer" />
+        <input type="text" id="m-goal-notes" value="${esc(existingGoal?.notes || '')}" placeholder="e.g. Pause bench at bottom, rebuild strength" />
       </label>
     `,
     okText: existingGoal ? 'Save Goal' : 'Create Goal',
   });
 
+  // Wire live interactive handlers inside the mounted modal
+  const updateRecentHint = (rec) => {
+    const el = $('#m-goal-recent-hint');
+    if (el) {
+      el.textContent = rec.date ? `Latest (${rec.date}): ${rec.w}kg × ${rec.r} (${round(rec.e1rm)}kg E1RM)` : 'No recent workouts logged';
+    }
+  };
+  updateRecentHint(initRec);
+
+  const recalcCurrE1rm = () => {
+    const exName = ($('#m-goal-ex')?.value || defaultEx).trim();
+    const wStr = $('#m-goal-curr-w')?.value;
+    const w = Number(wStr);
+    const r = Math.max(1, Number($('#m-goal-curr-r')?.value) || 1);
+    if (wStr !== '' && !Number.isNaN(w) && (w > 0 || isBW(exName))) {
+      $('#m-goal-curr-e1rm').value = round(BodyWeightUtils.calculateE1rm(exName, today(), w, r));
+    }
+  };
+
+  $('#m-goal-curr-w')?.addEventListener('input', recalcCurrE1rm);
+  $('#m-goal-curr-r')?.addEventListener('input', recalcCurrE1rm);
+  $('#m-goal-mode')?.addEventListener('change', (e) => {
+    const sr = e.target.value === 'SETS_REPS';
+    $('#m-mode-1rm').style.display = sr ? 'none' : 'block';
+    $('#m-mode-sets-reps').style.display = sr ? 'grid' : 'none';
+  });
+
+  if (!existingGoal) {
+    $('#m-goal-ex')?.addEventListener('change', (e) => {
+      const exName = e.target.value.trim();
+      const rec = recentBaselineFor(exName);
+      updateRecentHint(rec);
+      $('#m-goal-curr-w').value = rec.w || '';
+      $('#m-goal-curr-r').value = rec.r || 5;
+      $('#m-goal-curr-e1rm').value = rec.e1rm ? round(rec.e1rm) : '';
+      if (rec.e1rm > 0) $('#m-goal-1rm').value = round(rec.e1rm * 1.075, 2.5);
+      if (rec.w > 0) $('#m-goal-weight').value = round(rec.w + 5, 2.5);
+    });
+  }
+
+  const res = await pModal;
+
   if (res) {
     const exName = res.querySelector('#m-goal-ex').value.trim();
     const mode = res.querySelector('#m-goal-mode').value;
     const notes = res.querySelector('#m-goal-notes').value.trim();
+
+    const baselineWeightKg = Number(res.querySelector('#m-goal-curr-w').value) || 0;
+    const baselineReps = Math.max(1, Number(res.querySelector('#m-goal-curr-r').value) || 5);
+    const enteredCurrE1rm = Number(res.querySelector('#m-goal-curr-e1rm').value) || 0;
+    const baselineE1rmKg = enteredCurrE1rm > 0
+      ? enteredCurrE1rm
+      : (baselineWeightKg > 0 ? round(BodyWeightUtils.calculateE1rm(exName, today(), baselineWeightKg, baselineReps)) : 0);
 
     const targetE1rmKg = Number(res.querySelector('#m-goal-1rm').value) || 0;
     const targetSets = Number(res.querySelector('#m-goal-sets').value) || 3;
@@ -1595,6 +1715,11 @@ async function openGoalModal(existingGoal = null) {
       targetSets,
       targetReps,
       targetWeightKg,
+      baselineWeightKg,
+      baselineReps,
+      baselineE1rmKg,
+      createdDate: existingGoal?.createdDate || fmtDdMonYyyy(today()),
+      achievedDate: null,
       notes,
     };
 

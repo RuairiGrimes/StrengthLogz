@@ -370,32 +370,82 @@ object GoalEngine {
         val sessions = buildSessionPoints(exerciseSets, workoutMap, isBw)
 
         val totalSessions = sessions.size
-        val peakE1rmSession = sessions.maxByOrNull { it.e1rm }
-        val currentBestE1rm = peakE1rmSession?.e1rm ?: 0.0
+        val nowMsRef = workouts.maxOfOrNull { DateUtils.toEpochMs(it.date) }?.takeIf { it > 0L }
+            ?: DateUtils.toEpochMs(DateUtils.todayDdMonYyyy())
+        val ninetyDaysMs = 90L * 86_400_000L
+        val recentSessions = sessions.filter { (nowMsRef - DateUtils.toEpochMs(it.displayDate)) in 0..ninetyDaysMs }
+            .takeLast(4)
+            .ifEmpty { sessions.takeLast(1) }
 
-        val recentSessions = sessions.takeLast(4)
-        val recentBestE1rm = recentSessions.maxOfOrNull { it.e1rm } ?: currentBestE1rm
+        val createdIso = DateUtils.toSortableIso(goal.safeCreatedDate)
+        val sessionsSinceGoalStart = if (createdIso.isNotBlank()) {
+            sessions.filter { DateUtils.toSortableIso(it.displayDate) >= createdIso }
+        } else emptyList()
 
-        val peakWeightSession = sessions.maxWithOrNull(
+        // Active sessions for progress/achievement: sessions logged since goal start, or recent sessions if no start date;
+        // never use old sessions from months/years ago to mark a fresh goal complete or inflate working weights.
+        val activeSessions = when {
+            sessionsSinceGoalStart.isNotEmpty() -> sessionsSinceGoalStart
+            goal.baselineE1rmKg > 0.0 -> emptyList()
+            else -> recentSessions
+        }
+
+        val recentPeakSession = recentSessions.maxByOrNull { it.e1rm }
+        val recentBestE1rm = recentPeakSession?.e1rm ?: 0.0
+        val activePeakSession = activeSessions.maxByOrNull { it.e1rm }
+        val activeBestE1rm = activePeakSession?.e1rm ?: 0.0
+
+        val currentBestE1rm = when {
+            sessionsSinceGoalStart.isNotEmpty() -> max(activeBestE1rm, if (goal.baselineE1rmKg > 0.0) goal.baselineE1rmKg else 0.0)
+            goal.baselineE1rmKg > 0.0 -> goal.baselineE1rmKg
+            else -> recentBestE1rm
+        }
+
+        val recentWeightSession = (activeSessions.ifEmpty { recentSessions }).maxWithOrNull(
             compareBy<SessionProgressPoint> { it.topWeight }.thenBy { it.topWeightReps }
         )
-        val currentTopWeight = peakWeightSession?.topWeight ?: 0.0
-        val currentTopWeightReps = peakWeightSession?.topWeightReps ?: 0
+        val currentTopWeight = when {
+            activeSessions.isNotEmpty() -> recentWeightSession?.topWeight ?: 0.0
+            goal.baselineWeightKg > 0.0 -> goal.baselineWeightKg
+            else -> recentWeightSession?.topWeight ?: 0.0
+        }
+        val currentTopWeightReps = when {
+            activeSessions.isNotEmpty() -> recentWeightSession?.topWeightReps ?: 0
+            goal.baselineReps > 0 -> goal.baselineReps
+            else -> recentWeightSession?.topWeightReps ?: 0
+        }
 
-        val bestSetSummary = peakE1rmSession?.bestE1rmSet?.let { s ->
-            val wStr = if (isBw) {
-                val w = s.weight ?: 0.0
-                if (w == 0.0) "BW" else "BW+${formatWeightValue(w)}kg"
-            } else "${formatWeightValue(s.weight ?: 0.0)}kg"
-            "$wStr × ${s.reps ?: 0} (${formatWeightValue(currentBestE1rm)}kg E1RM)"
-        } ?: "No sessions logged yet"
+        val bestSetSummary = when {
+            activePeakSession?.bestE1rmSet != null -> activePeakSession.bestE1rmSet!!.let { s ->
+                val wStr = if (isBw) {
+                    val w = s.weight ?: 0.0
+                    if (w == 0.0) "BW" else "BW+${formatWeightValue(w)}kg"
+                } else "${formatWeightValue(s.weight ?: 0.0)}kg"
+                "$wStr × ${s.reps ?: 0} (${formatWeightValue(currentBestE1rm)}kg E1RM)"
+            }
+            goal.baselineWeightKg > 0.0 && goal.baselineReps > 0 -> {
+                val wStr = if (isBw) {
+                    if (goal.baselineWeightKg == 0.0) "BW" else "BW+${formatWeightValue(goal.baselineWeightKg)}kg"
+                } else "${formatWeightValue(goal.baselineWeightKg)}kg"
+                "$wStr × ${goal.baselineReps} (${formatWeightValue(currentBestE1rm)}kg E1RM baseline)"
+            }
+            recentPeakSession?.bestE1rmSet != null -> recentPeakSession.bestE1rmSet!!.let { s ->
+                val wStr = if (isBw) {
+                    val w = s.weight ?: 0.0
+                    if (w == 0.0) "BW" else "BW+${formatWeightValue(w)}kg"
+                } else "${formatWeightValue(s.weight ?: 0.0)}kg"
+                "$wStr × ${s.reps ?: 0} (${formatWeightValue(currentBestE1rm)}kg recent E1RM)"
+            }
+            goal.baselineE1rmKg > 0.0 -> "${formatWeightValue(goal.baselineE1rmKg)}kg E1RM (Starting strength)"
+            else -> "No recent sessions logged"
+        }
 
         val effectiveTargetE1rm = computeEffectiveTargetE1rm(goal, isBw, currentBwKg).coerceAtLeast(1.0)
 
-        // Check sets/reps specific progress
+        // Check sets/reps specific progress ONLY on active sessions (never 12-month-old history)
         var bestMatchingRepsAtTargetWeight = 0
         var bestMatchingSetsAtTargetWeightReps = 0
-        for (sess in sessions) {
+        for (sess in activeSessions) {
             val validSets = sess.sets.filter { (it.reps ?: 0) > 0 }
             val setsAtWeight = validSets.filter { (it.weight ?: 0.0) >= goal.targetWeightKg - 0.01 }
             val maxRepsAtWeight = setsAtWeight.maxOfOrNull { it.reps ?: 0 } ?: 0
@@ -411,14 +461,14 @@ object GoalEngine {
         val isAchieved = if (!goal.achievedDate.isNullOrBlank()) {
             true
         } else if (goal.isSetsRepsGoal) {
-            bestMatchingSetsAtTargetWeightReps >= goal.targetSets || currentBestE1rm >= effectiveTargetE1rm + 2.5
+            bestMatchingSetsAtTargetWeightReps >= goal.targetSets || (activeSessions.isNotEmpty() && activeBestE1rm >= effectiveTargetE1rm + 2.5)
         } else {
-            currentBestE1rm >= effectiveTargetE1rm - 0.05
+            activeSessions.isNotEmpty() && activeBestE1rm >= effectiveTargetE1rm - 0.05
         }
 
         // Progress percentage:
         // For 1RM goal: ratio of currentBestE1rm / effectiveTargetE1rm (capped at 100%)
-        // For SETS_REPS goal: blend of E1RM capacity ratio (70%) and qualifying sets/reps completion (30%)
+        // For SETS_REPS goal: blend of E1RM capacity ratio (65%) and qualifying sets/reps completion (35%)
         val rawE1rmRatio = if (effectiveTargetE1rm > 0.0) (currentBestE1rm / effectiveTargetE1rm) * 100.0 else 0.0
         val progressPct = if (isAchieved) {
             100.0
@@ -437,7 +487,7 @@ object GoalEngine {
         val baseline = if (goal.baselineE1rmKg > 0.0 && goal.baselineE1rmKg < effectiveTargetE1rm) {
             goal.baselineE1rmKg
         } else {
-            (sessions.firstOrNull()?.e1rm ?: (currentBestE1rm * 0.9)).coerceAtMost(effectiveTargetE1rm - 2.5)
+            (recentSessions.firstOrNull()?.e1rm ?: (currentBestE1rm * 0.9)).coerceAtMost(effectiveTargetE1rm - 2.5)
         }
         val totalGap = (effectiveTargetE1rm - baseline).coerceAtLeast(1.0)
         val gapClosedPct = if (isAchieved) 100.0 else roundTenth(((currentBestE1rm - baseline) / totalGap * 100.0).coerceIn(0.0, 100.0))
@@ -543,8 +593,12 @@ object GoalEngine {
         val recommendedSetsPerWeek = recommendedSessionsPerWeek * 4
 
         // Select Best Programming Methodology & Build Next Session Prescription
-        val workingBaseE1rm = (if (recentBestE1rm > 0.0) recentBestE1rm * 0.7 + currentBestE1rm * 0.3 else effectiveTargetE1rm * 0.85)
-            .coerceAtLeast(20.0)
+        // Strictly anchored to recent sessions or user-specified starting strength (never 12-month-old PRs)
+        val workingBaseE1rm = (when {
+            currentBestE1rm > 0.0 -> currentBestE1rm
+            recentBestE1rm > 0.0 -> recentBestE1rm
+            else -> effectiveTargetE1rm * 0.78
+        }).coerceAtLeast(20.0)
 
         fun loadForPctOfE1rm(pct: Double): Double {
             val targetTotalLoad = workingBaseE1rm * pct
@@ -574,14 +628,18 @@ object GoalEngine {
                 )
             }
             goal.isSetsRepsGoal -> {
-                // Sets x Reps Specific Programming (Double Progression / Top-Set Bridge)
+                // Sets x Reps Specific Programming — scaled strictly to your actual current strength
                 val targetW = goal.targetWeightKg
                 val targetR = goal.targetReps.coerceAtLeast(1)
                 val targetS = goal.targetSets.coerceAtLeast(1)
-                val lastSess = sessions.lastOrNull()
-                val lastTopW = lastSess?.topWeight ?: currentTopWeight
+                val currentWorkW = roundToGymLoad(
+                    (if (isBw) ((workingBaseE1rm / (1.0 + targetR / 30.0)) - currentBwKg).coerceAtLeast(0.0)
+                    else (workingBaseE1rm / (1.0 + targetR / 30.0))),
+                    exName
+                ).coerceAtMost(targetW)
+                val step = if (currentWorkW < 45.0 || exName.lowercase().let { it.contains("curl") || it.contains("raise") || it.contains("extension") }) 1.25 else 2.5
 
-                val sets = if (lastTopW >= targetW - 0.5 && bestMatchingRepsAtTargetWeight >= targetR - 2) {
+                val sets = if (currentWorkW >= targetW - 0.5 && bestMatchingRepsAtTargetWeight >= targetR - 2) {
                     // Ready to work directly at targetWeightKg and build reps/sets across sets
                     val aimRepsSet1 = min(targetR, max(bestMatchingRepsAtTargetWeight + 1, targetR - 1))
                     (1..targetS.coerceAtLeast(3)).map { idx ->
@@ -595,24 +653,33 @@ object GoalEngine {
                             notes = if (idx == 1) "Aim for $aimRepsSet1 clean reps at goal weight" else "Match reps to build multi-set endurance"
                         )
                     }
+                } else if (targetW - currentWorkW <= step * 2.5) {
+                    // Within 1–2 small jumps of target weight: heavy bridge top set + achievable back-offs
+                    val bridgeTopW = min(targetW, roundToGymLoad(currentWorkW + step, exName))
+                    val volumeW = currentWorkW
+                    (1..max(3, targetS)).map { idx ->
+                        when (idx) {
+                            1 -> PrescribedGoalSet(1, "Overload Top Set", bridgeTopW, max(3, targetR - 2), "RPE 8.5", "Acclimate to ${formatWeightValue(bridgeTopW)}kg for ${max(3, targetR - 2)} clean reps")
+                            max(3, targetS) -> PrescribedGoalSet(idx, "AMRAP Finisher", volumeW, targetR, "RPE 9", "Push for ${targetR}+ reps to earn +${formatWeightValue(step)}kg")
+                            else -> PrescribedGoalSet(idx, "Working Volume", volumeW, targetR, "RPE 8", "Build strength endurance at ${formatWeightValue(volumeW)}kg")
+                        }
+                    }
                 } else {
-                    // Bridge up to targetWeightKg using 1 heavier acclimation set + volume back-offs
-                    val stepW = roundToGymLoad(
-                        if (lastTopW > 0.0) (lastTopW + targetW) / 2.0 else targetW * 0.9,
-                        exName
-                    )
-                    listOf(
-                        PrescribedGoalSet(1, "Overload Top Set", targetW, max(3, targetR - 2), "RPE 8.5", "Feel goal weight ($targetW kg) for ${max(3, targetR - 2)} reps"),
-                        PrescribedGoalSet(2, "Bridge Volume", stepW, targetR, "RPE 8", "Hit full target rep count ($targetR reps)"),
-                        PrescribedGoalSet(3, "Bridge Volume", stepW, targetR, "RPE 8.5", "Maintain bar speed across all $targetR reps"),
-                        PrescribedGoalSet(4, "AMRAP Finisher", stepW, targetR + 1, "RPE 9", "Push +1 rep past target to drive E1RM")
-                    ).take(max(3, targetS))
+                    // Currently building toward target weight: prescribe 100% liftable current working load
+                    val topStepW = roundToGymLoad(currentWorkW + step, exName).coerceAtMost(targetW)
+                    (1..max(3, targetS)).map { idx ->
+                        when (idx) {
+                            1 -> PrescribedGoalSet(1, "Progression Set", topStepW, max(3, targetR - 1), "RPE 8", "Progressive step toward ${formatWeightValue(targetW)}kg")
+                            max(3, targetS) -> PrescribedGoalSet(idx, "Rep Builder", currentWorkW, targetR, "RPE 8.5", "Own all $targetR reps at your current working load")
+                            else -> PrescribedGoalSet(idx, "Working Volume", currentWorkW, targetR, "RPE 8", "Accumulate quality reps at ${formatWeightValue(currentWorkW)}kg")
+                        }
+                    }
                 }
                 Quadruple(
-                    "Double-Progression & Acclimation Wave",
-                    "To lock in ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(targetW)}kg, expose your nervous system to ${formatWeightValue(targetW)}kg on Set 1 while accumulating full ${goal.targetReps}-rep volume on back-off sets.",
+                    "Progressive Double-Progression Build",
+                    "Scaled to your current working capacity (~${formatWeightValue(workingBaseE1rm)}kg E1RM). Build clean sets at ${formatWeightValue(currentWorkW)}kg and earn +${formatWeightValue(step)}kg increments toward ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(targetW)}kg.",
                     sets,
-                    "Prioritize hitting ${sets.first().reps} reps on Set 1 with 1–2 reps in reserve before chasing back-off volume."
+                    "Own ${sets.first().reps}–$targetR crisp reps with 1–2 reps in reserve before adding weight."
                 )
             }
             isPlateaued -> {

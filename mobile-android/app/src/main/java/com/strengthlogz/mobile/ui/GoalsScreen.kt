@@ -1073,7 +1073,7 @@ fun CreateOrEditGoalDialog(
 
     var goalType by remember { mutableStateOf(existingGoal?.safeGoalType ?: "E1RM") }
 
-    // Compute current stats for selected exercise
+    // Compute RECENT current stats for selected exercise (last 4 sessions, never 12-month-old peak)
     val workoutMap = remember(workouts) { workouts.associateBy { it.id } }
     val isBw = remember(selectedExercise, availableExercises) {
         availableExercises.find { it.name.equals(selectedExercise, true) }?.bodyweight == true ||
@@ -1082,27 +1082,65 @@ fun CreateOrEditGoalDialog(
     val exSessions = remember(selectedExercise, workoutMap, isBw) {
         buildSessionPoints(getSetsForExercise(selectedExercise), workoutMap, isBw)
     }
-    val currentBestE1rm = remember(exSessions) { exSessions.maxOfOrNull { it.e1rm } ?: 0.0 }
-    val currentTopWeight = remember(exSessions) { exSessions.maxOfOrNull { it.topWeight } ?: 0.0 }
-    val currentTopReps = remember(exSessions) { exSessions.lastOrNull()?.topWeightReps ?: 8 }
-    val currentRelBw = remember(currentBestE1rm, currentBodyWeightKg) {
-        BodyWeightUtils.relativeStrength(currentBestE1rm, currentBodyWeightKg)
+    val latestSession = remember(exSessions) { exSessions.lastOrNull() }
+    val recentSessions = remember(exSessions) { exSessions.takeLast(4) }
+    val recentBestE1rm = remember(recentSessions) { recentSessions.maxOfOrNull { it.e1rm } ?: 0.0 }
+    val recentTopWeight = remember(latestSession, recentSessions) {
+        latestSession?.topWeight ?: recentSessions.maxOfOrNull { it.topWeight } ?: 0.0
+    }
+    val recentTopReps = remember(latestSession) { latestSession?.topWeightReps ?: 8 }
+
+    var startWeightText by remember(selectedExercise) {
+        val initW = if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.baselineWeightKg > 0.0) {
+            existingGoal.baselineWeightKg
+        } else {
+            recentTopWeight
+        }
+        mutableStateOf(if (initW > 0.0) formatWeightValue(initW) else "")
+    }
+    var startRepsText by remember(selectedExercise) {
+        val initR = if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.baselineReps > 0) {
+            existingGoal.baselineReps
+        } else if (recentTopWeight > 0.0) {
+            recentTopReps
+        } else 5
+        mutableStateOf(initR.toString())
+    }
+
+    val manualStartW = startWeightText.trim().toDoubleOrNull() ?: 0.0
+    val manualStartR = (startRepsText.trim().toIntOrNull() ?: 1).coerceIn(1, 50)
+    val effectiveCurrentE1rm = remember(manualStartW, manualStartR, recentBestE1rm, isBw, currentBodyWeightKg) {
+        if (manualStartW > 0.0) {
+            val totalLoad = BodyWeightUtils.totalLoad(isBw, manualStartW, currentBodyWeightKg)
+            ((computeEpley(totalLoad, manualStartR)) * 2.0).roundToInt() / 2.0
+        } else if (isBw && startWeightText.trim() == "0") {
+            ((computeEpley(currentBodyWeightKg, manualStartR)) * 2.0).roundToInt() / 2.0
+        } else if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.baselineE1rmKg > 0.0) {
+            existingGoal.baselineE1rmKg
+        } else {
+            recentBestE1rm
+        }
+    }
+    val currentRelBw = remember(effectiveCurrentE1rm, currentBodyWeightKg) {
+        BodyWeightUtils.relativeStrength(effectiveCurrentE1rm, currentBodyWeightKg)
     }
 
     var targetE1rmText by remember(selectedExercise) {
+        val baseE = if (effectiveCurrentE1rm > 0.0) effectiveCurrentE1rm else recentBestE1rm
         val initVal = if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.targetE1rmKg > 0.0) {
             existingGoal.targetE1rmKg
-        } else if (currentBestE1rm > 0.0) {
-            GoalEngine.roundToGymLoad(currentBestE1rm * 1.075, selectedExercise)
+        } else if (baseE > 0.0) {
+            GoalEngine.roundToGymLoad(baseE * 1.075, selectedExercise)
         } else 100.0
         mutableStateOf(formatWeightValue(initVal))
     }
 
     var targetWeightText by remember(selectedExercise) {
+        val baseW = if (manualStartW > 0.0) manualStartW else recentTopWeight
         val initW = if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.targetWeightKg > 0.0) {
             existingGoal.targetWeightKg
-        } else if (currentTopWeight > 0.0) {
-            GoalEngine.roundToGymLoad(currentTopWeight + 2.5, selectedExercise)
+        } else if (baseW > 0.0) {
+            GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)
         } else 80.0
         mutableStateOf(formatWeightValue(initW))
     }
@@ -1167,9 +1205,9 @@ fun CreateOrEditGoalDialog(
                         Column {
                             Text(selectedExercise, fontSize = 15.5.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
                             Text(
-                                text = if (currentBestE1rm > 0.0)
-                                    "Current Best E1RM: ${formatWeightValue(currentBestE1rm)}kg (${"%.2f".format(currentRelBw)}× BW) • ${exSessions.size} sessions"
-                                else "No prior sessions logged • Ready for baseline",
+                                text = if (latestSession != null)
+                                    "Latest (${latestSession.displayDate}): ${formatWeightValue(recentTopWeight)}kg × $recentTopReps (${formatWeightValue(recentBestE1rm)}kg recent E1RM)"
+                                else "No prior sessions logged • Enter your starting weight below",
                                 fontSize = 11.5.sp,
                                 color = AccentPeach
                             )
@@ -1227,8 +1265,65 @@ fun CreateOrEditGoalDialog(
                     }
                 }
 
-                // 2. Goal Type Selector: 1RM vs Sets / Reps
-                Text("2. GOAL TYPE", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                // 2. Current / Starting Strength (Auto from recent sessions or manual override)
+                Text("2. CURRENT STRENGTH (STARTING BASELINE)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = startWeightText,
+                        onValueChange = { startWeightText = it },
+                        label = { Text(if (isBw) "Curr Added kg" else "Curr Weight kg") },
+                        placeholder = { Text("e.g. 80") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1.2f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentOrange,
+                            unfocusedBorderColor = BorderDark
+                        )
+                    )
+                    OutlinedTextField(
+                        value = startRepsText,
+                        onValueChange = { startRepsText = it },
+                        label = { Text("Reps") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.weight(0.8f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentOrange,
+                            unfocusedBorderColor = BorderDark
+                        )
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = BgDark,
+                        border = BorderStroke(0.8.dp, BorderDark),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("CURR E1RM", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            Text(
+                                text = if (effectiveCurrentE1rm > 0.0) "${formatWeightValue(effectiveCurrentE1rm)}kg" else "--",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = AccentPeach
+                            )
+                        }
+                    }
+                }
+
+                // 3. Goal Type Selector: 1RM vs Sets / Reps
+                Text("3. GOAL TYPE", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1257,15 +1352,15 @@ fun CreateOrEditGoalDialog(
                     }
                 }
 
-                // 3. Target Configuration & Smart Presets
+                // 4. Target Configuration & Smart Presets
                 if (goalType == "E1RM") {
-                    Text("3. TARGET 1-REP MAX (KG)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    Text("4. TARGET 1-REP MAX (KG)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
 
-                    if (currentBestE1rm > 0.0) {
+                    if (effectiveCurrentE1rm > 0.0) {
                         val presets = listOf(
-                            "+2.5kg" to (currentBestE1rm + 2.5),
-                            "+5% Block" to GoalEngine.roundToGymLoad(currentBestE1rm * 1.05, selectedExercise),
-                            "+10% Peak" to GoalEngine.roundToGymLoad(currentBestE1rm * 1.10, selectedExercise),
+                            "+2.5kg" to (effectiveCurrentE1rm + 2.5),
+                            "+5% Block" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.05, selectedExercise),
+                            "+10% Peak" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.10, selectedExercise),
                             "1.25× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.25, selectedExercise),
                             "1.5× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.50, selectedExercise)
                         )
@@ -1304,9 +1399,13 @@ fun CreateOrEditGoalDialog(
                         )
                     )
                 } else {
-                    Text("3. TARGET SETS × REPS @ WEIGHT", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    Text("4. TARGET SETS × REPS @ WEIGHT", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
 
-                    val baseW = if (currentTopWeight > 0.0) currentTopWeight else 60.0
+                    val baseW = when {
+                        manualStartW > 0.0 -> manualStartW
+                        recentTopWeight > 0.0 -> recentTopWeight
+                        else -> 60.0
+                    }
                     val srPresets = listOf(
                         Triple("3 × 8 Overload", 3, 8 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)),
                         Triple("5 × 5 Strength", 5, 5 to GoalEngine.roundToGymLoad(baseW + 5.0, selectedExercise)),
@@ -1400,7 +1499,7 @@ fun CreateOrEditGoalDialog(
                 )
 
                 // Live Preview Calculation Box
-                val previewGoal = remember(selectedExercise, goalType, targetE1rmText, targetWeightText, targetSetsText, targetRepsText) {
+                val previewGoal = remember(selectedExercise, goalType, targetE1rmText, targetWeightText, targetSetsText, targetRepsText, effectiveCurrentE1rm, manualStartW, manualStartR, notesText) {
                     ExerciseGoal(
                         id = existingGoal?.id ?: "goal-${selectedExercise.lowercase().replace(" ", "-")}",
                         exerciseName = selectedExercise,
@@ -1409,15 +1508,16 @@ fun CreateOrEditGoalDialog(
                         targetWeightKg = targetWeightText.trim().toDoubleOrNull() ?: 0.0,
                         targetSets = targetSetsText.trim().toIntOrNull()?.coerceIn(1, 20) ?: 3,
                         targetReps = targetRepsText.trim().toIntOrNull()?.coerceIn(1, 50) ?: 8,
-                        baselineE1rmKg = existingGoal?.baselineE1rmKg ?: currentBestE1rm,
-                        baselineWeightKg = existingGoal?.baselineWeightKg ?: currentTopWeight,
-                        baselineBodyWeightKg = existingGoal?.baselineBodyWeightKg ?: currentBodyWeightKg,
+                        baselineE1rmKg = effectiveCurrentE1rm,
+                        baselineWeightKg = manualStartW,
+                        baselineReps = manualStartR,
+                        baselineBodyWeightKg = existingGoal?.baselineBodyWeightKg?.takeIf { it > 0.0 } ?: currentBodyWeightKg,
                         createdDate = existingGoal?.safeCreatedDate?.ifBlank { DateUtils.todayDdMonYyyy() } ?: DateUtils.todayDdMonYyyy(),
                         notes = notesText
                     )
                 }
                 val previewTargetE1rm = GoalEngine.computeEffectiveTargetE1rm(previewGoal, isBw, currentBodyWeightKg)
-                val deltaNeeded = (previewTargetE1rm - currentBestE1rm).coerceAtLeast(0.0)
+                val deltaNeeded = (previewTargetE1rm - effectiveCurrentE1rm).coerceAtLeast(0.0)
 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -1439,9 +1539,9 @@ fun CreateOrEditGoalDialog(
                             color = TextPrimary
                         )
                         Text(
-                            text = if (currentBestE1rm > 0.0)
-                                "Requires +${formatWeightValue(deltaNeeded)} kg E1RM gain over your current ${formatWeightValue(currentBestE1rm)} kg best."
-                            else "Will calibrate baseline from your first logged workout.",
+                            text = if (effectiveCurrentE1rm > 0.0)
+                                "Requires +${formatWeightValue(deltaNeeded)} kg E1RM gain over your current ${formatWeightValue(effectiveCurrentE1rm)} kg strength."
+                            else "Enter your current lift above or log a workout to calibrate your starting point.",
                             fontSize = 11.5.sp,
                             color = TextSecondary
                         )

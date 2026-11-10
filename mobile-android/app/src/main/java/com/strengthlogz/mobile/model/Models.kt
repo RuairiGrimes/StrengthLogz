@@ -76,6 +76,7 @@ data class ExerciseGoal(
     @SerializedName("targetReps") val targetReps: Int = 8,
     @SerializedName("baselineE1rmKg") val baselineE1rmKg: Double = 0.0,
     @SerializedName("baselineWeightKg") val baselineWeightKg: Double = 0.0,
+    @SerializedName("baselineReps") val baselineReps: Int = 0,
     @SerializedName("baselineBodyWeightKg") val baselineBodyWeightKg: Double = 0.0,
     @SerializedName("createdDate") val createdDate: String? = "",
     @SerializedName("targetDate") val targetDate: String? = "",
