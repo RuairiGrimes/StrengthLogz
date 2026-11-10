@@ -159,14 +159,14 @@ fun GoalsScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 1. Clean, uncluttered header
+        // 1. Clean, uncluttered header with action buttons below title
         item(key = "goals_header") {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
@@ -186,14 +186,15 @@ fun GoalsScreen(
 
                     Text(
                         text = "Strength Goals",
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = TextPrimary
                     )
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (goals.isNotEmpty()) {
@@ -202,23 +203,25 @@ fun GoalsScreen(
                             color = SurfaceCard,
                             border = BorderStroke(1.dp, BorderDark),
                             modifier = Modifier
-                                .height(34.dp)
+                                .weight(1f)
+                                .height(40.dp)
                                 .clickable { showAllGoalsMasterReport = true }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 9.dp),
+                                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                horizontalArrangement = Arrangement.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Assessment,
                                     contentDescription = "Reports",
                                     tint = GoldPR,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
+                                Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = "Reports",
-                                    fontSize = 11.5.sp,
+                                    text = "All Reports",
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextPrimary
                                 )
@@ -230,7 +233,8 @@ fun GoalsScreen(
                         shape = RoundedCornerShape(10.dp),
                         color = AccentOrange,
                         modifier = Modifier
-                            .height(34.dp)
+                            .weight(1f)
+                            .height(40.dp)
                             .clickable {
                                 editingGoal = null
                                 preselectedExerciseName = null
@@ -238,19 +242,20 @@ fun GoalsScreen(
                             }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 11.dp),
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "New Goal",
                                 tint = Color(0xFF140D07),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
                             )
+                            Spacer(Modifier.width(6.dp))
                             Text(
                                 text = "New Goal",
-                                fontSize = 11.5.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF140D07)
                             )
