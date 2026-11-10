@@ -281,27 +281,68 @@ function modal({ title, html, okText = 'OK', cancelText = 'Cancel', danger = fal
     const first = $('#modal-body input:not([type="hidden"])');
     if (first) setTimeout(() => first.focus(), 50);
 
+    const onDocKey = (e) => { if (e.key === 'Escape') close(null); };
     const close = (val) => {
       m.classList.add('hidden');
       box.classList.remove('wide', 'large');
       ok.onclick = null;
       cancel.onclick = null;
       $('#modal-x').onclick = null;
+      m.onclick = null;
       m.onkeydown = null;
+      document.removeEventListener('keydown', onDocKey);
       resolve(val);
     };
 
     ok.onclick = () => close($('#modal-body'));
     cancel.onclick = () => close(null);
     $('#modal-x').onclick = () => close(null);
+    m.onclick = (e) => { if (e.target === m) close(null); };
+    document.addEventListener('keydown', onDocKey);
     m.onkeydown = (e) => {
-      if (e.key === 'Escape') close(null);
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
         e.preventDefault();
         close($('#modal-body'));
       }
     };
   });
+}
+
+function openCustomModal({ title, html, cancelText = 'Close', wide = false, large = false }) {
+  const m = $('#modal');
+  const box = $('.modal-box', m);
+  $('#modal-title').textContent = title;
+  $('#modal-body').innerHTML = html;
+
+  box.classList.toggle('wide', !!wide);
+  box.classList.toggle('large', !!large);
+
+  const ok = $('#modal-ok');
+  ok.classList.add('hidden');
+  ok.onclick = null;
+
+  const cancel = $('#modal-cancel');
+  cancel.textContent = cancelText;
+
+  m.classList.remove('hidden');
+
+  const onDocKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => {
+    m.classList.add('hidden');
+    box.classList.remove('wide', 'large');
+    cancel.onclick = null;
+    $('#modal-x').onclick = null;
+    m.onclick = null;
+    m.onkeydown = null;
+    document.removeEventListener('keydown', onDocKey);
+  };
+
+  cancel.onclick = close;
+  $('#modal-x').onclick = close;
+  m.onclick = (e) => { if (e.target === m) close(); };
+  document.addEventListener('keydown', onDocKey);
+
+  return { m, body: $('#modal-body'), close };
 }
 
 // ---------------------------------------------------------------- Navigation
@@ -941,22 +982,21 @@ async function openManageProgramsDialog() {
     <button id="m-new-prog-sub" class="primary full-width">+ Create New Program</button>
   `;
 
-  const m = $('#modal');
-  $('#modal-title').textContent = `Manage Programs (${progs.length})`;
-  $('#modal-body').innerHTML = html;
-  $('.modal-box', m).classList.add('wide');
-  $('#modal-ok').classList.add('hidden');
-  $('#modal-cancel').textContent = 'Close';
-  m.classList.remove('hidden');
+  const { m, close } = openCustomModal({
+    title: `Manage Programs (${progs.length})`,
+    html,
+    cancelText: 'Close',
+    wide: true,
+  });
 
   $('#m-new-prog-sub').onclick = () => {
-    m.classList.add('hidden');
+    close();
     openCreateProgramDialog();
   };
 
   $$('.m-switch-prog', m).forEach((b) => {
     b.onclick = async () => {
-      m.classList.add('hidden');
+      close();
       const state = await window.api.setActiveProgramId(b.dataset.id);
       setState(state);
       selectedProgramDayIdx = 0;
@@ -966,7 +1006,7 @@ async function openManageProgramsDialog() {
 
   $$('.m-dup-prog', m).forEach((b) => {
     b.onclick = async () => {
-      m.classList.add('hidden');
+      close();
       const state = await window.api.duplicateProgram(b.dataset.id);
       setState(state);
       renderProgramView();
@@ -976,7 +1016,7 @@ async function openManageProgramsDialog() {
 
   $$('.m-ren-prog', m).forEach((b) => {
     b.onclick = async () => {
-      m.classList.add('hidden');
+      close();
       const p = progs.find((x) => x.id === b.dataset.id);
       if (!p) return;
       const res = await modal({
@@ -998,7 +1038,7 @@ async function openManageProgramsDialog() {
   $$('.m-del-prog', m).forEach((b) => {
     b.onclick = async () => {
       if (confirm('Delete this program? This cannot be undone.')) {
-        m.classList.add('hidden');
+        close();
         const state = await window.api.deleteProgram(b.dataset.id);
         setState(state);
         selectedProgramDayIdx = 0;
@@ -1123,32 +1163,32 @@ async function openAddExerciseToDayDialog() {
     return { catChips, rows };
   };
 
-  const m = $('#modal');
-  $('#modal-title').textContent = `Add Exercise to ${day.dayName}`;
-  $('.modal-box', m).classList.add('large');
-  $('#modal-ok').classList.add('hidden');
-  $('#modal-cancel').textContent = 'Done';
-
-  $('#modal-body').innerHTML = `
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;background:var(--bg);padding:8px 12px;border-radius:10px;">
-      <span class="muted small uppercase font-bold">PRESCRIBED TARGETS:</span>
-      <div class="stepper-pill">
-        <button class="stepper-btn" id="m-set-dec">−</button>
-        <div class="stepper-value"><span class="val" id="m-sets-val">3</span><span class="lbl">Sets</span></div>
-        <button class="stepper-btn" id="m-set-inc">+</button>
+  const activeProgId = activeProg.id;
+  const { m } = openCustomModal({
+    title: `Add Exercise to ${day.dayName}`,
+    html: `
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;background:var(--bg);padding:8px 12px;border-radius:10px;">
+        <span class="muted small uppercase font-bold">PRESCRIBED TARGETS:</span>
+        <div class="stepper-pill">
+          <button class="stepper-btn" id="m-set-dec">−</button>
+          <div class="stepper-value"><span class="val" id="m-sets-val">3</span><span class="lbl">Sets</span></div>
+          <button class="stepper-btn" id="m-set-inc">+</button>
+        </div>
+        <div class="stepper-pill">
+          <button class="stepper-btn" id="m-rep-dec">−</button>
+          <div class="stepper-value"><span class="val" id="m-reps-val">8</span><span class="lbl">Reps</span></div>
+          <button class="stepper-btn" id="m-rep-inc">+</button>
+        </div>
       </div>
-      <div class="stepper-pill">
-        <button class="stepper-btn" id="m-rep-dec">−</button>
-        <div class="stepper-value"><span class="val" id="m-reps-val">8</span><span class="lbl">Reps</span></div>
-        <button class="stepper-btn" id="m-rep-inc">+</button>
-      </div>
-    </div>
-    <input type="search" id="m-ex-search" placeholder="Search exercises..." style="margin-bottom:10px;" />
-    <div id="m-cat-chips" class="chips" style="margin-bottom:12px;"></div>
-    <div id="m-picker-list" style="max-height:300px;overflow-y:auto;"></div>
-  `;
+      <input type="search" id="m-ex-search" placeholder="Search exercises..." style="margin-bottom:10px;" />
+      <div id="m-cat-chips" class="chips" style="margin-bottom:12px;"></div>
+      <div id="m-picker-list" style="max-height:300px;overflow-y:auto;"></div>
+    `,
+    cancelText: 'Done',
+    large: true,
+  });
 
-  m.classList.remove('hidden');
+  setTimeout(() => { const s = $('#m-ex-search'); if (s) s.focus(); }, 50);
 
   const updateList = () => {
     const { catChips, rows } = renderPicker();
@@ -1163,16 +1203,19 @@ async function openAddExerciseToDayDialog() {
     });
 
     $$('.picker-item', m).forEach((row) => {
-      row.onclick = () => {
+      row.onclick = async () => {
         const exName = row.dataset.name;
-        day.exercises = day.exercises || [];
-        day.exercises.push({
+        const currProg = (S.programs || []).find((p) => p.id === activeProgId);
+        const currDay = currProg?.days?.[selectedProgramDayIdx];
+        if (!currProg || !currDay) return;
+        currDay.exercises = currDay.exercises || [];
+        currDay.exercises.push({
           exerciseName: exName,
           category: exInfo(exName).category || 'Other',
           targetSets,
           targetReps,
         });
-        saveCurrentProgramDays(activeProg, activeProg.days);
+        await saveCurrentProgramDays(currProg, currProg.days);
         toast(`Added ${exName} (${targetSets}×${targetReps})`, 'success');
       };
     });
@@ -1220,17 +1263,16 @@ async function openLoadProgramDayDialog() {
     </div>
   `).join('');
 
-  const m = $('#modal');
-  $('#modal-title').textContent = 'Load Workout Day from Program';
-  $('#modal-body').innerHTML = `<div style="max-height:360px;overflow-y:auto;">${rows}</div>`;
-  $('.modal-box', m).classList.add('wide');
-  $('#modal-ok').classList.add('hidden');
-  $('#modal-cancel').textContent = 'Cancel';
-  m.classList.remove('hidden');
+  const { m, close } = openCustomModal({
+    title: 'Load Workout Day from Program',
+    html: `<div style="max-height:360px;overflow-y:auto;">${rows}</div>`,
+    cancelText: 'Cancel',
+    wide: true,
+  });
 
   $$('.load-prog-day-item', m).forEach((item) => {
     item.onclick = () => {
-      m.classList.add('hidden');
+      close();
       const idx = Number(item.dataset.idx);
       const opt = daysOptions[idx];
       const plan = {
@@ -1629,21 +1671,20 @@ function openAllGoalsMasterReportModal() {
     </div>
   `).join('');
 
-  const m = $('#modal');
-  $('#modal-title').textContent = `📊 Master All-Goals Report (${evals.length})`;
-  $('#modal-body').innerHTML = `
-    <div style="max-height:400px;overflow-y:auto;">
-      ${rows || '<div class="muted">No goals configured yet.</div>'}
-    </div>
-  `;
-  $('.modal-box', m).classList.add('large');
-  $('#modal-ok').classList.add('hidden');
-  $('#modal-cancel').textContent = 'Close';
-  m.classList.remove('hidden');
+  const { m, close } = openCustomModal({
+    title: `📊 Master All-Goals Report (${evals.length})`,
+    html: `
+      <div style="max-height:400px;overflow-y:auto;">
+        ${rows || '<div class="muted">No goals configured yet.</div>'}
+      </div>
+    `,
+    cancelText: 'Close',
+    large: true,
+  });
 
   $$('.m-view-single-report', m).forEach((b) => {
     b.onclick = () => {
-      m.classList.add('hidden');
+      close();
       openExerciseGoalReportModal(b.dataset.id);
     };
   });
