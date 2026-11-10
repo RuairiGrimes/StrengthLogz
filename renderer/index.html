@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>StrengthLogz</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">SL</div>
+      <div>
+        <div class="brand-name">StrengthLogz</div>
+        <div class="brand-sub">strength tracker</div>
+      </div>
+    </div>
+    <nav>
+      <button class="nav-btn active" data-view="log"><span class="ico">＋</span>Log Workout <kbd>Ctrl 1</kbd></button>
+      <button class="nav-btn" data-view="suggest"><span class="ico">✦</span>Suggest Workout <kbd>Ctrl 2</kbd></button>
+      <button class="nav-btn" data-view="history"><span class="ico">☰</span>History <kbd>Ctrl 3</kbd></button>
+      <button class="nav-btn" data-view="progress"><span class="ico">↗</span>Progress <kbd>Ctrl 4</kbd></button>
+      <button class="nav-btn" data-view="settings"><span class="ico">⚙</span>Settings <kbd>Ctrl 5</kbd></button>
+    </nav>
+    <div class="sidebar-foot">
+      <div id="storage-badge" class="storage-badge">…</div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ============ LOG ============ -->
+    <section id="view-log" class="view active">
+      <header class="view-head">
+        <div>
+          <h1 id="log-heading">Log Workout</h1>
+          <p class="muted" id="log-sub">Pick an exercise, punch in your sets, save. <kbd>Enter</kbd> adds a set, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.</p>
+        </div>
+        <div class="head-actions">
+          <button id="log-discard" class="ghost">Discard</button>
+          <button id="log-save" class="primary">Save workout</button>
+        </div>
+      </header>
+
+      <div class="card meta-row">
+        <label>Date<input type="date" id="log-date" /></label>
+        <label class="grow">Workout name <span class="muted">(optional)</span>
+          <input type="text" id="log-title" list="title-list" placeholder="e.g. Push, Pull, Full Body" />
+        </label>
+        <label class="grow2">Session notes
+          <input type="text" id="log-notes" placeholder="How did it feel?" />
+        </label>
+      </div>
+
+      <div id="log-exercises"></div>
+
+      <div class="card add-ex">
+        <div class="add-ex-row">
+          <input type="text" id="add-ex-input" list="exercise-list" placeholder="Add exercise — type to search, or type a new name to create it" autocomplete="off" />
+          <button id="add-ex-btn" class="primary">Add exercise</button>
+        </div>
+        <div class="chips-label muted">Recent</div>
+        <div id="recent-chips" class="chips"></div>
+      </div>
+    </section>
+
+    <!-- ============ SUGGEST ============ -->
+    <section id="view-suggest" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Suggest a Workout</h1>
+          <p class="muted" id="suggest-sub">Auto-designs your session based on 7-day muscle volume and PR/plateau analysis.</p>
+        </div>
+        <div class="head-actions">
+          <button id="suggest-shuffle" class="ghost">↻ Shuffle Variations</button>
+          <button id="suggest-load" class="primary">▶ Load into Workout Logger</button>
+        </div>
+      </header>
+
+      <div class="card" id="suggest-controls"></div>
+      <div class="card" id="suggest-volume"></div>
+      <div id="suggest-list"></div>
+    </section>
+
+    <!-- ============ HISTORY ============ -->
+    <section id="view-history" class="view">
+      <header class="view-head">
+        <div>
+          <h1>History</h1>
+          <p class="muted" id="history-sub"></p>
+        </div>
+        <div class="head-actions">
+          <input type="search" id="history-search" placeholder="Filter by exercise, name or notes…" />
+        </div>
+      </header>
+      <div id="history-list"></div>
+    </section>
+
+    <!-- ============ WORKOUT DETAIL ============ -->
+    <section id="view-workout-detail" class="view">
+      <header class="view-head">
+        <div>
+          <div style="margin-bottom: 8px;">
+            <button id="workout-detail-back" class="ghost" style="padding: 4px 10px; font-size: 13px;">← Back to History</button>
+          </div>
+          <h1 id="workout-detail-heading">Workout Details</h1>
+          <p class="muted" id="workout-detail-sub"></p>
+        </div>
+        <div class="head-actions">
+          <button id="workout-detail-repeat" class="ghost">Repeat</button>
+          <button id="workout-detail-edit" class="ghost">Edit</button>
+          <button id="workout-detail-delete" class="danger">Delete</button>
+        </div>
+      </header>
+      <div id="workout-detail-stats" class="stats"></div>
+      <div id="workout-detail-exercises" class="workout-detail-list"></div>
+    </section>
+
+    <!-- ============ PROGRESS ============ -->
+    <section id="view-progress" class="view">
+      <header class="view-head">
+        <div>
+          <h1 id="progress-heading">Progress</h1>
+          <p class="muted" id="progress-sub">How strong were you? Pick an exercise.</p>
+        </div>
+        <div class="head-actions">
+          <button id="progress-back" class="ghost hidden">← All lifts</button>
+          <button id="progress-open-goals" class="primary">🎯 Goals</button>
+          <input type="text" id="progress-input" list="exercise-list" placeholder="Search exercise…" autocomplete="off" />
+        </div>
+      </header>
+
+      <div id="progress-overview"></div>
+
+      <div id="progress-detail" class="hidden">
+        <div id="progress-stats" class="stats"></div>
+        <div class="card chart-card">
+          <div class="chart-toolbar">
+            <div class="seg" id="metric-seg"></div>
+            <div class="seg" id="range-seg">
+              <button data-range="90">3M</button>
+              <button data-range="182">6M</button>
+              <button data-range="365">1Y</button>
+              <button data-range="0" class="active">All</button>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="progress-chart"></canvas></div>
+          <div class="legend muted"><span class="dot up"></span>increase <span class="dot down"></span>decrease <span class="dot pr"></span>all-time PR</div>
+        </div>
+        <div class="card">
+          <h3>Sessions</h3>
+          <table class="table" id="progress-table"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GOALS ============ -->
+    <section id="view-goals" class="view">
+      <header class="view-head">
+        <div>
+          <div style="margin-bottom: 8px;">
+            <button id="goals-back" class="ghost" style="padding: 4px 10px; font-size: 13px;">← Back to Progress</button>
+          </div>
+          <h1>Strength Goals &amp; Programming</h1>
+          <p class="muted" id="goals-sub">Select an exercise, configure a 1RM or Sets × Reps target, and get in-app periodization &amp; reports.</p>
+        </div>
+        <div class="head-actions">
+          <button id="goals-all-report" class="ghost">📊 All Goals Report</button>
+          <button id="goals-add-btn" class="primary">+ Set New Goal</button>
+        </div>
+      </header>
+      <div id="goals-summary" class="stats"></div>
+      <div id="goals-list"></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="view-settings" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Settings</h1>
+          <p class="muted">Storage &amp; data</p>
+        </div>
+      </header>
+
+      <div class="card">
+        <h3>Google Sheets</h3>
+        <div id="sheets-status" class="status-line"></div>
+        <div class="form-grid">
+          <label>Spreadsheet URL or ID
+            <input type="text" id="cfg-sheet" placeholder="https://docs.google.com/spreadsheets/d/…" />
+          </label>
+          <label>Service account key (JSON)
+            <div class="input-row">
+              <input type="text" id="cfg-key" placeholder="C:\path\to\service-account.json" />
+              <button id="cfg-browse" class="ghost">Browse…</button>
+            </div>
+          </label>
+        </div>
+        <div id="cfg-email" class="callout hidden"></div>
+        <div class="btn-row">
+          <button id="cfg-connect" class="primary">Connect</button>
+          <button id="cfg-disconnect" class="ghost">Disconnect (use local storage)</button>
+        </div>
+        <details class="howto">
+          <summary>How to set up Google Sheets (one-time, ~5 min)</summary>
+          <ol>
+            <li>Go to <a href="#" data-ext="https://console.cloud.google.com/projectcreate">Google Cloud Console</a> and create a project (any name).</li>
+            <li>Enable the <a href="#" data-ext="https://console.cloud.google.com/apis/library/sheets.googleapis.com">Google Sheets API</a> for that project.</li>
+            <li>Go to <a href="#" data-ext="https://console.cloud.google.com/iam-admin/serviceaccounts">IAM → Service Accounts</a>, create one, then <b>Keys → Add key → JSON</b>. Save the file somewhere safe.</li>
+            <li>Create a blank Google Sheet and <b>Share</b> it with the service account's email (shown above once you pick the key) as <b>Editor</b>.</li>
+            <li>Paste the sheet URL here, pick the key file and press <b>Connect</b>. Tabs <code>Workouts</code>, <code>Sets</code> and <code>Exercises</code> are created automatically.</li>
+          </ol>
+        </details>
+      </div>
+
+      <div class="card">
+        <h3>Data</h3>
+        <p class="muted">Import the historical workouts from your notes (<code>data/history.txt</code>). Safe to run more than once — already-imported workouts are skipped.</p>
+        <div class="btn-row">
+          <button id="import-history" class="primary">Import historical notes</button>
+          <button id="copy-local" class="ghost">Copy local data → Sheets</button>
+          <button id="clear-data" class="danger">Clear stored workouts…</button>
+        </div>
+        <div id="data-summary" class="muted small"></div>
+      </div>
+    </section>
+  </main>
+
+  <datalist id="exercise-list"></datalist>
+  <datalist id="title-list"></datalist>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="modal-title"></h3>
+      <div id="modal-body"></div>
+      <div class="btn-row right">
+        <button id="modal-cancel" class="ghost">Cancel</button>
+        <button id="modal-ok" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="busy" class="busy hidden"><div class="spinner"></div></div>
+
+  <script src="../node_modules/chart.js/dist/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

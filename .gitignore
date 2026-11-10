@@ -1,0 +1,19 @@
+# Node / Desktop
+node_modules/
+dist/
+builds/*.exe
+
+# Android / Gradle
+.gradle/
+mobile-android/.gradle/
+mobile-android/build/
+mobile-android/app/build/
+mobile-android/local.properties
+
+# Private Credentials & Service Account Keys
+keys/
+*service_account*.json
+data/history.txt
+mobile-android/app/src/main/assets/service_account.json
+mobile-android/app/src/main/assets/initial_data.json
+mobile-android/app/src/main/assets/bodyweight_seed_lbs.csv

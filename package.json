@@ -1,0 +1,60 @@
+{
+  "name": "strengthlogz",
+  "productName": "StrengthLogz",
+  "version": "1.0.0",
+  "description": "Desktop strength workout tracker backed by Google Sheets",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "parse-history": "node scripts/parse-history.js",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.strengthlogz.desktop",
+    "productName": "StrengthLogz",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "src/**/*",
+      "assets/**/*",
+      "data/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "StrengthLogz"
+    }
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}

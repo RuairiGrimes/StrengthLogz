@@ -1,0 +1,494 @@
+[
+  {
+    "name": "Bench Press",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Paused Bench Press",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Close Grip Bench Press",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Paused Close Grip Bench Press",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Incline Bench Press",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Incline Dumbbell Press",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Incline Chest Press (Machine)",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Dumbbell Fly",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Machine Fly",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Cable Chest Fly",
+    "category": "Chest",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Weighted Push Up",
+    "category": "Chest",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Dips",
+    "category": "Chest",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Overhead Press",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Behind The Neck Press",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Seated Dumbbell Press",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Dumbbell Z Press",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Shoulder Press",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Lateral Raise",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Rear Delt Raise",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Cable Rear Delt Fly",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Band Face Pull",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Cable Face Pull",
+    "category": "Shoulders",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Pull Ups",
+    "category": "Back",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Chin Ups",
+    "category": "Back",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Wide Grip Pull Ups",
+    "category": "Back",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Pendlay Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Barbell Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Dumbbell Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Incline Dumbbell Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Chest Supported Dumbbell Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Cable Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Machine Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Diverging Seated Row",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Lat Pulldown",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Close Grip Lat Pulldown",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Wide Grip Lat Pulldown",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "One Arm Machine Lat Pulldown",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Dumbbell Pullover",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Snatch Grip High Pull",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Snatch Grip Rack Pull",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Barbell Shrug",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Hyperextension",
+    "category": "Back",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Deadlift",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Trap Bar Deadlift",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Romanian Deadlift",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Good Morning",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Front Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Paused Front Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Hack Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Barbell Hack Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Machine Hack Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Leg Press",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Bulgarian Split Squat",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Pistol Squat",
+    "category": "Legs",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Leg Extension",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Leg Curl",
+    "category": "Legs",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Barbell Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Fat Gripz Barbell Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Reverse Grip Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "EZ Bar Preacher Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Barbell Preacher Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Dumbbell Preacher Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Hammer Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Fat Gripz Hammer Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Incline Fat Gripz Hammer Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Alternate Dumbbell Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Seated Incline Dumbbell Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Cable Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Rope Cable Hammer Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Dumbbell Wrist Curl",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Overhead Tricep Extension",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Skull Crusher",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Cable Tricep Pushdown",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Band Pushdown",
+    "category": "Arms",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Weighted Crunch",
+    "category": "Core",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Machine Crunch",
+    "category": "Core",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Crunch",
+    "category": "Core",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Plank",
+    "category": "Core",
+    "bodyweight": true,
+    "description": ""
+  },
+  {
+    "name": "Weighted Plank",
+    "category": "Core",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Neck Curl",
+    "category": "Neck",
+    "bodyweight": false,
+    "description": ""
+  },
+  {
+    "name": "Neck Extension",
+    "category": "Neck",
+    "bodyweight": false,
+    "description": ""
+  }
+]
