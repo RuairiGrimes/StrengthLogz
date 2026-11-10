@@ -6,7 +6,6 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "parse-history": "node scripts/parse-history.js",
     "dist": "electron-builder --win"
   },
   "build": {
@@ -21,7 +20,7 @@
       "renderer/**/*",
       "src/**/*",
       "assets/**/*",
-      "data/**/*",
+      "data/exercises.json",
       "package.json"
     ],
     "win": {

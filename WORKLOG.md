@@ -657,3 +657,19 @@ This worklog back-dates and details all active features, milestones, refactors, 
    - Packaged production distribution via `electron-builder` into:
      - `builds/StrengthLogz Setup 1.0.0.exe` (Windows NSIS installer, 82.5MB)
      - `builds/StrengthLogz 1.0.0.exe` (Windows portable standalone, 82.3MB)
+
+---
+
+## [Phase 16: Release 1.0.0 — Suggest Workout Bug Fix & Open-Source Hygiene Scrub] — 10-NOV-2026
+*Commit Scope: Fixed blank Suggest Workout volume/count selector bug on Desktop, synced Suggest engine with Android's 4/5-lift scoring & deduplication, removed all legacy personal note imports and body weight seeds, and rebuilt 1.0.0 Windows binaries.*
+
+### Fixes & Cleanups
+1. **Desktop Suggest Workout Screen Overhaul ([`renderer/app.js`](file:///c:/MyProjects/StrengthLogz/renderer/app.js), [`renderer/styles.css`](file:///c:/MyProjects/StrengthLogz/renderer/styles.css))**:
+   - **Fixed Blank Volume Card Bug**: Populated the previously unrendered `#suggest-volume` card with live **7-Day Muscle Volume Targets** (`Chest`, `Back`, `Shoulders`, `Legs`, `Arms`, `Core`) and visual deficit progress bars.
+   - **Session Size Selector (`4 Lifts` / `5 Lifts`)**: Added explicit toggle alongside the Split Selector (`Push`, `Pull`, `Full Body`) with automatic split recommendation (`•` badge).
+   - **Deduplication & Intelligent Ranking**: Matched Android's 5-slot candidate scoring engine (`alreadyPicked` set prevents duplicate lifts within a session), progressive overload weight/rep targets, per-card **`↻ Swap`** button, and **PR / Volume Gap / Benefit** reason tags.
+2. **Open-Source Scrub (Zero Personal Data / Notes Artifacts)**:
+   - Removed hardcoded `SEED_BODYWEIGHTS` from [`src/stores/local-store.js`](file:///c:/MyProjects/StrengthLogz/src/stores/local-store.js) and [`src/data-service.js`](file:///c:/MyProjects/StrengthLogz/src/data-service.js) so fresh users start with clean empty logs (`-- kg` in Settings until logged).
+   - Removed legacy personal text parser (`src/history-parser.js`, `scripts/parse-history.js`), `importHistory` IPC endpoints (`main.js`, `preload.js`), and the `#import-history` button/copy in Settings ([`renderer/index.html`](file:///c:/MyProjects/StrengthLogz/renderer/index.html)).
+   - Updated [`package.json`](file:///c:/MyProjects/StrengthLogz/package.json) `build.files` from `"data/**/*"` to `"data/exercises.json"` so untracked personal files can never be bundled into Windows `.asar` executables.
+   - Parameterized [`scripts/generate_icons.ps1`](file:///c:/MyProjects/StrengthLogz/scripts/generate_icons.ps1) and updated [`README.md`](file:///c:/MyProjects/StrengthLogz/README.md) & [`AGENTS.md`](file:///c:/MyProjects/StrengthLogz/AGENTS.md) for the public 1.0.0 release.

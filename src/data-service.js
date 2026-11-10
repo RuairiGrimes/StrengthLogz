@@ -2,9 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { LocalStore, SEED_BODYWEIGHTS } = require('./stores/local-store');
+const { LocalStore } = require('./stores/local-store');
 const { SheetsStore } = require('./stores/sheets-store');
-const { parseHistory } = require('./history-parser');
 const DEFAULT_EXERCISES = require('../data/exercises.json');
 
 class DataService {
@@ -17,7 +16,7 @@ class DataService {
       workouts: [],
       sets: [],
       exercises: [],
-      bodyWeights: SEED_BODYWEIGHTS,
+      bodyWeights: [],
       goals: [],
       programs: [],
       activeProgramId: null,
@@ -62,7 +61,7 @@ class DataService {
       workouts: storeData.workouts || [],
       sets: storeData.sets || [],
       exercises: storeData.exercises || [],
-      bodyWeights: localData.bodyWeights || SEED_BODYWEIGHTS,
+      bodyWeights: localData.bodyWeights || [],
       goals: localData.goals || [],
       programs: localData.programs || [],
       activeProgramId: localData.activeProgramId || (localData.programs && localData.programs[0] ? localData.programs[0].id : null),
@@ -407,17 +406,6 @@ class DataService {
     this.lastError = null;
     await this.reload();
     return this.state();
-  }
-
-  async importHistory() {
-    const { workouts, sets } = parseHistory();
-    const existing = new Set(this.cache.workouts.map((w) => w.id));
-    const newW = workouts.filter((w) => !existing.has(w.id));
-    const ids = new Set(newW.map((w) => w.id));
-    const newS = sets.filter((s) => ids.has(s.workoutId));
-    if (newW.length) await this.store.addWorkouts(newW, newS);
-    await this.reload();
-    return { added: newW.length, sets: newS.length, skipped: workouts.length - newW.length, state: this.state() };
   }
 
   async copyLocalToSheets(options = {}) {

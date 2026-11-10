@@ -44,7 +44,6 @@ handle('addExercise', (ex) => data.addExercise(ex));
 handle('updateExercise', (payload) => data.updateExercise(payload));
 handle('connect', (cfg) => data.connect(cfg));
 handle('disconnect', () => data.disconnect());
-handle('importHistory', () => data.importHistory());
 handle('copyLocalToSheets', (opts) => data.copyLocalToSheets(opts));
 handle('clearAllData', () => data.clearAllData());
 

@@ -15,7 +15,6 @@ contextBridge.exposeInMainWorld('api', {
   updateExercise: (payload) => call('updateExercise', payload),
   connect: (cfg) => call('connect', cfg),
   disconnect: () => call('disconnect'),
-  importHistory: () => call('importHistory'),
   copyLocalToSheets: (opts) => call('copyLocalToSheets', opts),
   clearAllData: () => call('clearAllData'),
   pickKeyFile: () => call('pickKeyFile'),

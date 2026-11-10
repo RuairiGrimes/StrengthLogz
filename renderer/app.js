@@ -110,7 +110,7 @@ const isBW = (name) => !!exInfo(name).bodyweight;
 const BodyWeightUtils = {
   weightOn(dateStr) {
     const list = S.bodyWeights || [];
-    if (!list.length) return 82.5;
+    if (!list.length) return 75.0;
     const targetIso = toSortableIso(dateStr) || toSortableIso(today());
     const sorted = [...list].sort((a, b) => toSortableIso(a.date).localeCompare(toSortableIso(b.date)));
     let candidate = sorted[0].weightKg;
@@ -126,7 +126,7 @@ const BodyWeightUtils = {
 
   latestWeight() {
     const list = S.bodyWeights || [];
-    if (!list.length) return 82.5;
+    if (!list.length) return null;
     const sorted = [...list].sort((a, b) => toSortableIso(b.date).localeCompare(toSortableIso(a.date)));
     return sorted[0].weightKg;
   },
@@ -1813,7 +1813,7 @@ function renderSettings() {
   // Body weight tracker
   const bwList = S.bodyWeights || [];
   const latestBw = BodyWeightUtils.latestWeight();
-  $('#bw-current-value').textContent = `${latestBw} kg`;
+  $('#bw-current-value').textContent = latestBw !== null ? `${latestBw} kg` : '-- kg';
   $('#bw-input-date').value = today();
 
   const sortedBw = [...bwList].sort((a, b) => toSortableIso(b.date).localeCompare(toSortableIso(a.date)));
@@ -1878,14 +1878,6 @@ function initSettingsModule() {
     });
   });
 
-  $('#import-history').addEventListener('click', async () => {
-    await busy(async () => {
-      const res = await window.api.importHistory();
-      setState(res.state);
-      toast(`Imported ${res.added} workouts (${res.sets} sets), skipped ${res.skipped}`, 'success');
-    });
-  });
-
   $('#copy-local').addEventListener('click', async () => {
     await busy(async () => {
       const res = await window.api.copyLocalToSheets();
@@ -1914,111 +1906,348 @@ function initSettingsModule() {
 }
 
 // ---------------------------------------------------------------- SUGGEST A WORKOUT ENGINE
+const EXERCISE_BENEFITS = {
+  'Bulgarian Split Squat': 'Unilateral quad/glute strength, eliminates leg imbalances, and spares lower spine',
+  'Leg Press': 'Maximum quad overload and knee flexion with zero spinal shear',
+  'Hack Squat': 'Deep knee flexion and quad hypertrophy with locked-in back support',
+  'Leg Extension': 'Direct isolated rectus femoris quad peak-contraction stimulus',
+  'Good Morning': 'Posterior chain hip-hinge endurance, hamstring stretch, and bulletproof lumbar erectors',
+  'Hyperextension': 'Decompresses lower back, strengthens spinal erectors, glutes, and hamstrings under full range',
+  'Romanian Deadlift': 'Lengthened-position hamstring stretch and powerful glute hypertrophy',
+  'Leg Curl': 'Direct hamstring knee flexion isolation to balance knee joint integrity',
+  'Incline Chest Press (Machine)': 'Locked-in clavicular upper pec tension without shoulder stability fatigue',
+  'Dips': 'High-threshold motor unit recruitment for lower pecs, anterior delts, and triceps',
+  'Cable Rear Delt Fly': 'Continuous peak resistance through full horizontal shoulder abduction',
+  'Pendlay Row': 'Dead-stop explosive concentric back power and strict thoracic strength',
+  'Snatch Grip High Pull': 'Explosive upper back, trapezius, and posterior chain power transfer',
+  'Band Face Pull': 'Rotator cuff longevity, external rotation, and scapular upward rotation',
+  'Fat Gripz Hammer Curl': 'Radical forearm flexor recruitment, brachialis mass, and grip strength',
+  'Reverse Grip Curl': 'Brachioradialis hypertrophy and forearm extensor tendon balance',
+  'Dumbbell Pullover': 'Expanded ribcage lat stretch in the fully lengthened position',
+  'Paused Close Grip Bench Press': 'Eliminates stretch reflex for brute triceps and lockout power',
+};
+
 const SUGGEST_SPLITS = {
   PUSH: {
     title: 'Push',
-    desc: 'Chest, Quads, Shoulders, Triceps',
+    desc: 'Chest, Quads, Shoulders & Triceps',
     slots: [
-      { name: 'Primary Compound Press', candidates: ['Bench Press', 'Incline Dumbbell Press', 'Floor Press'] },
-      { name: 'Push Leg: Quad Overload', candidates: ['Leg Press', 'Bulgarian Split Squat', 'Hack Squat', 'Squat', 'Front Squat'] },
-      { name: 'Vertical / Shoulder Press', candidates: ['Overhead Press', 'Dumbbell Shoulder Press', 'Seated Dumbbell Press'] },
-      { name: 'Push Accessory', candidates: ['Dips', 'Incline Machine Press', 'Chest Fly', 'Cable Fly'] },
-      { name: 'Quad Finisher', candidates: ['Bulgarian Split Squat', 'Leg Extension', 'Pistol Squat'] },
-      { name: 'Delts & Triceps', candidates: ['Lateral Raise', 'Overhead Tricep Extension', 'Tricep Pushdown'] },
+      { name: 'Primary Compound Press', categoryHint: 'Chest', defaultSets: 3, defaultReps: 5, candidates: ['Bench Press', 'Incline Bench Press', 'Close Grip Bench Press', 'Paused Close Grip Bench Press'] },
+      { name: 'Push Leg: Quad Overload', categoryHint: 'Legs', defaultSets: 3, defaultReps: 8, candidates: ['Leg Press', 'Bulgarian Split Squat', 'Hack Squat', 'Squat', 'Front Squat', 'Leg Extension'] },
+      { name: 'Vertical / Shoulder Press', categoryHint: 'Shoulders', defaultSets: 3, defaultReps: 6, candidates: ['Overhead Press', 'Seated Dumbbell Press', 'Shoulder Press', 'Incline Dumbbell Press'] },
+      { name: 'Secondary Chest & Push Accessory', categoryHint: 'Chest', defaultSets: 3, defaultReps: 8, candidates: ['Dips', 'Incline Chest Press (Machine)', 'Incline Dumbbell Press', 'Dumbbell Fly', 'Weighted Push Up'] },
+      { name: 'Delts & Triceps Finisher', categoryHint: 'Shoulders', defaultSets: 3, defaultReps: 10, candidates: ['Lateral Raise', 'Overhead Tricep Extension', 'Cable Tricep Pushdown', 'Skull Crusher'] },
     ],
   },
   PULL: {
     title: 'Pull',
-    desc: 'Vertical Pull, Rows, Posterior Chain, Biceps',
+    desc: 'Back, Rear Delts, Posterior Chain & Biceps',
     slots: [
-      { name: 'Primary Vertical Pull', candidates: ['Pull Ups', 'Chin Ups', 'Lat Pulldown'] },
-      { name: 'Heavy Horizontal Row', candidates: ['Pendlay Row', 'Dumbbell Row', 'Barbell Row', 'T-Bar Row'] },
-      { name: 'Posterior Chain Hinge', candidates: ['Good Morning', 'Romanian Deadlift', 'Deadlift', 'Hyperextension'] },
-      { name: 'Hamstring & Glute Isolation', candidates: ['Leg Curl', 'Glute Ham Raise', 'Hyperextension'] },
-      { name: 'Upper Back & Rear Delts', candidates: ['Band Face Pull', 'Rear Delt Fly', 'Face Pulls', 'Shrugs'] },
-      { name: 'Biceps & Grip Finisher', candidates: ['Fat Gripz Hammer Curl', 'Barbell Curl', 'Incline Dumbbell Curl'] },
+      { name: 'Primary Vertical Pull', categoryHint: 'Back', defaultSets: 3, defaultReps: 6, candidates: ['Chin Ups', 'Pull Ups', 'Wide Grip Pull Ups', 'Lat Pulldown'] },
+      { name: 'Heavy Horizontal Row', categoryHint: 'Back', defaultSets: 3, defaultReps: 6, candidates: ['Pendlay Row', 'Chest Supported Dumbbell Row', 'Barbell Row', 'Dumbbell Row', 'Cable Row'] },
+      { name: 'Pull Leg: Hip Hinge & Posterior Chain', categoryHint: 'Legs', defaultSets: 3, defaultReps: 8, candidates: ['Good Morning', 'Hyperextension', 'Romanian Deadlift', 'Deadlift', 'Trap Bar Deadlift', 'Leg Curl'] },
+      { name: 'Rear Delts & Upper Back Stretch', categoryHint: 'Back', defaultSets: 3, defaultReps: 12, candidates: ['Band Face Pull', 'Rear Delt Raise', 'Cable Rear Delt Fly', 'Dumbbell Pullover', 'Snatch Grip High Pull'] },
+      { name: 'Biceps & Grip Finisher', categoryHint: 'Arms', defaultSets: 3, defaultReps: 10, candidates: ['Fat Gripz Hammer Curl', 'Barbell Curl', 'EZ Bar Preacher Curl', 'Reverse Grip Curl', 'Incline Fat Gripz Hammer Curl'] },
     ],
   },
   FB: {
     title: 'Full Body',
-    desc: 'High-yield compounds hitting all movement planes',
+    desc: 'Legs, Push, Pull & Arms',
     slots: [
-      { name: 'Primary Lower', candidates: ['Squat', 'Leg Press', 'Deadlift', 'Romanian Deadlift'] },
-      { name: 'Primary Upper Push', candidates: ['Bench Press', 'Overhead Press', 'Dips'] },
-      { name: 'Primary Upper Pull', candidates: ['Pull Ups', 'Pendlay Row', 'Lat Pulldown'] },
-      { name: 'Secondary Lower', candidates: ['Bulgarian Split Squat', 'Leg Curl', 'Hyperextension'] },
-      { name: 'Shoulders & Upper Back', candidates: ['Lateral Raise', 'Band Face Pull'] },
-      { name: 'Arms Finisher', candidates: ['Fat Gripz Hammer Curl', 'Overhead Tricep Extension'] },
+      { name: 'Primary Lower Compound', categoryHint: 'Legs', defaultSets: 3, defaultReps: 5, candidates: ['Squat', 'Leg Press', 'Deadlift', 'Romanian Deadlift', 'Bulgarian Split Squat'] },
+      { name: 'Primary Upper Push', categoryHint: 'Chest', defaultSets: 3, defaultReps: 5, candidates: ['Bench Press', 'Overhead Press', 'Incline Bench Press', 'Dips'] },
+      { name: 'Primary Upper Pull', categoryHint: 'Back', defaultSets: 3, defaultReps: 6, candidates: ['Pull Ups', 'Chin Ups', 'Pendlay Row', 'Lat Pulldown', 'Barbell Row'] },
+      { name: 'Secondary Lower: Quad or Posterior Chain', categoryHint: 'Legs', defaultSets: 3, defaultReps: 8, candidates: ['Bulgarian Split Squat', 'Leg Press', 'Hyperextension', 'Good Morning', 'Leg Extension', 'Leg Curl', 'Romanian Deadlift'] },
+      { name: 'Shoulders & Arms Overload', categoryHint: 'Shoulders', defaultSets: 3, defaultReps: 10, candidates: ['Lateral Raise', 'Band Face Pull', 'Rear Delt Raise', 'Fat Gripz Hammer Curl', 'Overhead Tricep Extension', 'Cable Tricep Pushdown', 'Barbell Curl'] },
     ],
   },
 };
 
 let activeSuggestSplit = 'PUSH';
-let suggestCandidateChoices = {};
+let suggestExerciseCount = 5;
+let suggestShuffleSeed = 0;
+let suggestSlotOffsets = {};
+
+function analyzeMuscleVolume() {
+  const targets = { Chest: 10, Back: 12, Shoulders: 9, Legs: 10, Arms: 9, Core: 4 };
+  const validSets = S.sets.filter((s) => (s.reps || 0) > 0);
+  let latestMs = Date.now();
+  for (const s of validSets) {
+    const t = toDate(s.date).getTime();
+    if (!Number.isNaN(t) && t > latestMs) latestMs = t;
+  }
+  const dayMs = 86400000;
+  const counts7 = {};
+  const counts14 = {};
+  for (const s of validSets) {
+    const cat = exInfo(s.exercise).category || 'Other';
+    const t = toDate(s.date).getTime();
+    if (!Number.isNaN(t) && t > 0) {
+      const diffDays = Math.max(0, (latestMs - t) / dayMs);
+      if (diffDays <= 7) counts7[cat] = (counts7[cat] || 0) + 1;
+      if (diffDays <= 14) counts14[cat] = (counts14[cat] || 0) + 1;
+    }
+  }
+  const list = Object.entries(targets).map(([category, targetWeeklySets]) => {
+    const setsLast7Days = counts7[category] || 0;
+    const setsLast14Days = counts14[category] || 0;
+    const ratio = Math.min(1.5, setsLast7Days / targetWeeklySets);
+    return {
+      category,
+      setsLast7Days,
+      setsLast14Days,
+      targetWeeklySets,
+      deficitRatio: 1 - Math.min(1, ratio),
+    };
+  });
+  const byCat = Object.fromEntries(list.map((m) => [m.category, m]));
+  return { list, byCat, refMs: latestMs };
+}
+
+function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volumeInfo) {
+  const available = slot.candidates.filter((n) => !alreadyPicked.has(n.toLowerCase()));
+  const pool = available.length ? available : slot.candidates;
+
+  const ranked = [...pool].sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
+
+  function scoreCandidate(name) {
+    const cat = exInfo(name).category || slot.categoryHint;
+    const volDeficitBonus = (volumeInfo.byCat[cat]?.deficitRatio ?? 0.5) * 10;
+    const benefitBonus = EXERCISE_BENEFITS[name] ? 4.0 : 0.0;
+    const pts = sessionsFor(name);
+    if (!pts.length) return 8.0 + volDeficitBonus + benefitBonus;
+
+    const lastPt = pts[pts.length - 1];
+    const peakE1rm = Math.max(...pts.map((p) => p.e1rm || 0));
+    const currE1rm = lastPt?.e1rm || 0;
+    const daysSince = lastPt ? Math.max(0, Math.min(60, (volumeInfo.refMs - lastPt.t) / 86400000)) : 30;
+    const plateauGapBonus = peakE1rm > 0 && currE1rm < peakE1rm
+      ? Math.min(15, ((peakE1rm - currE1rm) / peakE1rm) * 25)
+      : 5.0;
+    const recencyBonus = daysSince < 2 ? -20 : (daysSince >= 3 && daysSince <= 18 ? 12 : 6);
+    return (Math.min(25, pts.length) * 0.8) + plateauGapBonus + recencyBonus + volDeficitBonus + benefitBonus;
+  }
+
+  const chosenName = ranked[candidateOffset % ranked.length];
+  const cat = exInfo(chosenName).category || slot.categoryHint;
+  const bw = isBW(chosenName);
+  const sessions = sessionsFor(chosenName);
+  const lastSession = sessions[sessions.length - 1] || null;
+  const prevSession = sessions.length >= 2 ? sessions[sessions.length - 2] : null;
+  const benefitText = EXERCISE_BENEFITS[chosenName] || exInfo(chosenName).description || '';
+
+  if (!lastSession) {
+    return {
+      slotTitle: slot.name,
+      exerciseName: chosenName,
+      category: cat,
+      isBodyweight: bw,
+      lastSummary: 'No prior sessions logged',
+      lastDate: 'First Time',
+      targetSummary: `${slot.defaultSets} × ${slot.defaultReps} reps`,
+      reasonTag: benefitText ? `✨ New Exercise Suggestion: ${benefitText}` : `🎯 New stimulus for ${cat} (${slot.defaultSets} × ${slot.defaultReps})`,
+      prescribedSets: Array.from({ length: slot.defaultSets }, () => ({ weight: bw ? 0 : '', reps: slot.defaultReps, notes: '' })),
+    };
+  }
+
+  const validLastSets = lastSession.sets.filter((s) => (s.reps || 0) > 0);
+  const baseWeight = lastSession.top ?? 0;
+  let baseReps = slot.defaultReps;
+  if (lastSession.best && lastSession.best.reps) baseReps = lastSession.best.reps;
+  else if (validLastSets.length) baseReps = validLastSets[0].reps || slot.defaultReps;
+
+  const numSets = Math.max(3, Math.min(4, validLastSets.length || slot.defaultSets));
+  const readyForJump = baseWeight > 0 && (
+    (baseReps >= 8 && slot.defaultReps <= 6) ||
+    (baseReps >= 12) ||
+    (prevSession && (lastSession.e1rm || 0) > (prevSession.e1rm || 0) && baseReps >= slot.defaultReps + 1)
+  );
+
+  let targetWeight, targetReps, overloadNote;
+  if (bw && baseWeight <= 0) {
+    targetWeight = 0;
+    targetReps = Math.max(slot.defaultReps, baseReps + 1);
+    overloadNote = `Aim for +1 rep per set over last session (${baseReps} → ${targetReps} reps)`;
+  } else if (readyForJump) {
+    const inc = (cat === 'Arms' || (cat === 'Shoulders' && chosenName.toLowerCase().includes('raise'))) ? 1.25 : 2.5;
+    targetWeight = Math.round((baseWeight + inc) * 2) / 2;
+    targetReps = Math.max(slot.defaultReps, baseReps - 2);
+    overloadNote = `Weight progression: +${fmt(targetWeight - baseWeight)}kg (${numSets} × ${targetReps} @ ${fmt(targetWeight)}kg)`;
+  } else {
+    targetWeight = baseWeight;
+    targetReps = Math.min(15, baseReps + 1);
+    overloadNote = `Rep progression: +1 rep at ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} (${numSets} × ${targetReps})`;
+  }
+
+  const peakE1rm = Math.max(...sessions.map((s) => s.e1rm || 0));
+  const currE1rm = lastSession.e1rm || 0;
+  const targetE1rm = BodyWeightUtils.calculateE1rm(chosenName, today(), targetWeight, targetReps);
+  const volStat = volumeInfo.byCat[cat];
+  const benefitSuffix = benefitText ? ` • Benefit: ${benefitText}` : '';
+
+  let reasonTag;
+  if (peakE1rm > 0 && currE1rm < peakE1rm * 0.94) {
+    reasonTag = `🔧 Needs Improvement: Current E1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
+  } else if (targetE1rm > peakE1rm && peakE1rm > 0) {
+    reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
+  } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets / 2) {
+    reasonTag = `📊 Weekly Volume Gap: ${cat} has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
+  } else {
+    reasonTag = `📈 Progressive Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+  }
+
+  const targetSummary = bw && targetWeight === 0
+    ? `${numSets} × ${targetReps} @ BW`
+    : `${numSets} × ${targetReps} @ ${bw ? `BW+${fmt(targetWeight)}kg` : `${fmt(targetWeight)}kg`}`;
+
+  return {
+    slotTitle: slot.name,
+    exerciseName: chosenName,
+    category: cat,
+    isBodyweight: bw,
+    lastSummary: summarize(chosenName, validLastSets),
+    lastDate: shortDate(lastSession.date),
+    targetSummary,
+    reasonTag,
+    prescribedSets: Array.from({ length: numSets }, () => ({
+      weight: targetWeight === 0 && !bw ? '' : targetWeight,
+      reps: targetReps,
+      notes: '',
+    })),
+  };
+}
 
 function renderSuggest() {
+  const volumeInfo = analyzeMuscleVolume();
+  const pushDeficit = ((volumeInfo.byCat.Chest?.deficitRatio || 0) + (volumeInfo.byCat.Shoulders?.deficitRatio || 0)) / 2;
+  const pullDeficit = volumeInfo.byCat.Back?.deficitRatio || 0;
+  const legsDeficit = volumeInfo.byCat.Legs?.deficitRatio || 0;
+  let recommendedSplit = 'PUSH';
+  if (legsDeficit >= pushDeficit && legsDeficit >= pullDeficit) recommendedSplit = 'FB';
+  else if (pullDeficit >= pushDeficit) recommendedSplit = 'PULL';
+
+  $('#suggest-sub').textContent = `Recommended today: ${SUGGEST_SPLITS[recommendedSplit].title} • Based on 7-day muscle volume & PR/plateau analysis.`;
+
+  // 1. Controls bar: Split Selector + 4 / 5 Exercises Selector
   const ctrlHost = $('#suggest-controls');
   ctrlHost.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;">
-      <div class="seg">
-        <button class="${activeSuggestSplit === 'PUSH' ? 'active' : ''}" data-split="PUSH">Push</button>
-        <button class="${activeSuggestSplit === 'PULL' ? 'active' : ''}" data-split="PULL">Pull</button>
-        <button class="${activeSuggestSplit === 'FB' ? 'active' : ''}" data-split="FB">Full Body</button>
+    <div class="suggest-controls-bar">
+      <div class="suggest-controls-left">
+        <div class="seg" id="suggest-split-seg">
+          ${['PUSH', 'PULL', 'FB'].map((k) => {
+            const isRec = k === recommendedSplit;
+            const active = activeSuggestSplit === k;
+            return `<button class="${active ? 'active' : ''}" data-split="${k}">${SUGGEST_SPLITS[k].title}${isRec && !active ? ' •' : ''}</button>`;
+          }).join('')}
+        </div>
+        <span class="muted small">${SUGGEST_SPLITS[activeSuggestSplit].desc}</span>
       </div>
-      <div class="muted small">${SUGGEST_SPLITS[activeSuggestSplit].desc}</div>
+      <div class="suggest-controls-right">
+        <span class="muted small font-bold">Session Size:</span>
+        <div class="seg" id="suggest-count-seg">
+          <button class="${suggestExerciseCount === 4 ? 'active' : ''}" data-count="4">4 Lifts</button>
+          <button class="${suggestExerciseCount === 5 ? 'active' : ''}" data-count="5">5 Lifts</button>
+        </div>
+      </div>
     </div>
   `;
 
-  ctrlHost.querySelectorAll('button[data-split]').forEach((b) => {
+  ctrlHost.querySelectorAll('#suggest-split-seg button[data-split]').forEach((b) => {
     b.onclick = () => {
       activeSuggestSplit = b.dataset.split;
-      suggestCandidateChoices = {};
+      suggestSlotOffsets = {};
       renderSuggest();
     };
   });
 
-  const splitDef = SUGGEST_SPLITS[activeSuggestSplit];
-  const listHost = $('#suggest-list');
+  ctrlHost.querySelectorAll('#suggest-count-seg button[data-count]').forEach((b) => {
+    b.onclick = () => {
+      suggestExerciseCount = Number(b.dataset.count);
+      suggestSlotOffsets = {};
+      renderSuggest();
+    };
+  });
 
-  const items = splitDef.slots.map((slot, sIdx) => {
-    const chosenName = suggestCandidateChoices[sIdx] || slot.candidates[0];
-    const prevSessions = sessionsFor(chosenName);
-    const last = prevSessions[prevSessions.length - 1];
-    const bw = isBW(chosenName);
-
-    const step = (exInfo(chosenName).category === 'Arms' || chosenName.toLowerCase().includes('raise')) ? 1.25 : 2.5;
-    const lastW = last?.top ?? 0;
-    const targetW = last ? lastW + step : 40;
-    const targetR = 8;
-
-    return `
-      <div class="card" style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
-          <div>
-            <span class="muted small uppercase font-bold">${esc(slot.name)}</span>
-            <div style="font-size:16px;font-weight:700;color:var(--text);margin-top:2px;">
-              ${esc(chosenName)}
-              <span class="tag" style="margin-left:6px;">${esc(exInfo(chosenName).category)}</span>
-              ${bw ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
+  // 2. 7-Day Muscle Volume Card (eliminates blank row)
+  const volHost = $('#suggest-volume');
+  volHost.innerHTML = `
+    <div class="suggest-vol-head">
+      <span class="muted small font-bold uppercase">7-Day Muscle Volume Targets</span>
+      <span class="muted small">Working sets completed in last 7 days</span>
+    </div>
+    <div class="suggest-vol-grid">
+      ${volumeInfo.list.map((m) => {
+        const pct = Math.min(100, Math.round((m.setsLast7Days / m.targetWeeklySets) * 100));
+        const colorClass = pct >= 85 ? 'vol-ok' : (pct >= 45 ? 'vol-mid' : 'vol-low');
+        return `
+          <div class="suggest-vol-item">
+            <div class="suggest-vol-label">
+              <span>${esc(m.category)}</span>
+              <span class="muted">${m.setsLast7Days}/${m.targetWeeklySets}</span>
+            </div>
+            <div class="suggest-vol-bar">
+              <div class="suggest-vol-fill ${colorClass}" style="width:${pct}%"></div>
             </div>
           </div>
-          <div style="text-align:right;">
-            <div style="font-size:14px;font-weight:700;color:var(--accent);">Target: 3 × ${targetR} @ ${bw && targetW === 0 ? 'BW' : `${fmt(targetW)}kg`}</div>
-            <div class="muted small">${last ? `Last: ${summarize(chosenName, last.sets)}` : 'First time'}</div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  // 3. Build Active Slots (4 or 5 lifts) with deduplication
+  const splitDef = SUGGEST_SPLITS[activeSuggestSplit];
+  const allSlots = splitDef.slots;
+  const activeSlots = suggestExerciseCount === 4
+    ? (activeSuggestSplit === 'FB'
+        ? [allSlots[0], allSlots[1], allSlots[2], allSlots[3]]
+        : [allSlots[0], allSlots[1], allSlots[2], allSlots[4]])
+    : allSlots;
+
+  const picked = new Set();
+  const generatedExercises = activeSlots.map((slot, sIdx) => {
+    const offset = (suggestSlotOffsets[sIdx] || 0) + suggestShuffleSeed;
+    const item = buildSuggestedExerciseItem(slot, offset, picked, volumeInfo);
+    picked.add(item.exerciseName.toLowerCase());
+    return item;
+  });
+
+  $('#suggest-load').textContent = `▶ Start ${splitDef.title} Session (${generatedExercises.length} Lifts)`;
+
+  const listHost = $('#suggest-list');
+  listHost.innerHTML = generatedExercises.map((item, sIdx) => `
+    <div class="card suggest-ex-card" style="margin-bottom:10px;">
+      <div class="suggest-ex-top">
+        <div>
+          <span class="muted small uppercase font-bold">${sIdx + 1}. ${esc(item.slotTitle)}</span>
+          <div class="suggest-ex-title">
+            <span>${esc(item.exerciseName)}</span>
+            <span class="tag">${esc(item.category)}</span>
+            ${item.isBodyweight ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
           </div>
         </div>
-        <div class="desc muted small">${esc(exInfo(chosenName).description || 'Compound overload movement.')}</div>
+        <div class="suggest-ex-right">
+          <div style="text-align:right;">
+            <div style="font-size:14px;font-weight:700;color:var(--accent);">Target: ${esc(item.targetSummary)}</div>
+            <div class="muted small">${item.lastDate === 'First Time' ? 'First time' : `Last (${esc(item.lastDate)}): ${esc(item.lastSummary)}`}</div>
+          </div>
+          <button class="ghost compact suggest-swap-btn" data-slot="${sIdx}" title="Swap exercise alternative">↻ Swap</button>
+        </div>
       </div>
-    `;
-  }).join('');
+      <div class="desc muted small" style="margin-top:6px;">${esc(item.reasonTag)}</div>
+    </div>
+  `).join('');
 
-  listHost.innerHTML = items;
+  listHost.querySelectorAll('.suggest-swap-btn').forEach((btn) => {
+    btn.onclick = () => {
+      const sIdx = Number(btn.dataset.slot);
+      suggestSlotOffsets[sIdx] = (suggestSlotOffsets[sIdx] || 0) + 1;
+      renderSuggest();
+    };
+  });
 
   $('#suggest-shuffle').onclick = () => {
-    splitDef.slots.forEach((slot, sIdx) => {
-      const idx = Math.floor(Math.random() * slot.candidates.length);
-      suggestCandidateChoices[sIdx] = slot.candidates[idx];
-    });
+    suggestShuffleSeed += 1;
+    suggestSlotOffsets = {};
     renderSuggest();
     toast('Shuffled exercise variations');
   };
@@ -2026,22 +2255,12 @@ function renderSuggest() {
   $('#suggest-load').onclick = () => {
     const plan = {
       title: `${splitDef.title} Workout`,
-      notes: `Generated by Workout Suggestion Engine (${splitDef.desc})`,
-      exercises: splitDef.slots.map((slot, sIdx) => {
-        const chosenName = suggestCandidateChoices[sIdx] || slot.candidates[0];
-        const step = (exInfo(chosenName).category === 'Arms' || chosenName.toLowerCase().includes('raise')) ? 1.25 : 2.5;
-        const last = sessionsFor(chosenName).slice(-1)[0];
-        const targetW = last ? (last.top ?? 0) + step : 40;
-        return {
-          exerciseName: chosenName,
-          category: exInfo(chosenName).category,
-          prescribedSets: Array.from({ length: 3 }, () => ({
-            weight: targetW,
-            reps: 8,
-            notes: '',
-          })),
-        };
-      }),
+      notes: `Auto-designed ${splitDef.title} session (${splitDef.desc})`,
+      exercises: generatedExercises.map((item) => ({
+        exerciseName: item.exerciseName,
+        category: item.category,
+        prescribedSets: item.prescribedSets,
+      })),
     };
     showView('log', plan);
   };

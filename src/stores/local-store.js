@@ -2,22 +2,6 @@
 const fs = require('fs');
 const path = require('path');
 
-const SEED_BODYWEIGHTS = [
-  { date: '01-MAY-2026', weightKg: 81.2, source: 'seed' },
-  { date: '15-MAY-2026', weightKg: 81.6, source: 'seed' },
-  { date: '01-JUN-2026', weightKg: 82.0, source: 'seed' },
-  { date: '15-JUN-2026', weightKg: 82.3, source: 'seed' },
-  { date: '01-JUL-2026', weightKg: 82.5, source: 'seed' },
-  { date: '15-JUL-2026', weightKg: 82.7, source: 'seed' },
-  { date: '01-AUG-2026', weightKg: 82.8, source: 'seed' },
-  { date: '15-AUG-2026', weightKg: 83.0, source: 'seed' },
-  { date: '01-SEP-2026', weightKg: 83.2, source: 'seed' },
-  { date: '15-SEP-2026', weightKg: 83.1, source: 'seed' },
-  { date: '01-OCT-2026', weightKg: 83.0, source: 'seed' },
-  { date: '15-OCT-2026', weightKg: 82.9, source: 'seed' },
-  { date: '01-NOV-2026', weightKg: 82.7, source: 'seed' },
-];
-
 class LocalStore {
   constructor(dir) {
     this.file = path.join(dir, 'local-data.json');
@@ -30,7 +14,7 @@ class LocalStore {
         workouts: [],
         sets: [],
         exercises: [],
-        bodyWeights: SEED_BODYWEIGHTS,
+        bodyWeights: [],
         goals: [],
         programs: [],
         activeProgramId: null,
@@ -39,8 +23,8 @@ class LocalStore {
     } else {
       const data = this._read();
       let changed = false;
-      if (!Array.isArray(data.bodyWeights) || data.bodyWeights.length === 0) {
-        data.bodyWeights = SEED_BODYWEIGHTS;
+      if (!Array.isArray(data.bodyWeights)) {
+        data.bodyWeights = [];
         changed = true;
       }
       if (!Array.isArray(data.goals)) {
@@ -73,7 +57,7 @@ class LocalStore {
         workouts: [],
         sets: [],
         exercises: [],
-        bodyWeights: SEED_BODYWEIGHTS,
+        bodyWeights: [],
         goals: [],
         programs: [],
         activeProgramId: null,
@@ -204,4 +188,4 @@ class LocalStore {
   }
 }
 
-module.exports = { LocalStore, SEED_BODYWEIGHTS };
+module.exports = { LocalStore };

@@ -1,7 +1,11 @@
+param(
+    [string]$SourceImage = (Join-Path $PSScriptRoot "..\assets\icon.png")
+)
 Add-Type -AssemblyName System.Drawing
 
-$src = "C:\Users\ruair\.gemini\antigravity\brain\ef5b705e-d38d-48ae-a4f5-09c8f2c1a2aa\strengthlogz_app_icon_1792173108765.jpg"
-$baseDir = "c:\MyProjects\StrengthLogz\mobile-android\app\src\main\res"
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$src = $SourceImage
+$baseDir = Join-Path $repoRoot "mobile-android\app\src\main\res"
 
 $densities = @{
     "mipmap-mdpi" = 48
@@ -38,7 +42,7 @@ foreach ($key in $densities.Keys) {
 }
 
 # Also save high-res 512x512 for store / desktop icon
-$desktopIcoDir = "c:\MyProjects\StrengthLogz\assets"
+$desktopIcoDir = Join-Path $repoRoot "assets"
 if (-not (Test-Path $desktopIcoDir)) {
     New-Item -ItemType Directory -Path $desktopIcoDir -Force | Out-Null
 }

@@ -45,11 +45,9 @@ c:\MyProjects\StrengthLogz\
 │   ├── StrengthLogz 1.0.0.exe         # Windows standalone portable executable
 │   └── StrengthLogz-Native.apk        # Compiled Android APK package
 ├── data/
-│   ├── exercises.json        # 89 standardized default exercise catalogues
-│   └── history.txt           # Raw parsed backlog (120 historical sessions, 1,390 sets)
+│   └── exercises.json        # Standardized default exercise catalog
 ├── src/
 │   ├── data-service.js       # Core business logic, cache state, Google Sheets coordinator
-│   ├── history-parser.js     # Regex parser converting plain text logs into relational records
 │   └── stores/
 │       ├── local-store.js    # Local JSON storage fallback (userData/local-data.json)
 │       └── sheets-store.js   # Google Sheets API client using service account auth
@@ -95,7 +93,7 @@ Both clients strictly use the **Epley Formula** for all estimated 1-rep maximums
 $$\text{E1RM} = \text{weight} \times \left(1 + \frac{\text{reps}}{30}\right)$$
 
 #### Bodyweight Exercises (Total-Load E1RM)
-For exercises flagged `bodyweight` in the catalog (Pull Ups, Chin Ups, Dips, ...), the logged weight is the **added** load (`BW` = 0). E1RM is computed on **total load = body weight on the set's date + added weight** (`BodyWeightUtils.totalLoad`), and relative strength = E1RM / body weight. Body weight comes from `AppData.bodyWeights` (seeded history, manual entries, Health Connect), using carry-forward by date.
+For exercises flagged `bodyweight` in the catalog (Pull Ups, Chin Ups, Dips, ...), the logged weight is the **added** load (`BW` = 0). E1RM is computed on **total load = body weight on the set's date + added weight** (`BodyWeightUtils.totalLoad`), and relative strength = E1RM / body weight. Body weight comes from `AppData.bodyWeights` (manual entries, Health Connect), using carry-forward by date.
 
 #### Invalidation of Failed/Zero-Rep Sets
 *Sets with `reps == 0` or missing reps (e.g. `115kg x 0`) represent failed attempts.*
@@ -162,7 +160,7 @@ $$\text{Score} = \text{Sessions} \times 0.8 + \text{PlateauBonus} + \text{Recenc
    ```cmd
    cmd.exe /c "npm.cmd <command>"
    ```
-3. When updating packages or electron-builder configs, make sure `package.json` includes `"data/**/*"` and `"assets/**/*"` in `build.files` so bundled `.asar` executables do not fail on missing JSON assets.
+3. When updating packages or electron-builder configs, make sure `package.json` includes `"data/exercises.json"` and `"assets/**/*"` in `build.files` so bundled `.asar` executables do not fail on missing JSON assets.
 4. Build native Windows distribution executables using:
    ```cmd
    cmd.exe /c "npm.cmd run dist"
