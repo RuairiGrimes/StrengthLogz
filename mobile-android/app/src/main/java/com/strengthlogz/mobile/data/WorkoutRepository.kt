@@ -280,7 +280,9 @@ class WorkoutRepository(private val context: Context) {
             exercises = loadDefaultExercises().toMutableList(),
             bodyWeights = mutableListOf(),
             goals = mutableListOf(),
-            program = buildDefaultProgram(4)
+            program = null,
+            programs = mutableListOf(),
+            activeProgramId = null
         )
         saveLocalDataAsync()
     }
@@ -593,8 +595,24 @@ class WorkoutRepository(private val context: Context) {
                     }
                 }
             }
-            val prog = appData.program
-            if (prog != null) {
+            // Update exercise name across all stored programs
+            val progs = appData.programs
+            if (!progs.isNullOrEmpty()) {
+                val updatedProgs = progs.map { prog ->
+                    val updatedDays = prog.safeDays.map { d ->
+                        val updatedExs = d.safeExercises.map { exItem ->
+                            if (exItem.exerciseName.equals(oldName, ignoreCase = true)) {
+                                exItem.copy(exerciseName = cleanNewName, category = updated.category.ifBlank { exItem.category })
+                            } else exItem
+                        }
+                        d.copy(exercises = updatedExs)
+                    }
+                    prog.copy(days = updatedDays)
+                }.toMutableList()
+                appData.programs = updatedProgs
+                appData.program = updatedProgs.firstOrNull { it.id == appData.activeProgramId } ?: updatedProgs.firstOrNull()
+            } else if (appData.program != null) {
+                val prog = appData.program!!
                 val updatedDays = prog.safeDays.map { d ->
                     val updatedExs = d.safeExercises.map { exItem ->
                         if (exItem.exerciseName.equals(oldName, ignoreCase = true)) {
@@ -613,22 +631,104 @@ class WorkoutRepository(private val context: Context) {
         return Result.success(Unit)
     }
 
-    // ---------------- Workout Program ----------------
+    // ---------------- Workout Programs ----------------
 
-    fun getProgram(): WorkoutProgram {
-        val current = appData.program
-        if (current != null && current.safeDays.isNotEmpty()) {
-            return current
+    fun getPrograms(): List<WorkoutProgram> {
+        val list = appData.programs
+        if (list != null && list.isNotEmpty()) {
+            return list
         }
-        val defaultProg = buildDefaultProgram(4)
-        appData.program = defaultProg
+        val legacy = appData.program
+        if (legacy != null && legacy.safeDays.isNotEmpty()) {
+            val legacyId = if (legacy.id.isNotBlank()) legacy.id else java.util.UUID.randomUUID().toString()
+            val migrated = mutableListOf(legacy.copy(id = legacyId))
+            appData.programs = migrated
+            if (appData.activeProgramId == null) {
+                appData.activeProgramId = legacyId
+            }
+            saveLocalDataAsync()
+            return migrated
+        }
+        // No defaults forced: user creates their programs from scratch
+        return emptyList()
+    }
+
+    fun getActiveProgram(): WorkoutProgram? {
+        val progs = getPrograms()
+        if (progs.isEmpty()) return null
+        val activeId = appData.activeProgramId
+        return progs.firstOrNull { it.id == activeId } ?: progs.first()
+    }
+
+    fun getProgram(): WorkoutProgram? = getActiveProgram()
+
+    fun setActiveProgramId(programId: String) {
+        appData.activeProgramId = programId
+        appData.program = appData.programs?.firstOrNull { it.id == programId }
         saveLocalDataAsync()
-        return defaultProg
     }
 
     @Synchronized
     fun saveProgram(program: WorkoutProgram) {
+        val progs = (appData.programs ?: mutableListOf()).toMutableList()
+        val idx = progs.indexOfFirst { it.id == program.id }
+        if (idx >= 0) {
+            progs[idx] = program
+        } else {
+            progs.add(program)
+        }
+        appData.programs = progs
+        if (appData.activeProgramId == null || appData.activeProgramId == program.id) {
+            appData.activeProgramId = program.id
+        }
         appData.program = program
+        saveLocalDataAsync()
+    }
+
+    @Synchronized
+    fun createProgram(name: String): WorkoutProgram {
+        val cleanName = name.trim().ifBlank { "Custom Program" }
+        val newProg = WorkoutProgram(
+            id = java.util.UUID.randomUUID().toString(),
+            programName = cleanName,
+            days = emptyList(),
+            createdAt = DateUtils.todayDdMonYyyy()
+        )
+        val progs = (appData.programs ?: mutableListOf()).toMutableList()
+        progs.add(newProg)
+        appData.programs = progs
+        appData.activeProgramId = newProg.id
+        appData.program = newProg
+        saveLocalDataAsync()
+        return newProg
+    }
+
+    @Synchronized
+    fun duplicateProgram(programId: String): WorkoutProgram? {
+        val progs = (appData.programs ?: mutableListOf()).toMutableList()
+        val orig = progs.firstOrNull { it.id == programId } ?: return null
+        val copy = orig.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            programName = "${orig.safeProgramName} (Copy)",
+            createdAt = DateUtils.todayDdMonYyyy()
+        )
+        progs.add(copy)
+        appData.programs = progs
+        appData.activeProgramId = copy.id
+        appData.program = copy
+        saveLocalDataAsync()
+        return copy
+    }
+
+    @Synchronized
+    fun deleteProgram(programId: String) {
+        val progs = (appData.programs ?: mutableListOf()).toMutableList()
+        progs.removeAll { it.id == programId }
+        appData.programs = progs
+        if (appData.activeProgramId == programId) {
+            appData.activeProgramId = progs.firstOrNull()?.id
+        }
+        appData.program = progs.firstOrNull()
         saveLocalDataAsync()
     }
 

@@ -117,13 +117,17 @@ data class ProgramDay(
 
 @Immutable
 data class WorkoutProgram(
-    @SerializedName("daysPerWeek") val daysPerWeek: Int = 4,
-    @SerializedName("programName") val programName: String? = "My Weekly Program",
+    @SerializedName("id") val id: String = java.util.UUID.randomUUID().toString(),
+    @SerializedName("daysPerWeek") val daysPerWeek: Int = 0,
+    @SerializedName("programName") val programName: String? = "",
     @SerializedName("days") val days: List<ProgramDay>? = emptyList(),
-    @SerializedName("lastLoadedDayIndex") val lastLoadedDayIndex: Int = -1
+    @SerializedName("lastLoadedDayIndex") val lastLoadedDayIndex: Int = -1,
+    @SerializedName("createdAt") val createdAt: String? = ""
 ) {
-    val safeProgramName: String get() = programName?.ifBlank { "My Weekly Program" } ?: "My Weekly Program"
+    val safeId: String get() = if (id.isNotBlank()) id else java.util.UUID.randomUUID().toString()
+    val safeProgramName: String get() = programName?.ifBlank { "Custom Program" } ?: "Custom Program"
     val safeDays: List<ProgramDay> get() = days ?: emptyList()
+    val daysCount: Int get() = safeDays.size
 }
 
 data class AppData(
@@ -132,7 +136,9 @@ data class AppData(
     @SerializedName("exercises") val exercises: MutableList<Exercise> = mutableListOf(),
     @SerializedName("bodyWeights") var bodyWeights: MutableList<BodyWeightEntry>? = mutableListOf(),
     @SerializedName("goals") var goals: MutableList<ExerciseGoal>? = mutableListOf(),
-    @SerializedName("program") var program: WorkoutProgram? = null
+    @SerializedName("program") var program: WorkoutProgram? = null,
+    @SerializedName("programs") var programs: MutableList<WorkoutProgram>? = mutableListOf(),
+    @SerializedName("activeProgramId") var activeProgramId: String? = null
 )
 
 @Immutable

@@ -18,10 +18,13 @@
     </div>
     <nav>
       <button class="nav-btn active" data-view="log"><span class="ico">＋</span>Log Workout <kbd>Ctrl 1</kbd></button>
-      <button class="nav-btn" data-view="suggest"><span class="ico">✦</span>Suggest Workout <kbd>Ctrl 2</kbd></button>
-      <button class="nav-btn" data-view="history"><span class="ico">☰</span>History <kbd>Ctrl 3</kbd></button>
-      <button class="nav-btn" data-view="progress"><span class="ico">↗</span>Progress <kbd>Ctrl 4</kbd></button>
-      <button class="nav-btn" data-view="settings"><span class="ico">⚙</span>Settings <kbd>Ctrl 5</kbd></button>
+      <button class="nav-btn" data-view="program"><span class="ico">📅</span>Program <kbd>Ctrl 2</kbd></button>
+      <button class="nav-btn" data-view="suggest"><span class="ico">✦</span>Suggest Workout <kbd>Ctrl 3</kbd></button>
+      <button class="nav-btn" data-view="history"><span class="ico">☰</span>History <kbd>Ctrl 4</kbd></button>
+      <button class="nav-btn" data-view="progress"><span class="ico">↗</span>Progress <kbd>Ctrl 5</kbd></button>
+      <button class="nav-btn" data-view="goals"><span class="ico">🏆</span>Goals <kbd>Ctrl 6</kbd></button>
+      <button class="nav-btn" data-view="exercises"><span class="ico">🏋</span>Exercises <kbd>Ctrl 7</kbd></button>
+      <button class="nav-btn" data-view="settings"><span class="ico">⚙</span>Settings <kbd>Ctrl 8</kbd></button>
     </nav>
     <div class="sidebar-foot">
       <div id="storage-badge" class="storage-badge">…</div>
@@ -34,9 +37,10 @@
       <header class="view-head">
         <div>
           <h1 id="log-heading">Log Workout</h1>
-          <p class="muted" id="log-sub">Pick an exercise, punch in your sets, save. <kbd>Enter</kbd> adds a set, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.</p>
+          <p class="muted" id="log-sub">Punch in your working sets. <kbd>Enter</kbd> adds a set, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.</p>
         </div>
         <div class="head-actions">
+          <button id="log-load-program-btn" class="ghost">📅 Load Program</button>
           <button id="log-discard" class="ghost">Discard</button>
           <button id="log-save" class="primary">Save workout</button>
         </div>
@@ -61,6 +65,65 @@
         </div>
         <div class="chips-label muted">Recent</div>
         <div id="recent-chips" class="chips"></div>
+      </div>
+    </section>
+
+    <!-- ============ PROGRAM ============ -->
+    <section id="view-program" class="view">
+      <header class="view-head">
+        <div class="program-header-left">
+          <div class="program-switcher-container">
+            <button id="program-switcher-btn" class="program-selector-pill" title="Click to switch or manage programs">
+              <span class="ico">📅</span>
+              <span id="program-active-name">My Custom Program</span>
+              <span class="arrow">▼</span>
+            </button>
+            <button id="program-manage-btn" class="ghost icon-only" title="Manage Programs">⚙</button>
+            <button id="program-create-btn" class="primary compact">+ New Program</button>
+          </div>
+          <p class="muted" id="program-sub">Custom training split builder. Add days, assign exercises, and set target sets &amp; reps.</p>
+        </div>
+      </header>
+
+      <div id="program-empty-state" class="card empty-card hidden">
+        <div class="empty-icon-circle">📅</div>
+        <h2>Build Your Custom Program</h2>
+        <p class="muted">Create your training split completely from scratch. Add workout days, customize exercises, and set target sets &amp; reps.</p>
+        <button id="program-empty-create-btn" class="primary">+ Create Your First Program</button>
+      </div>
+
+      <div id="program-content" class="program-content">
+        <div class="program-days-bar-wrapper">
+          <div class="days-bar-label">
+            <span class="muted small uppercase font-bold" id="program-days-label">WORKOUT DAYS (0)</span>
+            <button id="program-add-day-btn" class="text-btn orange">+ Add Day</button>
+          </div>
+          <div id="program-days-row" class="days-row"></div>
+        </div>
+
+        <div id="program-active-day-card" class="card program-active-day-card">
+          <div class="day-head-row">
+            <div>
+              <h2 id="program-day-name">Day 1</h2>
+              <div id="program-day-focus" class="muted small"></div>
+            </div>
+            <div class="day-head-actions">
+              <button id="program-day-edit-btn" class="ghost compact">Edit Day</button>
+              <button id="program-day-delete-btn" class="danger compact">Delete Day</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="program-exercises-list" class="program-exercises-list"></div>
+
+        <div id="program-add-exercise-card" class="card program-add-ex-card">
+          <button id="program-add-ex-btn" class="ghost full-width">+ Add Exercise to Day</button>
+        </div>
+
+        <div id="program-bottom-bar" class="card program-bottom-bar">
+          <div id="program-day-summary" class="muted small"></div>
+          <button id="program-start-workout-btn" class="primary">▶ Start Workout (Load into Logger)</button>
+        </div>
       </div>
     </section>
 
@@ -121,11 +184,11 @@
       <header class="view-head">
         <div>
           <h1 id="progress-heading">Progress</h1>
-          <p class="muted" id="progress-sub">How strong were you? Pick an exercise.</p>
+          <p class="muted" id="progress-sub">Track strength curves and estimated 1RMs over time.</p>
         </div>
         <div class="head-actions">
           <button id="progress-back" class="ghost hidden">← All lifts</button>
-          <button id="progress-open-goals" class="primary">🎯 Goals</button>
+          <button id="progress-open-goals" class="primary">🏆 Goals</button>
           <input type="text" id="progress-input" list="exercise-list" placeholder="Search exercise…" autocomplete="off" />
         </div>
       </header>
@@ -158,19 +221,42 @@
     <section id="view-goals" class="view">
       <header class="view-head">
         <div>
-          <div style="margin-bottom: 8px;">
-            <button id="goals-back" class="ghost" style="padding: 4px 10px; font-size: 13px;">← Back to Progress</button>
-          </div>
-          <h1>Strength Goals &amp; Programming</h1>
-          <p class="muted" id="goals-sub">Select an exercise, configure a 1RM or Sets × Reps target, and get in-app periodization &amp; reports.</p>
+          <h1>Strength Goals</h1>
+          <p class="muted" id="goals-sub">Set 1RM or Sets × Reps targets. Track progress and get automated session targets.</p>
         </div>
         <div class="head-actions">
-          <button id="goals-all-report" class="ghost">📊 All Goals Report</button>
-          <button id="goals-add-btn" class="primary">+ Set New Goal</button>
+          <button id="goals-all-report" class="ghost">📊 All Reports</button>
+          <button id="goals-add-btn" class="primary">+ New Goal</button>
         </div>
       </header>
-      <div id="goals-summary" class="stats"></div>
-      <div id="goals-list"></div>
+
+      <div class="goals-filter-tabs">
+        <button class="goal-tab active" data-tab="all">All (<span id="goals-count-all">0</span>)</button>
+        <button class="goal-tab" data-tab="active">In Progress (<span id="goals-count-active">0</span>)</button>
+        <button class="goal-tab" data-tab="achieved">Achieved (<span id="goals-count-achieved">0</span>)</button>
+      </div>
+
+      <div id="goals-list" class="goals-list"></div>
+    </section>
+
+    <!-- ============ EXERCISES CATALOG ============ -->
+    <section id="view-exercises" class="view">
+      <header class="view-head">
+        <div>
+          <h1>Exercises Catalog</h1>
+          <p class="muted" id="exercises-sub">Standardized movements, kinetic transfer benefits, and custom exercises.</p>
+        </div>
+        <div class="head-actions">
+          <button id="exercises-add-btn" class="primary">+ Add Exercise</button>
+        </div>
+      </header>
+
+      <div class="card exercises-search-card">
+        <input type="search" id="exercises-search-input" placeholder="Search exercises by name or keyword…" autocomplete="off" />
+        <div id="exercises-category-chips" class="chips" style="margin-top: 10px;"></div>
+      </div>
+
+      <div id="exercises-catalog-list" class="exercises-catalog-grid"></div>
     </section>
 
     <!-- ============ SETTINGS ============ -->
@@ -178,10 +264,36 @@
       <header class="view-head">
         <div>
           <h1>Settings</h1>
-          <p class="muted">Storage &amp; data</p>
+          <p class="muted">Storage, Cloud Sync &amp; Body Weight</p>
         </div>
       </header>
 
+      <!-- Body Weight Tracker -->
+      <div class="card">
+        <div class="card-head-row">
+          <div>
+            <h3>Body Weight Tracker</h3>
+            <p class="muted small">Body weight is factored into relative strength (E1RM / BW) and total load on bodyweight lifts (Pull Ups, Dips).</p>
+          </div>
+          <div class="bw-current-display">
+            <span class="muted small uppercase">Current:</span>
+            <span id="bw-current-value" class="highlight-large">-- kg</span>
+          </div>
+        </div>
+
+        <form id="bw-log-form" class="bw-log-form">
+          <label>Date<input type="date" id="bw-input-date" required /></label>
+          <label>Weight (kg)<input type="number" id="bw-input-kg" step="0.1" min="30" max="300" placeholder="e.g. 82.5" required /></label>
+          <button type="submit" id="bw-submit-btn" class="primary">+ Log Weight</button>
+        </form>
+
+        <div class="bw-history-container">
+          <div class="muted small font-bold uppercase" style="margin-bottom: 6px;">Recent Readings</div>
+          <div id="bw-history-list" class="bw-history-list"></div>
+        </div>
+      </div>
+
+      <!-- Google Sheets Sync -->
       <div class="card">
         <h3>Google Sheets</h3>
         <div id="sheets-status" class="status-line"></div>
@@ -213,8 +325,9 @@
         </details>
       </div>
 
+      <!-- Data Import & Reset -->
       <div class="card">
-        <h3>Data</h3>
+        <h3>Data Management</h3>
         <p class="muted">Import the historical workouts from your notes (<code>data/history.txt</code>). Safe to run more than once — already-imported workouts are skipped.</p>
         <div class="btn-row">
           <button id="import-history" class="primary">Import historical notes</button>
@@ -229,16 +342,21 @@
   <datalist id="exercise-list"></datalist>
   <datalist id="title-list"></datalist>
 
+  <!-- Universal Modal Container -->
   <div id="modal" class="modal hidden">
     <div class="modal-box">
-      <h3 id="modal-title"></h3>
+      <div class="modal-head">
+        <h3 id="modal-title"></h3>
+        <button id="modal-x" class="ghost icon-only" style="margin-left:auto;">✕</button>
+      </div>
       <div id="modal-body"></div>
-      <div class="btn-row right">
+      <div class="btn-row right" id="modal-foot">
         <button id="modal-cancel" class="ghost">Cancel</button>
         <button id="modal-ok" class="primary">OK</button>
       </div>
     </div>
   </div>
+
   <div id="toast" class="toast"></div>
   <div id="busy" class="busy hidden"><div class="spinner"></div></div>
 

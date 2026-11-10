@@ -1,13 +1,15 @@
 'use strict';
 /* global Chart */
 
-// ---------------------------------------------------------------- helpers
+// ---------------------------------------------------------------- helpers & DOM utilities
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => (n === null || n === undefined || Number.isNaN(n) ? '–' : String(+(+n).toFixed(2)));
 const round = (n, step = 0.5) => Math.round(n / step) * step;
+
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
 const toDate = (d) => {
   const s = String(d || '').trim();
   const m = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
@@ -17,11 +19,13 @@ const toDate = (d) => {
   }
   return new Date(s + 'T00:00:00');
 };
-const dayMs = 86400000;
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const toSortableIso = (d) => {
+  const dt = toDate(d);
+  if (Number.isNaN(dt.getTime())) return '';
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 };
+
 const fmtDdMonYyyy = (d) => {
   const dt = toDate(d);
   if (Number.isNaN(dt.getTime())) return String(d || '');
@@ -30,18 +34,52 @@ const fmtDdMonYyyy = (d) => {
 const fmtDate = (d) => fmtDdMonYyyy(d);
 const shortDate = (d) => fmtDdMonYyyy(d);
 
-/** Epley estimated one-rep max. */
-const epley = (w, r) => (r === 1 ? w : w * (1 + r / 30));
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Epley formula: E1RM = weight * (1 + reps / 30). Invalidate failed / zero-rep sets. */
+const epley = (w, r) => (!r || r <= 0 ? 0 : (r === 1 ? (w || 0) : (w || 0) * (1 + r / 30)));
 
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const COLORS = { up: css('--up'), down: css('--down'), pr: css('--pr'), accent: css('--accent'), muted: css('--muted'), border: css('--border') };
+const COLORS = {
+  up: css('--up') || '#3ddc97',
+  down: css('--down') || '#ff5d73',
+  pr: css('--pr') || '#ffd166',
+  accent: css('--accent') || '#ff7a45',
+  muted: css('--muted') || '#8b93a7',
+  border: css('--border') || '#2a2f3a',
+};
 
 // ---------------------------------------------------------------- state
-let S = { workouts: [], sets: [], exercises: [], storage: {} };
-const idx = { byW: new Map(), byE: new Map(), exMap: new Map(), workouts: [] };
+let S = {
+  workouts: [],
+  sets: [],
+  exercises: [],
+  bodyWeights: [],
+  goals: [],
+  programs: [],
+  activeProgramId: null,
+  draft: null,
+  storage: {},
+};
+
+const idx = {
+  byW: new Map(),
+  byE: new Map(),
+  exMap: new Map(),
+  workouts: [],
+};
 
 function setState(st) {
-  S = st;
+  S = {
+    ...st,
+    bodyWeights: st.bodyWeights || [],
+    goals: st.goals || [],
+    programs: st.programs || [],
+    activeProgramId: st.activeProgramId || (st.programs && st.programs[0] ? st.programs[0].id : null),
+  };
   buildIndex();
   renderAll();
 }
@@ -50,6 +88,7 @@ function buildIndex() {
   idx.byW = new Map();
   idx.byE = new Map();
   idx.exMap = new Map(S.exercises.map((e) => [e.name.toLowerCase(), e]));
+
   for (const s of S.sets) {
     if (!idx.byW.has(s.workoutId)) idx.byW.set(s.workoutId, []);
     idx.byW.get(s.workoutId).push(s);
@@ -57,14 +96,55 @@ function buildIndex() {
     if (!idx.byE.has(k)) idx.byE.set(k, []);
     idx.byE.get(k).push(s);
   }
+
   idx.workouts = [...S.workouts].sort((a, b) => {
     const dtDiff = toDate(b.date) - toDate(a.date);
     return dtDiff !== 0 ? dtDiff : (a.id < b.id ? 1 : -1);
   });
 }
 
-const exInfo = (name) => idx.exMap.get((name || '').toLowerCase()) || { name, category: 'Other' };
+const exInfo = (name) => idx.exMap.get((name || '').toLowerCase()) || { name, category: 'Other', bodyweight: false, description: '' };
 const isBW = (name) => !!exInfo(name).bodyweight;
+
+// ---------------------------------------------------------------- Body Weight & Total Load Engine
+const BodyWeightUtils = {
+  weightOn(dateStr) {
+    const list = S.bodyWeights || [];
+    if (!list.length) return 82.5;
+    const targetIso = toSortableIso(dateStr) || toSortableIso(today());
+    const sorted = [...list].sort((a, b) => toSortableIso(a.date).localeCompare(toSortableIso(b.date)));
+    let candidate = sorted[0].weightKg;
+    for (const entry of sorted) {
+      if (toSortableIso(entry.date) <= targetIso) {
+        candidate = entry.weightKg;
+      } else {
+        break;
+      }
+    }
+    return candidate;
+  },
+
+  latestWeight() {
+    const list = S.bodyWeights || [];
+    if (!list.length) return 82.5;
+    const sorted = [...list].sort((a, b) => toSortableIso(b.date).localeCompare(toSortableIso(a.date)));
+    return sorted[0].weightKg;
+  },
+
+  totalLoad(exerciseName, dateStr, addedWeight) {
+    const w = addedWeight !== null && addedWeight !== undefined ? Number(addedWeight) : 0;
+    if (isBW(exerciseName)) {
+      return this.weightOn(dateStr) + w;
+    }
+    return w;
+  },
+
+  calculateE1rm(exerciseName, dateStr, addedWeight, reps) {
+    if (!reps || reps <= 0) return 0;
+    const load = this.totalLoad(exerciseName, dateStr, addedWeight);
+    return epley(load, reps);
+  },
+};
 
 // ---------------------------------------------------------------- formatting sets
 function fmtWeight(name, w) {
@@ -73,7 +153,6 @@ function fmtWeight(name, w) {
   return fmt(w);
 }
 
-/** Formatted summary, e.g. "3 x 10 @ 10kg" or "1 x 10 @ 10kg, 2 x 9 @ 10kg". */
 function summarize(name, sets) {
   const groups = [];
   for (const s of sets) {
@@ -86,17 +165,11 @@ function summarize(name, sets) {
     if (w === null && r === null) return `${n} set${n > 1 ? 's' : ''}`;
     const reps = r === null ? '?' : r;
     if (w === null) return `${n} x ${reps}`;
-    let wStr = '';
-    if (bw) {
-      wStr = w === 0 ? 'BW' : `BW+${fmt(w)}kg`;
-    } else {
-      wStr = `${fmt(w)}kg`;
-    }
+    const wStr = bw ? (w === 0 ? 'BW' : `BW+${fmt(w)}kg`) : `${fmt(w)}kg`;
     return `${n} x ${reps} @ ${wStr}`;
   }).join(', ');
 }
 
-/** Group a workout's sets by exercise, preserving order. */
 function groupByExercise(sets) {
   const map = new Map();
   for (const s of sets) {
@@ -107,7 +180,7 @@ function groupByExercise(sets) {
   return map;
 }
 
-// ---------------------------------------------------------------- sessions / metrics
+// ---------------------------------------------------------------- sessions & metrics
 function sessionsFor(name, excludeWorkoutId = null) {
   const sets = idx.byE.get((name || '').toLowerCase()) || [];
   const byW = new Map();
@@ -125,16 +198,23 @@ function sessionsFor(name, excludeWorkoutId = null) {
       if (r !== null) { totalReps += r; maxReps = Math.max(maxReps ?? 0, r); }
       if (w !== null && (r === null || r > 0)) top = Math.max(top ?? -Infinity, w);
       if (w !== null && r !== null && r > 0) {
+        const load = BodyWeightUtils.totalLoad(name, sess.date, w);
         volume += w * r;
-        const e = epley(w, r);
+        const e = epley(load, r);
         if (e1rm === null || e > e1rm) { e1rm = e; best = s; }
       }
     }
     const w = idx.workouts.find((x) => x.id === sess.workoutId);
     return {
-      ...sess, t: toDate(sess.date).getTime(), title: w ? w.title : '',
-      e1rm: bw || e1rm === null ? null : round(e1rm), best, top,
-      volume: bw ? (totalReps || null) : (volume || null), maxReps, totalReps,
+      ...sess,
+      t: toDate(sess.date).getTime(),
+      title: w ? w.title : '',
+      e1rm: e1rm === null ? null : round(e1rm),
+      best,
+      top,
+      volume: bw ? (totalReps || null) : (volume || null),
+      maxReps,
+      totalReps,
     };
   });
   return out.sort((a, b) => a.t - b.t);
@@ -142,23 +222,21 @@ function sessionsFor(name, excludeWorkoutId = null) {
 
 function metricsFor(name) {
   const bw = isBW(name);
-  const m = {
-    e1rm: { label: 'Est. 1RM', unit: 'kg', get: (s) => s.e1rm },
+  return {
+    e1rm: { label: bw ? 'Est. Total 1RM' : 'Est. 1RM', unit: 'kg', get: (s) => s.e1rm },
     top: { label: bw ? 'Top added weight' : 'Top weight', unit: 'kg', get: (s) => s.top },
     volume: { label: bw ? 'Total reps' : 'Volume', unit: bw ? 'reps' : 'kg', get: (s) => s.volume },
     reps: { label: 'Max reps', unit: 'reps', get: (s) => s.maxReps },
   };
-  if (bw) delete m.e1rm;
-  return m;
 }
 
 function defaultMetric(name, sessions) {
   const m = metricsFor(name);
-  const order = isBW(name) ? ['reps', 'top', 'volume'] : ['e1rm', 'top', 'reps', 'volume'];
+  const order = ['e1rm', 'top', 'reps', 'volume'];
   return order.find((k) => m[k] && sessions.some((s) => m[k].get(s) !== null)) || order[0];
 }
 
-// ---------------------------------------------------------------- ui utilities
+// ---------------------------------------------------------------- UI utilities & Modal
 let toastTimer;
 function toast(msg, kind = '') {
   const t = $('#toast');
@@ -170,1221 +248,1019 @@ function toast(msg, kind = '') {
 
 async function busy(fn) {
   $('#busy').classList.remove('hidden');
-  try { return await fn(); } catch (err) { toast(err.message, 'error'); throw err; } finally { $('#busy').classList.add('hidden'); }
+  try {
+    return await fn();
+  } catch (err) {
+    toast(err.message, 'error');
+    throw err;
+  } finally {
+    $('#busy').classList.add('hidden');
+  }
 }
 
-function modal({ title, html, okText = 'OK', danger = false }) {
+function modal({ title, html, okText = 'OK', cancelText = 'Cancel', danger = false, wide = false, large = false }) {
   return new Promise((resolve) => {
     const m = $('#modal');
+    const box = $('.modal-box', m);
     $('#modal-title').textContent = title;
     $('#modal-body').innerHTML = html;
+
+    box.classList.toggle('wide', !!wide);
+    box.classList.toggle('large', !!large);
+
     const ok = $('#modal-ok');
     ok.textContent = okText;
     ok.style.background = danger ? COLORS.down : '';
     ok.style.borderColor = danger ? COLORS.down : '';
+    ok.classList.toggle('hidden', okText === false);
+
+    const cancel = $('#modal-cancel');
+    cancel.textContent = cancelText;
+
     m.classList.remove('hidden');
-    const first = $('#modal-body input');
-    if (first) setTimeout(() => first.focus(), 0);
+    const first = $('#modal-body input:not([type="hidden"])');
+    if (first) setTimeout(() => first.focus(), 50);
+
     const close = (val) => {
       m.classList.add('hidden');
-      ok.onclick = null; $('#modal-cancel').onclick = null; m.onkeydown = null;
+      box.classList.remove('wide', 'large');
+      ok.onclick = null;
+      cancel.onclick = null;
+      $('#modal-x').onclick = null;
+      m.onkeydown = null;
       resolve(val);
     };
+
     ok.onclick = () => close($('#modal-body'));
-    $('#modal-cancel').onclick = () => close(null);
+    cancel.onclick = () => close(null);
+    $('#modal-x').onclick = () => close(null);
     m.onkeydown = (e) => {
       if (e.key === 'Escape') close(null);
-      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); close($('#modal-body')); }
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        close($('#modal-body'));
+      }
     };
   });
 }
 
-function showView(name) {
-  $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name || (name === 'workout-detail' && b.dataset.view === 'history') || (name === 'goals' && b.dataset.view === 'progress')));
+// ---------------------------------------------------------------- Navigation
+function showView(name, arg = null) {
+  $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
-  if (name === 'progress') renderProgress();
-  if (name === 'goals') renderGoals();
-  if (name === 'suggest') renderSuggest();
-  if (name === 'history') renderHistory();
-}
 
-// ================================================================ LOG VIEW
-const DRAFT_KEY = 'strengthlogz.draft';
-const newDraft = () => ({ date: today(), title: '', notes: '', exercises: [], replaceId: null });
-let draft = (() => { try { return JSON.parse(localStorage.getItem(DRAFT_KEY)) || newDraft(); } catch { return newDraft(); } })();
-const saveDraft = () => localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-
-const wToInput = (name, w) => (w === null || w === undefined ? '' : isBW(name) && w === 0 ? 'BW' : fmt(w));
-function parseWeight(v) {
-  v = String(v).trim().toLowerCase().replace(/kg$/, '').trim();
-  if (!v) return null;
-  if (v === 'bw') return 0;
-  const m = v.match(/^bw\s*\+\s*([\d.]+)$/);
-  if (m) return Number(m[1]);
-  const n = Number(v.replace(',', '.'));
-  return Number.isFinite(n) ? n : NaN;
-}
-function parseReps(v) {
-  v = String(v).trim();
-  if (!v) return null;
-  const n = Number(v);
-  return Number.isInteger(n) && n >= 0 ? n : NaN;
-}
-
-function renderLog() {
-  $('#log-date').value = draft.date;
-  $('#log-title').value = draft.title;
-  $('#log-notes').value = draft.notes;
-  const editing = draft.replaceId && S.workouts.find((w) => w.id === draft.replaceId);
-  $('#log-heading').textContent = editing ? `Editing ${fmtDate(editing.date)}` : 'Log Workout';
-  $('#log-save').textContent = editing ? 'Save changes' : 'Save workout';
-
-  const host = $('#log-exercises');
-  if (!draft.exercises.length) {
-    host.innerHTML = `<div class="empty">No exercises yet. Add one below, or hit <b>Repeat</b> on a past workout in History.</div>`;
-  } else {
-    host.innerHTML = draft.exercises.map((ex, ei) => exerciseCardHtml(ex, ei)).join('');
-  }
-  renderRecentChips();
-}
-
-function exerciseCardHtml(ex, ei) {
-  const info = exInfo(ex.name);
-  const bw = !!info.bodyweight;
-  const sessions = sessionsFor(ex.name, draft.replaceId);
-  const last = sessions[sessions.length - 1];
-  const bestE = sessions.reduce((m, s) => (s.e1rm !== null && (m === null || s.e1rm > m.e1rm) ? s : m), null);
-  const hints = [];
-  if (last) hints.push(`Last (${shortDate(last.date)}): <b>${esc(summarize(ex.name, last.sets))}</b>`);
-  if (bestE) hints.push(`Best e1RM: <b>${fmt(bestE.e1rm)} kg</b> (${shortDate(bestE.date)})`);
-  if (!last) hints.push('First time logging this one 💪');
-
-  const rows = ex.sets.map((s, si) => `
-    <tr data-ei="${ei}" data-si="${si}">
-      <td class="n">${si + 1}</td>
-      <td class="w"><input data-f="weight" inputmode="decimal" value="${esc(s.weight)}" placeholder="${bw ? 'BW / BW+10' : 'kg'}"></td>
-      <td class="r"><input data-f="reps" inputmode="numeric" value="${esc(s.reps)}" placeholder="reps"></td>
-      <td><input data-f="notes" value="${esc(s.notes)}" placeholder="notes (optional)"></td>
-      <td class="e1rm">${e1rmCell(ex.name, s)}</td>
-      <td class="x"><button class="icon" data-act="del-set" title="Remove set">✕</button></td>
-    </tr>`).join('');
-
-  const activeGoal = getActiveGoalForExercise(ex.name);
-  const goalEval = activeGoal ? evaluateGoalDesktop(activeGoal) : null;
-
-  return `
-  <div class="card ex-card" data-ei="${ei}">
-    <div class="ex-head">
-      <span class="ex-name" data-act="goto-progress" title="View progress">${esc(ex.name)}</span>
-      <span class="tag">${esc(info.category || 'Other')}${bw ? ' · bodyweight' : ''}</span>
-      ${activeGoal ? `<button class="primary" data-act="goal-progress" style="padding:4px 10px;font-size:12px;background:rgba(255,209,102,0.16);border-color:var(--pr);color:var(--pr)">🎯 Goal Progress</button>` : ''}
-      <span class="spacer"></span>
-      <button class="icon" data-act="move-up" title="Move up">↑</button>
-      <button class="icon" data-act="move-down" title="Move down">↓</button>
-      <button class="icon" data-act="del-ex" title="Remove exercise">✕</button>
-    </div>
-    <div class="ex-hint">${hints.join(' &nbsp;·&nbsp; ')}</div>
-    ${goalEval ? `<div style="margin:6px 0 8px;padding:8px 10px;border-radius:8px;background:rgba(255,209,102,0.08);border:1px solid rgba(255,209,102,0.3);display:flex;justify-content:space-between;align-items:center;font-size:12px">
-      <span><b style="color:var(--pr)">🎯 Goal (${esc(goalEval.targetSummary)}):</b> Aim today for <b>${esc(goalEval.nextSessionSummary)}</b> (${goalEval.progressPct}% to goal)</span>
-      <button class="ghost" data-act="goal-report" style="padding:2px 8px;font-size:11px;color:var(--pr)">Report →</button>
-    </div>` : ''}
-    <table class="sets">
-      <thead><tr><th>Set</th><th>${bw ? 'Added kg' : 'Weight kg'}</th><th>Reps</th><th>Notes</th><th>${bw ? '' : 'e1RM'}</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div class="ex-foot">
-      <button data-act="add-set">+ Add set</button>
-      ${activeGoal ? `<button class="ghost" data-act="goal-autofill" style="margin-left:8px;color:var(--pr);border-color:rgba(255,209,102,0.35)">⚡ Auto-Fill Goal Sets</button>` : ''}
-    </div>
-  </div>`;
-}
-
-function e1rmCell(name, s) {
-  if (isBW(name)) return '';
-  const w = parseWeight(s.weight), r = parseReps(s.reps);
-  if (!(w > 0) || !(r > 0)) return '';
-  return `≈ ${fmt(round(epley(w, r)))}`;
-}
-
-function renderRecentChips() {
-  const inDraft = new Set(draft.exercises.map((e) => e.name.toLowerCase()));
-  const seen = [];
-  for (const w of idx.workouts) {
-    for (const s of idx.byW.get(w.id) || []) {
-      if (!seen.includes(s.exercise) && !inDraft.has(s.exercise.toLowerCase())) seen.push(s.exercise);
+  if (name === 'log') {
+    if (arg && arg.exercises) {
+      loadPlanIntoLogger(arg);
     }
-    if (seen.length >= 14) break;
-  }
-  $('#recent-chips').innerHTML = seen.slice(0, 14).map((n) => `<button class="chip" data-name="${esc(n)}">${esc(n)}</button>`).join('')
-    || '<span class="muted small">Nothing logged yet.</span>';
-}
-
-async function addExerciseToDraft(rawName) {
-  let name = (rawName || '').trim();
-  if (!name) return;
-  const existing = idx.exMap.get(name.toLowerCase());
-  if (existing) {
-    name = existing.name;
-  } else {
-    const created = await createExerciseModal(name);
-    if (!created) return;
-    name = created;
-  }
-  const dup = draft.exercises.findIndex((e) => e.name.toLowerCase() === name.toLowerCase());
-  if (dup >= 0) { focusSet(dup, draft.exercises[dup].sets.length - 1, 'reps'); return; }
-
-  // Pre-fill with last session's sets so you only need to tweak.
-  const sessions = sessionsFor(name, draft.replaceId);
-  const last = sessions[sessions.length - 1];
-  const sets = last && last.sets.some((s) => s.weight !== null || s.reps !== null)
-    ? last.sets.map((s) => ({ weight: wToInput(name, s.weight), reps: s.reps === null ? '' : String(s.reps), notes: '' }))
-    : [{ weight: '', reps: '', notes: '' }];
-  draft.exercises.push({ name, sets });
-  saveDraft();
-  renderLog();
-  $('#add-ex-input').value = '';
-  focusSet(draft.exercises.length - 1, 0, 'weight');
-}
-
-async function createExerciseModal(name) {
-  const cats = [...new Set(S.exercises.map((e) => e.category).filter(Boolean)), 'Other'];
-  const body = await modal({
-    title: 'Create new exercise',
-    okText: 'Create',
-    html: `
-      <label>Name<input id="nx-name" value="${esc(name)}"></label>
-      <label>Category<select id="nx-cat">${[...new Set(cats)].map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
-      <label class="check"><input type="checkbox" id="nx-bw"> Bodyweight exercise (log added weight, BW = 0)</label>`,
-  });
-  if (!body) return null;
-  const ex = { name: $('#nx-name', body).value.trim(), category: $('#nx-cat', body).value, bodyweight: $('#nx-bw', body).checked };
-  if (!ex.name) return null;
-  const st = await busy(() => window.api.addExercise(ex));
-  setState(st);
-  toast(`Created "${ex.name}"`, 'success');
-  return ex.name;
-}
-
-function focusSet(ei, si, field) {
-  const el = $(`tr[data-ei="${ei}"][data-si="${si}"] input[data-f="${field}"]`);
-  if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }); }
-}
-
-function addSet(ei, focusField = 'reps') {
-  const ex = draft.exercises[ei];
-  const prev = ex.sets[ex.sets.length - 1];
-  ex.sets.push(prev ? { weight: prev.weight, reps: prev.reps, notes: '' } : { weight: '', reps: '', notes: '' });
-  saveDraft();
-  renderLog();
-  focusSet(ei, ex.sets.length - 1, focusField);
-}
-
-function bindLog() {
-  $('#log-date').addEventListener('change', (e) => { draft.date = e.target.value; saveDraft(); });
-  $('#log-title').addEventListener('input', (e) => { draft.title = e.target.value; saveDraft(); });
-  $('#log-notes').addEventListener('input', (e) => { draft.notes = e.target.value; saveDraft(); });
-
-  $('#add-ex-btn').addEventListener('click', () => addExerciseToDraft($('#add-ex-input').value));
-  $('#add-ex-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addExerciseToDraft(e.target.value); } });
-  $('#recent-chips').addEventListener('click', (e) => { const c = e.target.closest('.chip'); if (c) addExerciseToDraft(c.dataset.name); });
-
-  const host = $('#log-exercises');
-  host.addEventListener('input', (e) => {
-    const tr = e.target.closest('tr[data-ei]');
-    if (!tr || !e.target.dataset.f) return;
-    const ei = +tr.dataset.ei, si = +tr.dataset.si;
-    const set = draft.exercises[ei].sets[si];
-    set[e.target.dataset.f] = e.target.value;
-    $('.e1rm', tr).textContent = e1rmCell(draft.exercises[ei].name, set);
-    saveDraft();
-  });
-  host.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    const tr = e.target.closest('tr[data-ei]');
-    if (!tr) return;
-    e.preventDefault();
-    const ei = +tr.dataset.ei, si = +tr.dataset.si;
-    const field = e.target.dataset.f === 'notes' ? 'reps' : e.target.dataset.f;
-    if (si === draft.exercises[ei].sets.length - 1) addSet(ei, field);
-    else focusSet(ei, si + 1, field);
-  });
-  host.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-act]');
-    if (!btn) return;
-    const card = btn.closest('.ex-card');
-    const ei = +card.dataset.ei;
-    const act = btn.dataset.act;
-    if (act === 'add-set') return addSet(ei);
-    if (act === 'goto-progress') { openProgress(draft.exercises[ei].name); return; }
-    if (act === 'goal-progress') { openGoalProgressModal(ei); return; }
-    if (act === 'goal-report') {
-      const g = getActiveGoalForExercise(draft.exercises[ei].name);
-      if (g) openExerciseGoalReportModal(g.id);
-      return;
-    }
-    if (act === 'goal-autofill') {
-      const g = getActiveGoalForExercise(draft.exercises[ei].name);
-      if (g) {
-        const ev = evaluateGoalDesktop(g);
-        draft.exercises[ei].sets = Array.from({ length: ev.nextSets }, () => ({
-          weight: wToInput(draft.exercises[ei].name, ev.nextWeight),
-          reps: String(ev.nextReps),
-          notes: '',
-        }));
-        saveDraft();
-        renderLog();
-        toast(`Auto-filled ${ev.nextSessionSummary} for ${draft.exercises[ei].name}`, 'success');
-      }
-      return;
-    }
-    if (act === 'del-set') {
-      const si = +btn.closest('tr').dataset.si;
-      draft.exercises[ei].sets.splice(si, 1);
-      if (!draft.exercises[ei].sets.length) draft.exercises.splice(ei, 1);
-    }
-    if (act === 'del-ex') draft.exercises.splice(ei, 1);
-    if (act === 'move-up' && ei > 0) [draft.exercises[ei - 1], draft.exercises[ei]] = [draft.exercises[ei], draft.exercises[ei - 1]];
-    if (act === 'move-down' && ei < draft.exercises.length - 1) [draft.exercises[ei + 1], draft.exercises[ei]] = [draft.exercises[ei], draft.exercises[ei + 1]];
-    saveDraft();
-    renderLog();
-  });
-
-  $('#log-save').addEventListener('click', saveWorkout);
-  $('#log-discard').addEventListener('click', async () => {
-    if (draft.exercises.length && !(await modal({ title: 'Discard this workout?', html: '<p class="muted">Unsaved sets will be lost.</p>', okText: 'Discard', danger: true }))) return;
-    draft = newDraft();
-    saveDraft();
-    renderLog();
-  });
-}
-
-async function saveWorkout() {
-  if (!draft.date) return toast('Pick a date', 'error');
-  const sets = [];
-  for (const ex of draft.exercises) {
-    let n = 0;
-    for (const s of ex.sets) {
-      const weight = parseWeight(s.weight), reps = parseReps(s.reps);
-      if (Number.isNaN(weight)) return toast(`${ex.name}: "${s.weight}" isn't a valid weight`, 'error');
-      if (Number.isNaN(reps)) return toast(`${ex.name}: "${s.reps}" isn't a valid rep count`, 'error');
-      if (weight === null && reps === null && !String(s.notes).trim()) continue;
-      sets.push({ exercise: ex.name, setNo: ++n, weight, reps, notes: String(s.notes || '').trim() });
-    }
-  }
-  if (!sets.length) return toast('Nothing to save yet — add some sets', 'error');
-
-  // PR detection before saving
-  const prs = [];
-  for (const name of new Set(sets.map((s) => s.exercise))) {
-    if (isBW(name)) continue;
-    const prevBest = Math.max(0, ...sessionsFor(name, draft.replaceId).map((s) => s.e1rm || 0));
-    const nowBest = Math.max(0, ...sets.filter((s) => s.exercise === name && s.weight > 0 && s.reps > 0).map((s) => epley(s.weight, s.reps)));
-    if (prevBest > 0 && nowBest > prevBest) prs.push(`${name} (${fmt(round(nowBest))} kg e1RM)`);
-  }
-
-  const wasEdit = !!draft.replaceId;
-  const workoutDate = draft.date;
-  const st = await busy(() => window.api.saveWorkout({
-    workout: { date: draft.date, title: draft.title.trim(), notes: draft.notes.trim() },
-    sets,
-    replaceId: draft.replaceId,
-  }));
-  draft = newDraft();
-  saveDraft();
-  setState(st);
-
-  const updatedGoals = updateGoalsFromLoggedWorkout(workoutDate, sets);
-  if (updatedGoals.length > 0) {
-    toast(`🎯 Goal Updated for ${updatedGoals.map((g) => g.exercise).join(', ')}! Opening Goal Report...`, 'success');
-    openExerciseGoalReportModal(updatedGoals[0].id);
-  } else {
-    toast(prs.length ? `🏆 New PR: ${prs.join(', ')}` : `${wasEdit ? 'Updated' : 'Saved'} ✓ ${sets.length} sets`, 'success');
-  }
-}
-
-function loadIntoDraft(workoutId, { asEdit }) {
-  const w = S.workouts.find((x) => x.id === workoutId);
-  if (!w) return;
-  const groups = groupByExercise(idx.byW.get(w.id) || []);
-  draft = {
-    date: asEdit ? w.date : today(),
-    title: w.title || '',
-    notes: asEdit ? w.notes || '' : '',
-    replaceId: asEdit ? w.id : null,
-    exercises: [...groups].map(([name, sets]) => ({
-      name,
-      sets: sets.map((s) => ({ weight: wToInput(name, s.weight), reps: s.reps === null ? '' : String(s.reps), notes: asEdit ? s.notes || '' : '' })),
-    })),
-  };
-  saveDraft();
-  renderLog();
-  showView('log');
-}
-
-// ================================================================ HISTORY VIEW
-function renderHistory() {
-  const q = $('#history-search').value.trim().toLowerCase();
-  const list = idx.workouts.filter((w) => {
-    if (!q) return true;
-    if ((w.title || '').toLowerCase().includes(q) || (w.notes || '').toLowerCase().includes(q)) return true;
-    return (idx.byW.get(w.id) || []).some((s) => s.exercise.toLowerCase().includes(q) || (s.notes || '').toLowerCase().includes(q));
-  });
-  $('#history-sub').textContent = `${S.workouts.length} workouts · ${S.sets.length} sets logged${q ? ` · ${list.length} matching` : ''}`;
-  if (!list.length) {
-    $('#history-list').innerHTML = `<div class="empty">${S.workouts.length ? 'No workouts match that filter.' : 'No workouts yet. Log one, or import your historical notes from Settings.'}</div>`;
-    return;
-  }
-  let month = '';
-  const html = [];
-  for (const w of list) {
-    const m = fmtDate(w.date, { month: 'long', year: 'numeric' });
-    if (m !== month) { month = m; html.push(`<div class="month">${esc(m)}</div>`); }
-    const groups = groupByExercise(idx.byW.get(w.id) || []);
-    const exLines = [...groups].map(([name, sets]) => {
-      const notes = [...new Set(sets.map((s) => s.notes).filter(Boolean))].join('; ');
-      return `<div class="w-ex"><span class="nm" data-ex="${esc(name)}">${esc(name)}</span><span class="st">${esc(summarize(name, sets))}${notes ? ` <i>— ${esc(notes)}</i>` : ''}</span></div>`;
-    }).join('');
-    html.push(`
-      <div class="card w-card" data-id="${esc(w.id)}">
-        <div class="w-date"><div class="d">${toDate(w.date).getDate()}</div><div class="dw">${esc(fmtDate(w.date, { weekday: 'long', month: 'short' }))}</div></div>
-        <div>
-          ${w.title ? `<div class="w-title">${esc(w.title)}</div>` : ''}
-          ${w.notes ? `<div class="w-notes">${esc(w.notes)}</div>` : ''}
-          ${exLines}
-        </div>
-        <div class="w-actions">
-          <button data-act="repeat" title="Start a new workout with these exercises">Repeat</button>
-          <button data-act="edit">Edit</button>
-          <button data-act="delete" class="danger">Delete</button>
-        </div>
-      </div>`);
-  }
-  $('#history-list').innerHTML = html.join('');
-}
-
-function bindHistory() {
-  $('#history-search').addEventListener('input', renderHistory);
-  $('#history-list').addEventListener('click', async (e) => {
-    const nm = e.target.closest('[data-ex]');
-    if (nm) return openProgress(nm.dataset.ex);
-    const btn = e.target.closest('[data-act]');
-    if (btn) {
-      const id = btn.closest('.w-card').dataset.id;
-      const w = S.workouts.find((x) => x.id === id);
-      if (btn.dataset.act === 'repeat' || btn.dataset.act === 'edit') {
-        if (draft.exercises.length && !(await modal({ title: 'Replace current draft?', html: '<p class="muted">You have an unsaved workout in progress.</p>', okText: 'Replace', danger: true }))) return;
-        loadIntoDraft(id, { asEdit: btn.dataset.act === 'edit' });
-      }
-      if (btn.dataset.act === 'delete') {
-        if (!(await modal({ title: 'Delete workout?', html: `<p class="muted">${esc(fmtDate(w.date))}${w.title ? ` — ${esc(w.title)}` : ''} will be removed from your sheet.</p>`, okText: 'Delete', danger: true }))) return;
-        setState(await busy(() => window.api.deleteWorkout(id)));
-        toast('Workout deleted');
-      }
-      return;
-    }
-    const card = e.target.closest('.w-card');
-    if (card) {
-      openWorkoutDetail(card.dataset.id);
-    }
-  });
-}
-
-// ================================================================ WORKOUT DETAIL VIEW
-let currentDetailWorkoutId = null;
-
-function openWorkoutDetail(workoutId) {
-  currentDetailWorkoutId = workoutId;
-  renderWorkoutDetail(workoutId);
-  showView('workout-detail');
-}
-
-function renderWorkoutDetail(workoutId) {
-  const w = S.workouts.find((x) => x.id === workoutId);
-  if (!w) return;
-
-  const sets = idx.byW.get(w.id) || [];
-  const groups = groupByExercise(sets);
-
-  $('#workout-detail-heading').textContent = `${fmtDate(w.date)}${w.title ? ' — ' + w.title : ''}`;
-  $('#workout-detail-sub').textContent = w.notes ? w.notes : `${groups.size} exercises · ${sets.length} sets logged`;
-
-  // Total volume, sets, reps for this session
-  let totalVolume = 0;
-  let totalWorkingSets = 0;
-  let totalReps = 0;
-  for (const s of sets) {
-    const r = s.reps ?? 0;
-    const wt = s.weight ?? 0;
-    if (r > 0) {
-      totalWorkingSets++;
-      totalReps += r;
-      totalVolume += wt * r;
-    }
-  }
-
-  // Previous overall workout to compare session total volume
-  const sortedWorkouts = idx.workouts;
-  const currentIdx = sortedWorkouts.findIndex((x) => x.id === w.id);
-  const prevWorkout = currentIdx >= 0 && currentIdx < sortedWorkouts.length - 1 ? sortedWorkouts[currentIdx + 1] : null;
-  let prevTotalVol = 0;
-  if (prevWorkout) {
-    const prevSets = idx.byW.get(prevWorkout.id) || [];
-    for (const s of prevSets) {
-      const r = s.reps ?? 0;
-      const wt = s.weight ?? 0;
-      if (r > 0) prevTotalVol += wt * r;
-    }
-  }
-
-  // Count PRs in this session
-  let prCount = 0;
-  const prExercises = new Set();
-  for (const [name] of groups) {
-    const allSessions = sessionsFor(name);
-    const thisSess = allSessions.find((s) => s.workoutId === w.id);
-    if (thisSess && thisSess.e1rm !== null) {
-      const priorSessions = allSessions.filter((s) => s.t < thisSess.t);
-      const priorMaxE1rm = priorSessions.reduce((m, s) => (s.e1rm !== null && s.e1rm > m ? s.e1rm : m), 0);
-      if (thisSess.e1rm > priorMaxE1rm) {
-        prCount++;
-        prExercises.add(name);
-      }
-    }
-  }
-
-  const stat = (lbl, val, sub = '') => `<div class="stat"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`;
-  $('#workout-detail-stats').innerHTML = [
-    stat('Total Volume', `${fmt(round(totalVolume, 1))} kg`, prevWorkout ? deltaHtml(prevTotalVol, totalVolume, ' kg') : 'Overall session load'),
-    stat('Working Sets', `${totalWorkingSets}`, `${totalReps} total reps`),
-    stat('Exercises', `${groups.size}`, 'Tracked movements'),
-    stat('PRs Achieved', prCount > 0 ? `<span class="delta up">🏆 ${prCount} PR${prCount > 1 ? 's' : ''}</span>` : '–', prCount > 0 ? [...prExercises].join(', ') : 'No all-time PRs'),
-  ].join('');
-
-  // Per-exercise cards
-  const exHtml = [];
-  for (const [name, exSets] of groups) {
-    const info = exInfo(name);
-    const bw = !!info.bodyweight;
-    const allSessions = sessionsFor(name);
-    const thisSessIdx = allSessions.findIndex((s) => s.workoutId === w.id);
-    const thisSess = thisSessIdx >= 0 ? allSessions[thisSessIdx] : null;
-    const prevSess = thisSessIdx > 0 ? allSessions[thisSessIdx - 1] : null;
-    const isPr = prExercises.has(name);
-
-    // Current metrics
-    const currVol = thisSess ? thisSess.volume : null;
-    const currTop = thisSess ? thisSess.top : null;
-    const currE1rm = thisSess ? thisSess.e1rm : null;
-    const currReps = thisSess ? thisSess.totalReps : null;
-
-    // Previous metrics
-    const prevVol = prevSess ? prevSess.volume : null;
-    const prevTop = prevSess ? prevSess.top : null;
-    const prevE1rm = prevSess ? prevSess.e1rm : null;
-    const prevReps = prevSess ? prevSess.totalReps : null;
-
-    const u = bw ? ' reps' : ' kg';
-
-    let compareHtml = '';
-    if (prevSess) {
-      compareHtml = `
-        <div class="detail-compare-panel">
-          <div class="detail-compare-title">
-            <span>Performance vs Previous Session (${shortDate(prevSess.date)})</span>
-            ${isPr ? '<span class="pr-badge">🏆 All-Time PR</span>' : ''}
-          </div>
-          <div class="detail-compare-grid">
-            <div class="detail-compare-metric">
-              <span class="lbl">Volume</span>
-              <span class="val">${fmt(currVol)}${u}</span>
-              ${deltaHtml(prevVol, currVol, u)}
-            </div>
-            <div class="detail-compare-metric">
-              <span class="lbl">Top Weight</span>
-              <span class="val">${currTop !== null ? fmt(currTop) + ' kg' : '–'}</span>
-              ${deltaHtml(prevTop, currTop, ' kg')}
-            </div>
-            <div class="detail-compare-metric">
-              <span class="lbl">Est. 1RM</span>
-              <span class="val">${currE1rm !== null ? fmt(currE1rm) + ' kg' : '–'}</span>
-              ${bw ? '<span class="delta flat">Bodyweight</span>' : deltaHtml(prevE1rm, currE1rm, ' kg')}
-            </div>
-            <div class="detail-compare-metric">
-              <span class="lbl">Total Reps</span>
-              <span class="val">${currReps} reps</span>
-              ${deltaHtml(prevReps, currReps, ' reps')}
-            </div>
-          </div>
-          <div class="detail-compare-prev">
-            Prior session: <b>${esc(summarize(name, prevSess.sets))}</b>
-          </div>
-        </div>`;
-    } else {
-      compareHtml = `
-        <div class="detail-compare-panel">
-          <div class="detail-compare-title">
-            <span>First Logged Session</span>
-            <span class="pr-badge">🌟 Baseline Established</span>
-          </div>
-          <p class="muted small" style="margin: 4px 0 0;">This was your first recorded session for ${esc(name)}. Subsequent workouts will display progress and deltas here.</p>
-        </div>`;
-    }
-
-    const setRows = exSets.map((s, si) => {
-      const wt = s.weight;
-      const r = s.reps;
-      const e = (!bw && wt > 0 && r > 0) ? round(epley(wt, r)) : null;
-      const setVol = (!bw && wt > 0 && r > 0) ? round(wt * r, 1) : null;
-      return `
-        <tr>
-          <td>${si + 1}</td>
-          <td><b>${fmtWeight(name, wt)}${bw && wt === 0 ? '' : ' kg'}</b></td>
-          <td><b>${r !== null ? (r === 0 ? '0 (failed)' : r) : '–'}</b></td>
-          <td>${e !== null ? fmt(e) + ' kg' : '–'}</td>
-          <td>${setVol !== null ? fmt(setVol) + ' kg' : (r ? r + ' reps' : '–')}</td>
-          <td class="muted">${esc(s.notes || '')}</td>
-        </tr>`;
-    }).join('');
-
-    exHtml.push(`
-      <div class="detail-ex-card">
-        <div class="detail-ex-head">
-          <div class="detail-ex-title">
-            <span class="nm" data-ex="${esc(name)}">${esc(name)}</span>
-            <span class="tag">${esc(info.category || 'Other')}${bw ? ' · BW' : ''}</span>
-          </div>
-          <div class="detail-summary-badge">${esc(summarize(name, exSets))}</div>
-        </div>
-        ${compareHtml}
-        <table class="detail-sets-table">
-          <thead>
-            <tr><th>Set</th><th>Weight</th><th>Reps</th><th>Est. 1RM</th><th>Volume</th><th>Notes</th></tr>
-          </thead>
-          <tbody>${setRows}</tbody>
-        </table>
-        <div class="detail-ex-foot">
-          <button class="ghost" style="padding: 4px 10px; font-size: 12px;" data-ex="${esc(name)}">View Progress Chart →</button>
-        </div>
-      </div>`);
-  }
-
-  $('#workout-detail-exercises').innerHTML = exHtml.join('');
-}
-
-function bindWorkoutDetail() {
-  $('#workout-detail-back').addEventListener('click', () => showView('history'));
-  $('#workout-detail-repeat').addEventListener('click', async () => {
-    if (!currentDetailWorkoutId) return;
-    if (draft.exercises.length && !(await modal({ title: 'Replace current draft?', html: '<p class="muted">You have an unsaved workout in progress.</p>', okText: 'Replace', danger: true }))) return;
-    loadIntoDraft(currentDetailWorkoutId, { asEdit: false });
-  });
-  $('#workout-detail-edit').addEventListener('click', async () => {
-    if (!currentDetailWorkoutId) return;
-    if (draft.exercises.length && !(await modal({ title: 'Replace current draft?', html: '<p class="muted">You have an unsaved workout in progress.</p>', okText: 'Replace', danger: true }))) return;
-    loadIntoDraft(currentDetailWorkoutId, { asEdit: true });
-  });
-  $('#workout-detail-delete').addEventListener('click', async () => {
-    if (!currentDetailWorkoutId) return;
-    const w = S.workouts.find((x) => x.id === currentDetailWorkoutId);
-    if (!w) return;
-    if (!(await modal({ title: 'Delete workout?', html: `<p class="muted">${esc(fmtDate(w.date))}${w.title ? ' — ' + esc(w.title) : ''} will be removed from your sheet.</p>`, okText: 'Delete', danger: true }))) return;
-    setState(await busy(() => window.api.deleteWorkout(currentDetailWorkoutId)));
-    toast('Workout deleted');
-    showView('history');
-  });
-  $('#workout-detail-exercises').addEventListener('click', (e) => {
-    const el = e.target.closest('[data-ex]');
-    if (el) openProgress(el.dataset.ex);
-  });
-}
-
-// ================================================================ PROGRESS VIEW
-const prog = { exercise: null, metric: null, range: 0, chart: null, sparks: [] };
-
-function openProgress(name) {
-  const info = idx.exMap.get((name || '').toLowerCase());
-  prog.exercise = info ? info.name : name;
-  prog.metric = null;
-  $('#progress-input').value = '';
-  showView('progress');
-}
-
-function renderProgress() {
-  prog.sparks.forEach((c) => c.destroy());
-  prog.sparks = [];
-  const detail = !!prog.exercise;
-  $('#progress-overview').classList.toggle('hidden', detail);
-  $('#progress-detail').classList.toggle('hidden', !detail);
-  $('#progress-back').classList.toggle('hidden', !detail);
-  if (detail) renderProgressDetail();
-  else renderProgressOverview();
-}
-
-function deltaHtml(a, b, unit = '') {
-  if (a === null || b === null || a === undefined || b === undefined || a === 0) return '<span class="delta flat">–</span>';
-  const d = b - a;
-  const pct = (d / a) * 100;
-  const cls = Math.abs(pct) < 0.5 ? 'flat' : d > 0 ? 'up' : 'down';
-  const arrow = cls === 'up' ? '▲' : cls === 'down' ? '▼' : '■';
-  return `<span class="delta ${cls}">${arrow} ${d > 0 ? '+' : ''}${fmt(round(d, 0.1))}${unit} (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)</span>`;
-}
-
-function renderProgressOverview() {
-  $('#progress-heading').textContent = 'Progress';
-  $('#progress-sub').textContent = 'Your main lifts at a glance. Click one for full history & charts.';
-  const names = [...idx.byE.keys()].map((k) => exInfo(idx.byE.get(k)[0].exercise).name || idx.byE.get(k)[0].exercise);
-  const cards = names.map((name) => {
-    const sessions = sessionsFor(name);
-    const metric = defaultMetric(name, sessions);
-    const M = metricsFor(name)[metric];
-    const pts = sessions.filter((s) => M.get(s) !== null);
-    return { name, sessions, metric, M, pts };
-  }).filter((c) => c.pts.length >= 3).sort((a, b) => b.pts.length - a.pts.length);
-
-  const main = cards.slice(0, 16);
-  const host = $('#progress-overview');
-  if (!main.length) {
-    host.innerHTML = '<div class="empty">Not enough data yet. Log a few sessions (or import your notes in Settings) and charts will appear here.</div>';
-    return;
-  }
-
-  const byCat = {};
-  for (const c of cards) {
-    const cat = exInfo(c.name).category || 'Other';
-    (byCat[cat] = byCat[cat] || []).push(c.name);
-  }
-  const rest = [...idx.byE.values()].map((sets) => sets[0].exercise).filter((n) => !cards.some((c) => c.name === n));
-
-  host.innerHTML = `
-    <div class="grid">${main.map((c, i) => {
-      const first = c.pts[0], last = c.pts[c.pts.length - 1];
-      const peak = c.pts.reduce((m, s) => (c.M.get(s) > c.M.get(m) ? s : m), first);
-      return `<div class="card lift-card" data-ex="${esc(c.name)}">
-        <div class="top"><span class="nm">${esc(c.name)}</span>${deltaHtml(c.M.get(first), c.M.get(last))}</div>
-        <div class="big">${fmt(c.M.get(last))} <small>${esc(c.M.unit)} · ${esc(c.M.label.toLowerCase())}</small></div>
-        <div class="muted small">Peak ${fmt(c.M.get(peak))} (${shortDate(peak.date)}) · ${c.pts.length} sessions</div>
-        <canvas id="spark-${i}"></canvas>
-      </div>`;
-    }).join('')}</div>
-    ${Object.keys(byCat).length ? `<div class="section-title">All tracked exercises</div>
-    <div class="chips">${[...cards.map((c) => c.name), ...rest].sort().map((n) => `<button class="chip" data-ex="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}`;
-
-  main.forEach((c, i) => {
-    const ctx = $(`#spark-${i}`);
-    prog.sparks.push(new Chart(ctx, {
-      type: 'line',
-      data: { datasets: [{ data: c.pts.map((s) => ({ x: s.t, y: c.M.get(s) })), borderWidth: 2, pointRadius: 0, tension: 0.3,
-        segment: { borderColor: (g) => (g.p1.parsed.y >= g.p0.parsed.y ? COLORS.up : COLORS.down) } }] },
-      options: { responsive: true, maintainAspectRatio: false, animation: false, events: [],
-        plugins: { legend: { display: false }, tooltip: { enabled: false } },
-        scales: { x: { type: 'linear', display: false }, y: { display: false } } },
-    }));
-  });
-}
-
-function renderProgressDetail() {
-  const name = prog.exercise;
-  const info = exInfo(name);
-  const sessionsAll = sessionsFor(name);
-  const metrics = metricsFor(name);
-  if (!prog.metric || !metrics[prog.metric]) prog.metric = defaultMetric(name, sessionsAll);
-  const M = metrics[prog.metric];
-
-  $('#progress-heading').textContent = name;
-  $('#progress-sub').innerHTML = `${esc(info.category || 'Other')}${info.bodyweight ? ' · bodyweight (weights are added kg)' : ''} · ${sessionsAll.length} sessions`;
-
-  $('#metric-seg').innerHTML = Object.entries(metrics).map(([k, m]) => `<button data-metric="${k}" class="${k === prog.metric ? 'active' : ''}">${esc(m.label)}</button>`).join('');
-  $$('#range-seg button').forEach((b) => b.classList.toggle('active', +b.dataset.range === prog.range));
-
-  const cutoff = prog.range ? Date.now() - prog.range * dayMs : -Infinity;
-  const sessions = sessionsAll.filter((s) => s.t >= cutoff);
-  const pts = sessions.filter((s) => M.get(s) !== null);
-  const allPts = sessionsAll.filter((s) => M.get(s) !== null);
-
-  // running all-time PR flags (computed over full history so range filter doesn't fake PRs)
-  const prSet = new Set();
-  let run = -Infinity;
-  for (const s of allPts) { const v = M.get(s); if (v > run) { run = v; prSet.add(s.workoutId); } }
-
-  // ----- stats
-  const peak = allPts.reduce((m, s) => (m === null || M.get(s) > M.get(m) ? s : m), null);
-  const latest = allPts[allPts.length - 1] || null;
-  const prev = allPts[allPts.length - 2] || null;
-  const firstInRange = pts[0] || null;
-  const heaviest = sessionsAll.flatMap((s) => s.sets).filter((s) => s.weight !== null && (s.reps === null || s.reps > 0))
-    .reduce((m, s) => (m === null || s.weight > m.weight || (s.weight === m.weight && (s.reps || 0) > (m.reps || 0)) ? s : m), null);
-  const u = M.unit === 'kg' ? ' kg' : ` ${M.unit}`;
-  const stat = (lbl, val, sub = '') => `<div class="stat"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`;
-  $('#progress-stats').innerHTML = [
-    stat(`Peak ${esc(M.label.toLowerCase())}`, peak ? `${fmt(M.get(peak))}${u}` : '–', peak ? shortDate(peak.date) : ''),
-    stat('Latest', latest ? `${fmt(M.get(latest))}${u}` : '–', latest ? `${shortDate(latest.date)} · ${deltaHtml(M.get(prev || latest), M.get(latest))}` : ''),
-    stat(prog.range ? 'Change in range' : 'Change since first', firstInRange && latest ? deltaHtml(M.get(firstInRange), M.get(latest), u) : '–',
-      firstInRange ? `from ${fmt(M.get(firstInRange))}${u} on ${shortDate(firstInRange.date)}` : ''),
-    stat('vs peak', peak && latest ? (latest === peak ? '<span class="delta up">At peak 🏆</span>' : deltaHtml(M.get(peak), M.get(latest), u)) : '–', 'latest compared to best'),
-    stat('Heaviest set', heaviest ? `1 x ${heaviest.reps ?? '?'} @ ${fmtWeight(name, heaviest.weight)}${isBW(name) && heaviest.weight === 0 ? '' : 'kg'}` : '–', heaviest ? shortDate(heaviest.date) : ''),
-  ].join('');
-
-  // ----- chart
-  if (prog.chart) prog.chart.destroy();
-  const ctx = $('#progress-chart');
-  const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 340);
-  grad.addColorStop(0, 'rgba(255,122,69,0.25)');
-  grad.addColorStop(1, 'rgba(255,122,69,0)');
-  prog.chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      datasets: [{
-        label: M.label,
-        data: pts.map((s) => ({ x: s.t, y: M.get(s), s })),
-        borderWidth: 2.5,
-        tension: 0.25,
-        fill: true,
-        backgroundColor: grad,
-        segment: { borderColor: (g) => (g.p1.parsed.y > g.p0.parsed.y ? COLORS.up : g.p1.parsed.y < g.p0.parsed.y ? COLORS.down : COLORS.muted) },
-        pointBackgroundColor: pts.map((s) => (prSet.has(s.workoutId) ? COLORS.pr : '#e8eaf0')),
-        pointBorderColor: pts.map((s) => (prSet.has(s.workoutId) ? COLORS.pr : '#e8eaf0')),
-        pointRadius: pts.map((s) => (prSet.has(s.workoutId) ? 5 : 3)),
-        pointHoverRadius: 7,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'nearest', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e222b', borderColor: COLORS.border, borderWidth: 1, padding: 10,
-          callbacks: {
-            title: (items) => fmtDate(items[0].raw.s.date) + (items[0].raw.s.title ? ` — ${items[0].raw.s.title}` : ''),
-            label: (item) => `${M.label}: ${fmt(item.raw.y)}${u}${prSet.has(item.raw.s.workoutId) ? '  🏆 PR' : ''}`,
-            afterLabel: (item) => summarize(name, item.raw.s.sets),
-          },
-        },
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          grid: { color: '#20242d' },
-          ticks: { color: COLORS.muted, maxTicksLimit: 8, callback: (v) => new Date(v).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }) },
-        },
-        y: { grid: { color: '#20242d' }, ticks: { color: COLORS.muted, callback: (v) => `${fmt(v)}${M.unit === 'kg' ? 'kg' : ''}` } },
-      },
-    },
-  });
-
-  // ----- table (newest first)
-  const rows = [...sessions].reverse().map((s, i, arr) => {
-    const older = arr.slice(i + 1).find((x) => M.get(x) !== null);
-    const v = M.get(s);
-    const notes = [...new Set(s.sets.map((x) => x.notes).filter(Boolean))].join('; ');
-    const bestSet = s.best ? `${fmtWeight(name, s.best.weight)}×${s.best.reps}` : '–';
-    return `<tr>
-      <td>${esc(shortDate(s.date))}${s.title ? `<div class="notes">${esc(s.title)}</div>` : ''}</td>
-      <td>${esc(summarize(name, s.sets))}${notes ? `<div class="notes">${esc(notes)}</div>` : ''}</td>
-      ${isBW(name) ? '' : `<td>${bestSet}</td>`}
-      <td>${v === null ? '–' : fmt(v)}${prSet.has(s.workoutId) && v !== null ? '<span class="pr-badge">PR</span>' : ''}</td>
-      <td>${v !== null && older ? deltaHtml(M.get(older), v) : ''}</td>
-    </tr>`;
-  }).join('');
-  $('#progress-table').innerHTML = `<thead><tr><th>Date</th><th>Sets</th>${isBW(name) ? '' : '<th>Best set</th>'}<th>${esc(M.label)}</th><th>vs previous</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">No sessions in this range.</td></tr>'}</tbody>`;
-}
-
-function bindProgress() {
-  const pick = (v) => {
-    const info = idx.exMap.get(v.trim().toLowerCase());
-    if (info) openProgress(info.name);
-  };
-  $('#progress-input').addEventListener('change', (e) => pick(e.target.value));
-  $('#progress-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') pick(e.target.value); });
-  $('#progress-open-goals')?.addEventListener('click', () => showView('goals'));
-  $('#progress-back').addEventListener('click', () => { prog.exercise = null; renderProgress(); });
-  $('#progress-overview').addEventListener('click', (e) => { const c = e.target.closest('[data-ex]'); if (c) openProgress(c.dataset.ex); });
-  $('#metric-seg').addEventListener('click', (e) => { const b = e.target.closest('[data-metric]'); if (b) { prog.metric = b.dataset.metric; renderProgressDetail(); } });
-  $('#range-seg').addEventListener('click', (e) => { const b = e.target.closest('[data-range]'); if (b) { prog.range = +b.dataset.range; renderProgressDetail(); } });
-}
-
-// ================================================================ SETTINGS VIEW
-function renderSettings() {
-  const st = S.storage || {};
-  const badge = $('#storage-badge');
-  if (st.kind === 'sheets') {
-    badge.className = 'storage-badge sheets';
-    badge.textContent = `● Google Sheets${st.title ? ` — ${st.title}` : ''}`;
-    $('#sheets-status').innerHTML = `<span class="ok">● Connected</span> to <b>${esc(st.title || st.spreadsheetId)}</b>. Every save goes straight to your sheet.`;
-  } else {
-    badge.className = 'storage-badge local';
-    badge.textContent = '● Local storage (not synced)';
-    $('#sheets-status').innerHTML = st.error
-      ? `<span class="err">● ${esc(st.error)}</span>`
-      : '<span class="warn">● Not connected.</span> Workouts are saved locally on this PC until you connect a Google Sheet.';
-  }
-  if (document.activeElement !== $('#cfg-sheet')) $('#cfg-sheet').value = st.spreadsheetId || $('#cfg-sheet').value;
-  if (document.activeElement !== $('#cfg-key')) $('#cfg-key').value = st.keyFile || $('#cfg-key').value;
-  updateEmailCallout(st.serviceEmail);
-  $('#cfg-disconnect').disabled = st.kind !== 'sheets';
-  $('#cfg-open').disabled = !st.spreadsheetId;
-  $('#cfg-reload').disabled = st.kind !== 'sheets';
-  $('#copy-local').disabled = st.kind !== 'sheets';
-  $('#data-summary').textContent = `Currently stored: ${S.workouts.length} workouts · ${S.sets.length} sets · ${S.exercises.length} exercises in catalogue.`;
-}
-
-function updateEmailCallout(email) {
-  const el = $('#cfg-email');
-  if (!email) { el.classList.add('hidden'); return; }
-  el.classList.remove('hidden');
-  el.innerHTML = `Share your Google Sheet with <code>${esc(email)}</code> as <b>Editor</b>. <button class="ghost" id="copy-email" style="padding:2px 10px;margin-left:6px">Copy</button>`;
-  $('#copy-email').onclick = () => { navigator.clipboard.writeText(email); toast('Email copied'); };
-}
-
-function bindSettings() {
-  $('#cfg-browse').addEventListener('click', async () => {
-    const p = await window.api.pickKeyFile();
-    if (p) { $('#cfg-key').value = p; toast('Key selected — press Connect'); }
-  });
-  $('#cfg-connect').addEventListener('click', async () => {
-    const st = await busy(() => window.api.connect({ spreadsheetId: $('#cfg-sheet').value, keyFile: $('#cfg-key').value.trim() }));
-    setState(st);
-    toast(`Connected to "${st.storage.title}" ✓`, 'success');
-  });
-  $('#cfg-disconnect').addEventListener('click', async () => { setState(await busy(() => window.api.disconnect())); toast('Switched to local storage'); });
-  $('#cfg-reload').addEventListener('click', async () => { setState(await busy(() => window.api.reload())); toast('Reloaded from sheet'); });
-  $('#cfg-open').addEventListener('click', () => window.api.openExternal(`https://docs.google.com/spreadsheets/d/${S.storage.spreadsheetId}/edit`));
-  $('#import-history').addEventListener('click', async () => {
-    const where = S.storage.kind === 'sheets' ? 'your Google Sheet' : 'local storage (connect Sheets first if you want them in the sheet)';
-    if (!(await modal({ title: 'Import historical notes?', html: `<p class="muted">Adds the workouts from <code>data/history.txt</code> to ${where}. Already-imported workouts are skipped.</p>`, okText: 'Import' }))) return;
-    const res = await busy(() => window.api.importHistory());
-    setState(res.state);
-    toast(`Imported ${res.added} workouts (${res.sets} sets)${res.skipped ? `, skipped ${res.skipped} already present` : ''}`, 'success');
-  });
-  $('#copy-local').addEventListener('click', async () => {
-    let overwrite = false;
-    if (S.workouts.length > 0) {
-      const choice = await modal({
-        title: 'Copy Local Data to Google Sheets',
-        html: `<p class="muted">Your Google Sheet already has <b>${S.workouts.length}</b> workouts.</p>
-               <p>Choose <b>Append Missing</b> to keep existing sheet workouts and only add what's missing, or <b>Replace All</b> to cleanly overwrite the sheet with your local data.</p>`,
-        okText: 'Append Missing',
-      });
-      if (choice === null) return;
-    }
-    const res = await busy(() => window.api.copyLocalToSheets({ overwrite }));
-    setState(res.state);
-    toast(`Copied ${res.added} workouts (${res.sets} sets) to Sheets${res.skipped ? ` (${res.skipped} already in sheet)` : ''}`, 'success');
-  });
-
-  $('#clear-data').addEventListener('click', async () => {
-    const target = S.storage.kind === 'sheets' ? 'Google Sheet' : 'local database';
-    if (!(await modal({
-      title: `Clear all workouts?`,
-      html: `<p class="muted">This will remove all workouts and sets from your <b>${target}</b>.</p>
-             <p class="muted">You can re-import your 120 historical workouts at any time using <b>Import historical notes</b>.</p>`,
-      okText: 'Clear All Data',
-      danger: true,
-    }))) return;
-    const st = await busy(() => window.api.clearAllData());
-    setState(st);
-    toast('All workouts cleared. You can now re-import or start fresh.', 'success');
-  });
-  $('#view-settings').addEventListener('click', (e) => {
-    const a = e.target.closest('[data-ext]');
-    if (a) { e.preventDefault(); window.api.openExternal(a.dataset.ext); }
-  });
-}
-
-// ================================================================ SUGGEST VIEW
-const suggestState = { split: 'Push', seed: 0, slotOffsets: {}, currentPlan: [] };
-
-const EXERCISE_BENEFITS = {
-  'Bulgarian Split Squat': 'Unilateral quad/glute strength, eliminates leg imbalances, and spares lower spine',
-  'Leg Press': 'Maximum quad overload and knee flexion with zero spinal shear',
-  'Hack Squat': 'Deep knee flexion and quad hypertrophy with locked-in back support',
-  'Leg Extension': 'Direct isolated rectus femoris quad peak-contraction stimulus',
-  'Good Morning': 'Posterior chain hip-hinge endurance, hamstring stretch, and bulletproof lumbar erectors',
-  'Hyperextension': 'Decompresses lower back, strengthens spinal erectors, glutes, and hamstrings under full range',
-  'Romanian Deadlift': 'Lengthened-position hamstring stretch and powerful glute hypertrophy',
-  'Leg Curl': 'Direct hamstring knee flexion isolation to balance knee joint integrity',
-  'Incline Chest Press (Machine)': 'Locked-in clavicular upper pec tension without shoulder stability fatigue',
-  'Dips': 'High-threshold motor unit recruitment for lower pecs, anterior delts, and triceps',
-  'Cable Rear Delt Fly': 'Continuous peak resistance through full horizontal shoulder abduction',
-  'Pendlay Row': 'Dead-stop explosive concentric back power and strict thoracic strength',
-  'Snatch Grip High Pull': 'Explosive upper back, trapezius, and posterior chain power transfer',
-  'Band Face Pull': 'Rotator cuff longevity, external rotation, and scapular upward rotation',
-  'Fat Gripz Hammer Curl': 'Radical forearm flexor recruitment, brachialis mass, and grip strength',
-  'Reverse Grip Curl': 'Brachioradialis hypertrophy and forearm extensor tendon balance',
-  'Dumbbell Pullover': 'Expanded ribcage lat stretch in the fully lengthened position',
-  'Paused Close Grip Bench Press': 'Eliminates stretch reflex for brute triceps and lockout power',
-};
-
-const SUGGEST_SLOTS = {
-  Push: [
-    { slot: 'Primary Compound Press', cat: 'Chest', candidates: ['Bench Press', 'Incline Bench Press', 'Close Grip Bench Press', 'Paused Close Grip Bench Press'], sets: 3, reps: 5 },
-    { slot: 'Push Leg: Quad Overload', cat: 'Legs', candidates: ['Leg Press', 'Bulgarian Split Squat', 'Hack Squat', 'Squat', 'Front Squat', 'Leg Extension'], sets: 3, reps: 8 },
-    { slot: 'Vertical / Shoulder Press', cat: 'Shoulders', candidates: ['Overhead Press', 'Seated Dumbbell Press', 'Shoulder Press', 'Incline Dumbbell Press'], sets: 3, reps: 6 },
-    { slot: 'Secondary Chest & Push Accessory', cat: 'Chest', candidates: ['Dips', 'Incline Chest Press (Machine)', 'Incline Dumbbell Press', 'Dumbbell Fly', 'Weighted Push Up'], sets: 3, reps: 8 },
-    { slot: 'Delts & Triceps Finisher', cat: 'Shoulders', candidates: ['Lateral Raise', 'Overhead Tricep Extension', 'Cable Tricep Pushdown', 'Skull Crusher'], sets: 3, reps: 10 },
-  ],
-  Pull: [
-    { slot: 'Primary Vertical Pull', cat: 'Back', candidates: ['Chin Ups', 'Pull Ups', 'Wide Grip Pull Ups', 'Lat Pulldown'], sets: 3, reps: 6 },
-    { slot: 'Heavy Horizontal Row', cat: 'Back', candidates: ['Pendlay Row', 'Chest Supported Dumbbell Row', 'Barbell Row', 'Dumbbell Row', 'Cable Row'], sets: 3, reps: 6 },
-    { slot: 'Pull Leg: Hip Hinge & Posterior Chain', cat: 'Legs', candidates: ['Good Morning', 'Hyperextension', 'Romanian Deadlift', 'Deadlift', 'Trap Bar Deadlift', 'Leg Curl'], sets: 3, reps: 8 },
-    { slot: 'Rear Delts & Upper Back Stretch', cat: 'Back', candidates: ['Band Face Pull', 'Rear Delt Raise', 'Cable Rear Delt Fly', 'Dumbbell Pullover', 'Snatch Grip High Pull'], sets: 3, reps: 12 },
-    { slot: 'Biceps & Grip Finisher', cat: 'Arms', candidates: ['Fat Gripz Hammer Curl', 'Barbell Curl', 'EZ Bar Preacher Curl', 'Reverse Grip Curl', 'Incline Fat Gripz Hammer Curl'], sets: 3, reps: 10 },
-  ],
-  'Full Body': [
-    { slot: 'Primary Lower Compound (Push / Hinge)', cat: 'Legs', candidates: ['Squat', 'Front Squat', 'Leg Press', 'Good Morning', 'Deadlift', 'Trap Bar Deadlift'], sets: 3, reps: 6 },
-    { slot: 'Primary Upper Push', cat: 'Chest', candidates: ['Bench Press', 'Incline Bench Press', 'Overhead Press', 'Dips', 'Close Grip Bench Press'], sets: 3, reps: 5 },
-    { slot: 'Primary Upper Pull', cat: 'Back', candidates: ['Chin Ups', 'Pull Ups', 'Pendlay Row', 'Barbell Row', 'Dumbbell Row'], sets: 3, reps: 6 },
-    { slot: 'Secondary Lower: Quad or Posterior Chain', cat: 'Legs', candidates: ['Bulgarian Split Squat', 'Leg Press', 'Hyperextension', 'Good Morning', 'Leg Extension', 'Leg Curl', 'Romanian Deadlift'], sets: 3, reps: 8 },
-    { slot: 'Shoulders & Arms Overload', cat: 'Shoulders', candidates: ['Lateral Raise', 'Band Face Pull', 'Rear Delt Raise', 'Fat Gripz Hammer Curl', 'Overhead Tricep Extension', 'Cable Tricep Pushdown', 'Barbell Curl'], sets: 3, reps: 10 },
-  ],
-};
-
-function computeWeeklyVolumeStats() {
-  const targets = { Chest: 10, Back: 12, Shoulders: 9, Legs: 10, Arms: 9, Core: 4 };
-  const validSets = S.sets.filter((s) => (s.reps ?? 0) > 0);
-  const latestMs = validSets.reduce((m, s) => Math.max(m, toDate(s.date).getTime() || 0), Date.now());
-  const counts7 = {}, counts14 = {};
-  for (const s of validSets) {
-    const cat = exInfo(s.exercise).category || 'Other';
-    const diffDays = Math.max(0, (latestMs - (toDate(s.date).getTime() || 0)) / dayMs);
-    if (diffDays <= 7) counts7[cat] = (counts7[cat] || 0) + 1;
-    if (diffDays <= 14) counts14[cat] = (counts14[cat] || 0) + 1;
-  }
-  const out = {};
-  for (const [cat, target] of Object.entries(targets)) {
-    const c7 = counts7[cat] || 0;
-    const c14 = counts14[cat] || 0;
-    const ratio = Math.min(1, c7 / target);
-    out[cat] = { cat, c7, c14, target, ratio, deficit: 1 - ratio };
-  }
-  return out;
-}
-
-function renderSuggest() {
-  const vol = computeWeeklyVolumeStats();
-  const pushDef = ((vol.Chest?.deficit || 0) + (vol.Shoulders?.deficit || 0)) / 2;
-  const pullDef = vol.Back?.deficit || 0;
-  const legsDef = vol.Legs?.deficit || 0;
-  const recSplit = legsDef >= pushDef && legsDef >= pullDef ? 'Full Body' : pullDef >= pushDef ? 'Pull' : 'Push';
-
-  const splits = [
-    { key: 'Push', sub: 'Chest, Shoulders & Triceps' },
-    { key: 'Pull', sub: 'Back, Rear Delts & Biceps' },
-    { key: 'Full Body', sub: 'Legs, Push, Pull & Arms' },
-  ];
-
-  $('#suggest-controls').innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <strong>Select Workout Split</strong>
-      <span class="tag" style="color:var(--up);border-color:var(--up)">Recommended Today: ${esc(recSplit)}</span>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-      ${splits.map((sp) => {
-        const active = suggestState.split === sp.key;
-        return `<button data-split="${esc(sp.key)}" class="${active ? 'primary' : 'ghost'}" style="padding:14px;text-align:left;border-radius:10px">
-          <div style="font-size:16px;font-weight:700">${esc(sp.key === 'Full Body' ? 'Full Body (FB)' : sp.key)}</div>
-          <div style="font-size:12px;opacity:0.8;margin-top:4px">${esc(sp.sub)}</div>
-        </button>`;
-      }).join('')}
-    </div>`;
-
-  $('#suggest-volume').innerHTML = `
-    <h3 style="margin-bottom:10px">7-Day Muscle Group Volume &amp; Focus Areas</h3>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-      ${Object.values(vol).map((st) => {
-        const pct = Math.round(st.ratio * 100);
-        const col = st.ratio < 0.4 ? 'var(--down)' : st.ratio < 0.8 ? 'var(--accent)' : 'var(--up)';
-        return `<div style="background:#0f1115;padding:10px 12px;border-radius:10px;border:1px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600">
-            <span>${esc(st.cat)}</span>
-            <span style="color:${col}">${st.c7}/${st.target} sets (7d)</span>
-          </div>
-          <div style="height:6px;background:#232834;border-radius:3px;margin:6px 0;overflow:hidden">
-            <div style="height:100%;width:${Math.max(6, pct)}%;background:${col}"></div>
-          </div>
-          <div class="muted small">14-day total: ${st.c14} sets</div>
-        </div>`;
-      }).join('')}
-    </div>`;
-
-  const slots = SUGGEST_SLOTS[suggestState.split] || SUGGEST_SLOTS.Push;
-  const picked = new Set();
-  const latestMs = S.sets.reduce((m, s) => Math.max(m, toDate(s.date).getTime() || 0), Date.now());
-
-  const plan = slots.map((slotDef, idx) => {
-    const avail = slotDef.candidates.filter((c) => !picked.has(c.toLowerCase()));
-    const pool = avail.length ? avail : slotDef.candidates;
-    const ranked = [...pool].sort((a, b) => scoreCandidate(b, slotDef, vol, latestMs) - scoreCandidate(a, slotDef, vol, latestMs));
-    const offset = (suggestState.slotOffsets[idx] || 0) + suggestState.seed;
-    const chosen = ranked[offset % ranked.length];
-    picked.add(chosen.toLowerCase());
-    return buildPrescription(chosen, slotDef, vol, idx);
-  });
-
-  suggestState.currentPlan = plan;
-
-  $('#suggest-list').innerHTML = plan.map((item, idx) => `
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
-          <div class="small" style="color:var(--accent);font-weight:700;text-transform:uppercase">${idx + 1}. ${esc(item.slot)}</div>
-          <div style="font-size:18px;font-weight:700;margin-top:2px">${esc(item.name)} <span class="tag">${esc(item.category)}</span></div>
-        </div>
-        <button class="ghost" data-swap="${idx}" style="padding:5px 12px">⇄ Swap Exercise</button>
-      </div>
-      <div style="margin-top:10px;padding:10px 12px;background:#0f1115;border-radius:8px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-weight:700;color:var(--accent);font-size:14px">TARGET: ${esc(item.targetSummary)}</div>
-        ${item.peakE1rm ? `<div style="color:var(--pr);font-weight:700;font-size:12px">🏆 PR e1RM: ${fmt(item.peakE1rm)} kg</div>` : ''}
-      </div>
-      <div style="margin-top:8px;font-size:13px">${esc(item.reason)}</div>
-      <div class="muted small" style="margin-top:4px">Last (${esc(item.lastDate)}): ${esc(item.lastSummary)}</div>
-    </div>`).join('');
-}
-
-function scoreCandidate(name, slotDef, vol, latestMs) {
-  const sessions = sessionsFor(name);
-  const cat = exInfo(name).category || slotDef.cat;
-  const volBonus = (vol[cat]?.deficit || 0.5) * 10;
-  const benefitBonus = EXERCISE_BENEFITS[name] ? 4 : 0;
-
-  if (!sessions.length) {
-    // Unlogged / new exercise: grant appealing discovery score so it surfaces regularly on swap/shuffle
-    return 8 + volBonus + benefitBonus;
-  }
-
-  const last = sessions[sessions.length - 1];
-  const peakE = sessions.reduce((m, s) => Math.max(m, s.e1rm || 0), 0);
-  const currE = last.e1rm || 0;
-  const daysSince = Math.max(0, (latestMs - last.t) / dayMs);
-  const plateauBonus = peakE > 0 && currE < peakE ? Math.min(15, ((peakE - currE) / peakE) * 25) : 5;
-  const recencyBonus = daysSince < 2 ? -20 : daysSince <= 18 ? 12 : 6;
-  return Math.min(25, sessions.length) * 0.8 + plateauBonus + recencyBonus + volBonus + benefitBonus;
-}
-
-function buildPrescription(name, slotDef, vol, idx) {
-  const info = exInfo(name);
-  const cat = info.category || slotDef.cat;
-  const sessions = sessionsFor(name);
-  const last = sessions[sessions.length - 1];
-  const prev = sessions[sessions.length - 2];
-  const peak = sessions.reduce((m, s) => (!m || (s.e1rm || 0) > (m.e1rm || 0) ? s : m), null);
-  const peakE1rm = peak?.e1rm || 0;
-  const currE1rm = last?.e1rm || 0;
-  const benefitText = EXERCISE_BENEFITS[name];
-
-  if (!last) {
-    const sets = Array.from({ length: slotDef.sets }, () => ({ weight: '', reps: String(slotDef.reps), notes: '' }));
-    const newReason = benefitText
-      ? `✨ New Exercise Suggestion: ${benefitText}`
-      : `🎯 New stimulus for ${cat} (${slotDef.sets} × ${slotDef.reps})`;
-    return {
-      idx, slot: slotDef.slot, name, category: cat,
-      lastDate: 'First time', lastSummary: 'No prior sessions logged',
-      peakE1rm: 0, targetSummary: `${slotDef.sets} sets × ${slotDef.reps} reps`,
-      reason: newReason, sets,
-    };
-  }
-
-  const completedSets = last.sets.filter((s) => (s.reps ?? 0) > 0);
-  const bestWSet = completedSets.reduce((m, s) => (!m || (s.weight || 0) > (m.weight || 0) || ((s.weight || 0) === (m.weight || 0) && (s.reps || 0) > (m.reps || 0)) ? s : m), null);
-  const baseW = bestWSet?.weight || 0;
-  const baseR = bestWSet?.reps || slotDef.reps;
-  const numSets = Math.min(4, Math.max(3, completedSets.length || 3));
-
-  const readyJump = baseW > 0 && ((baseR >= 8 && slotDef.reps <= 6) || baseR >= 12 || (prev && (last.e1rm || 0) > (prev.e1rm || 0) && baseR >= slotDef.reps + 1));
-  let targetW = baseW, targetR = baseR, note = '';
-  if (baseW <= 0) {
-    targetW = 0;
-    targetR = Math.max(slotDef.reps, baseR + 1);
-    note = `+1 rep progression (${baseR} → ${targetR} reps)`;
-  } else if (readyJump) {
-    const inc = cat === 'Arms' || name.toLowerCase().includes('raise') ? 1.25 : 2.5;
-    targetW = round(baseW + inc, 0.5);
-    targetR = Math.max(slotDef.reps, baseR - 2);
-    note = `+${fmt(targetW - baseW)}kg weight jump`;
-  } else {
-    targetW = baseW;
-    targetR = Math.min(15, baseR + 1);
-    note = `+1 rep at ${fmt(targetW)}kg`;
-  }
-
-  const targetE = targetW > 0 ? round(epley(targetW, targetR)) : 0;
-  const volStat = vol[cat];
-  const benefitSuffix = benefitText ? ` • Benefit: ${benefitText}` : '';
-  let reason = `📈 Progressive Overload: Build on ${shortDate(last.date)} (${note})${benefitSuffix}`;
-  if (peakE1rm > 0 && currE1rm < peakE1rm * 0.94) {
-    reason = `🔧 Needs Improvement: Current e1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR (${shortDate(peak.date)})${benefitSuffix}`;
-  } else if (targetE > peakE1rm && peakE1rm > 0) {
-    reason = `🏆 PR Opportunity: Hitting ${fmt(targetW)}kg × ${targetR} sets a new e1RM PR (${fmt(targetE)}kg)!${benefitSuffix}`;
-  } else if (volStat && volStat.c7 < volStat.target / 2) {
-    reason = `📊 Weekly Volume Gap: ${cat} has only ${volStat.c7}/${volStat.target} sets in the last 7 days${benefitSuffix}`;
-  }
-
-  const targetSummary = targetW > 0 ? `${numSets} x ${targetR} @ ${fmt(targetW)}kg` : `${numSets} x ${targetR} @ BW`;
-  const sets = Array.from({ length: numSets }, () => ({
-    weight: targetW > 0 ? fmt(targetW) : (isBW(name) ? 'BW' : ''),
-    reps: String(targetR),
-    notes: '',
-  }));
-
-  return {
-    idx, slot: slotDef.slot, name, category: cat,
-    lastDate: shortDate(last.date), lastSummary: summarize(name, completedSets),
-    peakE1rm, targetSummary, reason, sets,
-  };
-}
-
-function bindSuggest() {
-  $('#suggest-controls').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-split]');
-    if (b) {
-      suggestState.split = b.dataset.split;
-      suggestState.slotOffsets = {};
-      renderSuggest();
-    }
-  });
-  $('#suggest-list').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-swap]');
-    if (b) {
-      const idx = +b.dataset.swap;
-      suggestState.slotOffsets[idx] = (suggestState.slotOffsets[idx] || 0) + 1;
-      renderSuggest();
-    }
-  });
-  $('#suggest-shuffle').addEventListener('click', () => {
-    suggestState.seed++;
+  } else if (name === 'program') {
+    renderProgramView();
+  } else if (name === 'suggest') {
     renderSuggest();
+  } else if (name === 'history') {
+    renderHistory();
+  } else if (name === 'workout-detail') {
+    renderWorkoutDetail(arg);
+  } else if (name === 'progress') {
+    if (arg) renderProgressDetail(arg);
+    else renderProgressOverview();
+  } else if (name === 'goals') {
+    renderGoals();
+  } else if (name === 'exercises') {
+    renderExercisesCatalog();
+  } else if (name === 'settings') {
+    renderSettings();
+  }
+}
+
+// ---------------------------------------------------------------- LOG WORKOUT VIEW
+let logExercises = [];
+let draftDebounceTimer = null;
+
+function initLog() {
+  $('#log-date').value = today();
+  $('#log-save').addEventListener('click', saveWorkoutFromLog);
+  $('#log-discard').addEventListener('click', () => {
+    if (confirm('Discard current workout in progress?')) {
+      logExercises = [];
+      $('#log-title').value = '';
+      $('#log-notes').value = '';
+      $('#log-date').value = today();
+      renderLogExercises();
+      window.api.clearDraft().catch(() => {});
+      toast('Workout discarded');
+    }
   });
-  $('#suggest-load').addEventListener('click', () => {
-    draft = {
-      date: today(),
-      title: suggestState.split,
-      notes: `Auto-designed ${suggestState.split} session`,
-      exercises: suggestState.currentPlan.map((it) => ({ name: it.name, sets: it.sets.map((s) => ({ ...s })) })),
-      replaceId: null,
+
+  $('#log-load-program-btn').addEventListener('click', openLoadProgramDayDialog);
+
+  $('#add-ex-btn').addEventListener('click', () => {
+    const val = $('#add-ex-input').value.trim();
+    if (val) {
+      addExerciseToLog(val);
+      $('#add-ex-input').value = '';
+    }
+  });
+
+  $('#add-ex-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      $('#add-ex-btn').click();
+    }
+  });
+
+  // Restore draft if any
+  if (S.draft && (S.draft.exercises?.length || S.draft.title || S.draft.notes)) {
+    $('#log-date').value = S.draft.date || today();
+    $('#log-title').value = S.draft.title || '';
+    $('#log-notes').value = S.draft.notes || '';
+    logExercises = S.draft.exercises || [];
+  }
+}
+
+function persistDraft() {
+  clearTimeout(draftDebounceTimer);
+  draftDebounceTimer = setTimeout(() => {
+    const draft = {
+      date: $('#log-date').value,
+      title: $('#log-title').value,
+      notes: $('#log-notes').value,
+      exercises: logExercises,
     };
-    saveDraft();
-    renderLog();
-    showView('log');
-    toast(`Loaded ${suggestState.split} workout into logger`, 'success');
+    window.api.saveDraft(draft).catch(() => {});
+  }, 400);
+}
+
+function addExerciseToLog(exerciseName, prefilledSets = null) {
+  const prevSessions = sessionsFor(exerciseName);
+  const latestSess = prevSessions[prevSessions.length - 1];
+  const lastSets = latestSess ? latestSess.sets : [];
+
+  const sets = prefilledSets && prefilledSets.length
+    ? prefilledSets.map((ps, i) => ({
+        setNo: i + 1,
+        weight: ps.weight !== '' && ps.weight !== null ? Number(ps.weight) : null,
+        reps: ps.reps !== '' && ps.reps !== null ? Number(ps.reps) : null,
+        notes: ps.notes || '',
+      }))
+    : (lastSets.length
+      ? lastSets.map((ls, i) => ({ setNo: i + 1, weight: ls.weight, reps: ls.reps, notes: '' }))
+      : [{ setNo: 1, weight: null, reps: null, notes: '' }]);
+
+  logExercises.push({
+    name: exerciseName,
+    sets,
+  });
+
+  renderLogExercises();
+  persistDraft();
+}
+
+function renderLogExercises() {
+  const host = $('#log-exercises');
+  if (!logExercises.length) {
+    host.innerHTML = '<div class="empty">No exercises added yet. Pick one below to start logging!</div>';
+    return;
+  }
+
+  const workoutDate = $('#log-date').value || today();
+  host.innerHTML = logExercises.map((ex, exIdx) => {
+    const info = exInfo(ex.name);
+    const bw = isBW(ex.name);
+    const activeGoal = getActiveGoalForExercise(ex.name);
+    const prevSessions = sessionsFor(ex.name);
+    const last = prevSessions[prevSessions.length - 1];
+    const hint = last ? `Last (${shortDate(last.date)}): <b>${summarize(ex.name, last.sets)}</b>` : 'First time logging this lift';
+
+    const setsRows = ex.sets.map((s, sIdx) => {
+      const e1rm = (s.reps && s.reps > 0 && s.weight !== null)
+        ? Math.round(BodyWeightUtils.calculateE1rm(ex.name, workoutDate, s.weight, s.reps) * 10) / 10
+        : null;
+
+      return `
+        <tr data-ex="${exIdx}" data-set="${sIdx}">
+          <td class="n">${sIdx + 1}</td>
+          <td class="w"><input type="number" step="0.5" class="set-w" value="${s.weight ?? ''}" placeholder="${bw ? '+kg' : 'kg'}" /></td>
+          <td class="r"><input type="number" step="1" class="set-r" value="${s.reps ?? ''}" placeholder="reps" /></td>
+          <td class="e1rm">${e1rm ? `${e1rm}k` : '–'}</td>
+          <td class="x"><button class="icon del-set" title="Delete set">✕</button></td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div class="card ex-card" data-ex="${exIdx}">
+        <div class="ex-head">
+          <span class="ex-name" data-jump-progress="${esc(ex.name)}">${esc(ex.name)}</span>
+          <span class="tag">${esc(info.category || 'Other')}</span>
+          ${bw ? '<span class="tag" style="color:var(--pr);border-color:rgba(255,209,102,0.4)">BW</span>' : ''}
+          ${activeGoal ? `<button class="primary compact goal-progress-btn" data-goal-ex="${esc(ex.name)}" style="margin-left:8px;font-size:11px;padding:3px 8px;">🎯 Goal Progress</button>` : ''}
+          <div class="spacer"></div>
+          <button class="ghost compact del-ex danger" title="Remove exercise">Remove</button>
+        </div>
+        <div class="ex-hint">${hint}</div>
+        <table class="sets">
+          <thead>
+            <tr>
+              <th class="n">Set</th>
+              <th class="w">${bw ? 'Added kg' : 'Weight (kg)'}</th>
+              <th class="r">Reps</th>
+              <th class="e1rm">${bw ? 'Tot E1RM' : 'Est 1RM'}</th>
+              <th class="x"></th>
+            </tr>
+          </thead>
+          <tbody>${setsRows}</tbody>
+        </table>
+        <div class="ex-foot">
+          <button class="ghost compact add-set">+ Add set</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  bindLogEvents();
+}
+
+function bindLogEvents() {
+  const host = $('#log-exercises');
+
+  // Input changes
+  host.querySelectorAll('input.set-w, input.set-r').forEach((inp) => {
+    inp.addEventListener('input', (e) => {
+      const tr = e.target.closest('tr');
+      const exIdx = Number(tr.dataset.ex);
+      const sIdx = Number(tr.dataset.set);
+      const wVal = tr.querySelector('.set-w').value.trim();
+      const rVal = tr.querySelector('.set-r').value.trim();
+
+      const w = wVal === '' ? null : Number(wVal);
+      const r = rVal === '' ? null : Number(rVal);
+
+      logExercises[exIdx].sets[sIdx].weight = w;
+      logExercises[exIdx].sets[sIdx].reps = r;
+
+      const e1rmEl = tr.querySelector('.e1rm');
+      if (r && r > 0 && w !== null) {
+        const dateStr = $('#log-date').value || today();
+        const eVal = Math.round(BodyWeightUtils.calculateE1rm(logExercises[exIdx].name, dateStr, w, r) * 10) / 10;
+        e1rmEl.textContent = `${eVal}k`;
+      } else {
+        e1rmEl.textContent = '–';
+      }
+
+      persistDraft();
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const tr = e.target.closest('tr');
+        const exIdx = Number(tr.dataset.ex);
+        logExercises[exIdx].sets.push({
+          setNo: logExercises[exIdx].sets.length + 1,
+          weight: logExercises[exIdx].sets[logExercises[exIdx].sets.length - 1]?.weight ?? null,
+          reps: null,
+          notes: '',
+        });
+        renderLogExercises();
+        persistDraft();
+      }
+    });
+  });
+
+  // Add set button
+  host.querySelectorAll('.add-set').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const card = e.target.closest('.ex-card');
+      const exIdx = Number(card.dataset.ex);
+      const lastSet = logExercises[exIdx].sets[logExercises[exIdx].sets.length - 1];
+      logExercises[exIdx].sets.push({
+        setNo: logExercises[exIdx].sets.length + 1,
+        weight: lastSet ? lastSet.weight : null,
+        reps: null,
+        notes: '',
+      });
+      renderLogExercises();
+      persistDraft();
+    });
+  });
+
+  // Delete set button
+  host.querySelectorAll('.del-set').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr');
+      const exIdx = Number(tr.dataset.ex);
+      const sIdx = Number(tr.dataset.set);
+      logExercises[exIdx].sets.splice(sIdx, 1);
+      if (!logExercises[exIdx].sets.length) {
+        logExercises.splice(exIdx, 1);
+      }
+      renderLogExercises();
+      persistDraft();
+    });
+  });
+
+  // Remove entire exercise
+  host.querySelectorAll('.del-ex').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const card = e.target.closest('.ex-card');
+      const exIdx = Number(card.dataset.ex);
+      logExercises.splice(exIdx, 1);
+      renderLogExercises();
+      persistDraft();
+    });
+  });
+
+  // Jump to progress
+  host.querySelectorAll('[data-jump-progress]').forEach((el) => {
+    el.addEventListener('click', () => {
+      showView('progress', el.dataset.jumpProgress);
+    });
+  });
+
+  // Goal Progress button
+  host.querySelectorAll('.goal-progress-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const exName = btn.dataset.goalEx;
+      const g = getActiveGoalForExercise(exName);
+      if (g) openGoalProgressModal(g);
+    });
   });
 }
 
-// ================================================================ GOALS VIEW & GOAL ENGINE
-const GOALS_KEY = 'strengthlogz.goals';
-let goalsList = (() => {
-  try { return JSON.parse(localStorage.getItem(GOALS_KEY)) || []; } catch { return []; }
-})();
-const saveGoalsStore = () => localStorage.setItem(GOALS_KEY, JSON.stringify(goalsList));
+function loadPlanIntoLogger(plan) {
+  if (!plan || !plan.exercises) return;
+  $('#log-title').value = plan.title || '';
+  $('#log-notes').value = plan.notes || '';
+  $('#log-date').value = today();
+
+  logExercises = plan.exercises.map((item) => {
+    const prevSets = sessionsFor(item.exerciseName);
+    const lastSess = prevSets[prevSets.length - 1];
+    const lastWeight = lastSess?.top ?? null;
+
+    const sets = (item.prescribedSets || []).map((ps, idx) => ({
+      setNo: idx + 1,
+      weight: ps.weight !== '' && ps.weight !== null ? Number(ps.weight) : lastWeight,
+      reps: ps.reps !== '' && ps.reps !== null ? Number(ps.reps) : 8,
+      notes: ps.notes || '',
+    }));
+
+    return {
+      name: item.exerciseName,
+      sets: sets.length ? sets : [{ setNo: 1, weight: lastWeight, reps: 8, notes: '' }],
+    };
+  });
+
+  renderLogExercises();
+  persistDraft();
+  toast(`Loaded "${plan.title || 'Workout'}" into logger!`, 'success');
+}
+
+async function saveWorkoutFromLog() {
+  const dateVal = $('#log-date').value;
+  if (!dateVal) return toast('Workout needs a date', 'error');
+
+  const setsToSave = [];
+  for (const ex of logExercises) {
+    let sNo = 1;
+    for (const s of ex.sets) {
+      if (s.reps === null && s.weight === null) continue;
+      setsToSave.push({
+        exercise: ex.name,
+        setNo: sNo++,
+        weight: s.weight,
+        reps: s.reps,
+        notes: s.notes || '',
+      });
+    }
+  }
+
+  if (!setsToSave.length) return toast('Add at least one set with weight or reps', 'error');
+
+  const workoutDateDdMon = fmtDdMonYyyy(dateVal);
+  const workoutPayload = {
+    workout: {
+      date: workoutDateDdMon,
+      title: $('#log-title').value.trim(),
+      notes: $('#log-notes').value.trim(),
+    },
+    sets: setsToSave,
+  };
+
+  await busy(async () => {
+    const res = await window.api.saveWorkout(workoutPayload);
+    setState(res.state || res);
+    await window.api.clearDraft();
+
+    logExercises = [];
+    $('#log-title').value = '';
+    $('#log-notes').value = '';
+    $('#log-date').value = today();
+    renderLogExercises();
+
+    toast('Workout saved!', 'success');
+
+    // If any goal was updated in this session, surface the Exercise Goal Report
+    if (res.updatedGoals && res.updatedGoals.length > 0) {
+      const topGoal = res.updatedGoals[0];
+      toast(`🎯 Goal progress logged for ${topGoal.exerciseName}!`, 'success');
+      setTimeout(() => openExerciseGoalReportModal(topGoal.id), 400);
+    } else {
+      showView('history');
+    }
+  });
+}
+
+// ---------------------------------------------------------------- PROGRAM SPLIT BUILDER VIEW
+let selectedProgramDayIdx = 0;
+
+function renderProgramView() {
+  const progs = S.programs || [];
+  const activeProg = progs.find((p) => p.id === S.activeProgramId) || progs[0] || null;
+
+  const emptyEl = $('#program-empty-state');
+  const contentEl = $('#program-content');
+
+  if (!activeProg) {
+    emptyEl.classList.remove('hidden');
+    contentEl.classList.add('hidden');
+    $('#program-active-name').textContent = 'No Programs';
+    return;
+  }
+
+  emptyEl.classList.add('hidden');
+  contentEl.classList.remove('hidden');
+
+  $('#program-active-name').textContent = activeProg.programName || 'Custom Program';
+
+  const days = activeProg.days || [];
+  selectedProgramDayIdx = Math.max(0, Math.min(selectedProgramDayIdx, Math.max(0, days.length - 1)));
+  const activeDay = days[selectedProgramDayIdx] || null;
+
+  // Render days tabs
+  $('#program-days-label').textContent = `WORKOUT DAYS (${days.length})`;
+  const daysRow = $('#program-days-row');
+  daysRow.innerHTML = days.map((d, idx) => {
+    const isActive = idx === selectedProgramDayIdx;
+    return `
+      <div class="day-tab ${isActive ? 'active' : ''}" data-day-idx="${idx}">
+        <span>${esc(d.dayName || `Day ${idx + 1}`)}</span>
+        <span class="count-badge">${(d.exercises || []).length}</span>
+      </div>
+    `;
+  }).join('');
+
+  daysRow.querySelectorAll('.day-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      selectedProgramDayIdx = Number(tab.dataset.dayIdx);
+      renderProgramView();
+    });
+  });
+
+  // Render active day card & exercises
+  if (!activeDay) {
+    $('#program-day-name').textContent = 'No Days Created';
+    $('#program-day-focus').textContent = 'Click "+ Add Day" above to create your first training day.';
+    $('#program-day-edit-btn').classList.add('hidden');
+    $('#program-day-delete-btn').classList.add('hidden');
+    $('#program-exercises-list').innerHTML = '<div class="empty">No days in this program. Tap "+ Add Day" above!</div>';
+    $('#program-add-exercise-card').classList.add('hidden');
+    $('#program-bottom-bar').classList.add('hidden');
+    return;
+  }
+
+  $('#program-day-name').textContent = activeDay.dayName || `Day ${selectedProgramDayIdx + 1}`;
+  $('#program-day-focus').textContent = activeDay.focus ? `Focus: ${activeDay.focus}` : '';
+  $('#program-day-edit-btn').classList.remove('hidden');
+  $('#program-day-delete-btn').classList.remove('hidden');
+  $('#program-add-exercise-card').classList.remove('hidden');
+
+  const exList = activeDay.exercises || [];
+  const totalSets = exList.reduce((sum, e) => sum + (e.targetSets || 3), 0);
+
+  if (!exList.length) {
+    $('#program-exercises-list').innerHTML = '<div class="empty">No exercises added to this day yet. Click "+ Add Exercise to Day" below!</div>';
+    $('#program-bottom-bar').classList.add('hidden');
+  } else {
+    $('#program-exercises-list').innerHTML = exList.map((item, eIdx) => {
+      const info = exInfo(item.exerciseName);
+      const bw = isBW(item.exerciseName);
+      const prevSessions = sessionsFor(item.exerciseName);
+      const last = prevSessions[prevSessions.length - 1];
+      const hint = last ? `Last: ${summarize(item.exerciseName, last.sets)}` : 'First time';
+
+      return `
+        <div class="prog-ex-card" data-idx="${eIdx}">
+          <div class="prog-ex-left">
+            <div class="prog-ex-idx">${eIdx + 1}</div>
+            <div class="prog-ex-meta">
+              <div class="name-row">
+                <span class="name">${esc(item.exerciseName)}</span>
+                <span class="tag">${esc(info.category || 'Other')}</span>
+                ${bw ? '<span class="tag" style="color:var(--pr);border-color:rgba(255,209,102,0.4)">BW</span>' : ''}
+              </div>
+              <div class="hint">${hint}</div>
+            </div>
+          </div>
+          <div class="prog-ex-right">
+            <div class="steppers-group">
+              <div class="stepper-pill">
+                <button class="stepper-btn dec-sets">−</button>
+                <div class="stepper-value"><span class="val">${item.targetSets || 3}</span><span class="lbl">Sets</span></div>
+                <button class="stepper-btn inc-sets">+</button>
+              </div>
+              <div class="stepper-pill">
+                <button class="stepper-btn dec-reps">−</button>
+                <div class="stepper-value"><span class="val">${item.targetReps || 8}</span><span class="lbl">Reps</span></div>
+                <button class="stepper-btn inc-reps">+</button>
+              </div>
+            </div>
+            <div class="reorder-group">
+              <button class="ghost compact reorder-btn move-up" ${eIdx === 0 ? 'disabled' : ''}>▲</button>
+              <button class="ghost compact reorder-btn move-down" ${eIdx === exList.length - 1 ? 'disabled' : ''}>▼</button>
+            </div>
+            <button class="icon del-prog-ex danger" title="Remove exercise">✕</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    $('#program-bottom-bar').classList.remove('hidden');
+    $('#program-day-summary').textContent = `${activeDay.dayName}: ${exList.length} exercise${exList.length === 1 ? '' : 's'} • ${totalSets} working sets`;
+  }
+
+  bindProgramViewEvents(activeProg, activeDay);
+}
+
+function bindProgramViewEvents(activeProg, activeDay) {
+  // Steppers & Reorder
+  const host = $('#program-exercises-list');
+  const days = activeProg.days || [];
+  const exList = activeDay ? (activeDay.exercises || []) : [];
+
+  host.querySelectorAll('.prog-ex-card').forEach((card) => {
+    const eIdx = Number(card.dataset.idx);
+
+    card.querySelector('.dec-sets')?.addEventListener('click', () => {
+      if (exList[eIdx].targetSets > 1) {
+        exList[eIdx].targetSets--;
+        saveCurrentProgramDays(activeProg, days);
+      }
+    });
+
+    card.querySelector('.inc-sets')?.addEventListener('click', () => {
+      if (exList[eIdx].targetSets < 15) {
+        exList[eIdx].targetSets++;
+        saveCurrentProgramDays(activeProg, days);
+      }
+    });
+
+    card.querySelector('.dec-reps')?.addEventListener('click', () => {
+      if (exList[eIdx].targetReps > 1) {
+        exList[eIdx].targetReps--;
+        saveCurrentProgramDays(activeProg, days);
+      }
+    });
+
+    card.querySelector('.inc-reps')?.addEventListener('click', () => {
+      if (exList[eIdx].targetReps < 50) {
+        exList[eIdx].targetReps++;
+        saveCurrentProgramDays(activeProg, days);
+      }
+    });
+
+    card.querySelector('.move-up')?.addEventListener('click', () => {
+      if (eIdx > 0) {
+        const item = exList.splice(eIdx, 1)[0];
+        exList.splice(eIdx - 1, 0, item);
+        saveCurrentProgramDays(activeProg, days);
+      }
+    });
+
+    card.querySelector('.move-down')?.addEventListener('click', () => {
+      if (eIdx < exList.length - 1) {
+        const item = exList.splice(eIdx, 1)[0];
+        exList.splice(eIdx + 1, 0, item);
+        saveCurrentProgramDays(activeProg, days);
+      }
+    });
+
+    card.querySelector('.del-prog-ex')?.addEventListener('click', () => {
+      exList.splice(eIdx, 1);
+      saveCurrentProgramDays(activeProg, days);
+    });
+  });
+
+  // Start Workout / Load in Logger
+  $('#program-start-workout-btn').onclick = () => {
+    if (!activeDay || !activeDay.exercises?.length) return;
+    const plan = {
+      title: activeDay.dayName,
+      notes: activeDay.focus ? `Focus: ${activeDay.focus}` : `Loaded from ${activeProg.programName || 'Program'}`,
+      exercises: activeDay.exercises.map((item) => ({
+        exerciseName: item.exerciseName,
+        category: item.category,
+        prescribedSets: Array.from({ length: item.targetSets || 3 }, () => ({
+          weight: '',
+          reps: item.targetReps || 8,
+          notes: '',
+        })),
+      })),
+    };
+    showView('log', plan);
+  };
+}
+
+async function saveCurrentProgramDays(activeProg, days) {
+  const updatedProg = { ...activeProg, days };
+  await busy(async () => {
+    const res = await window.api.saveProgram(updatedProg);
+    setState(res);
+    renderProgramView();
+  });
+}
+
+function initProgramModule() {
+  $('#program-create-btn').addEventListener('click', openCreateProgramDialog);
+  $('#program-empty-create-btn').addEventListener('click', openCreateProgramDialog);
+  $('#program-switcher-btn').addEventListener('click', openManageProgramsDialog);
+  $('#program-manage-btn').addEventListener('click', openManageProgramsDialog);
+
+  $('#program-add-day-btn').addEventListener('click', openAddDayDialog);
+  $('#program-day-edit-btn').addEventListener('click', openEditDayDialog);
+  $('#program-day-delete-btn').addEventListener('click', deleteCurrentDay);
+  $('#program-add-ex-btn').addEventListener('click', openAddExerciseToDayDialog);
+}
+
+async function openCreateProgramDialog() {
+  const res = await modal({
+    title: 'Create New Program',
+    html: `
+      <label>Program Name
+        <input type="text" id="m-prog-name" placeholder="e.g. Push Pull Legs, Upper Lower, 4-Day Split" />
+      </label>
+    `,
+    okText: 'Create Program',
+  });
+  if (res) {
+    const name = res.querySelector('#m-prog-name').value.trim();
+    if (name) {
+      await busy(async () => {
+        const state = await window.api.createProgram(name);
+        setState(state);
+        selectedProgramDayIdx = 0;
+        showView('program');
+        toast(`Program "${name}" created!`, 'success');
+      });
+    }
+  }
+}
+
+async function openManageProgramsDialog() {
+  const progs = S.programs || [];
+  const rows = progs.map((p) => `
+    <div class="bw-entry-row" style="padding:10px 12px;margin-bottom:8px;">
+      <div>
+        <div style="font-weight:700;color:${p.id === S.activeProgramId ? 'var(--accent)' : 'var(--text)'};font-size:15px;">
+          ${esc(p.programName || 'Program')} ${p.id === S.activeProgramId ? '✓' : ''}
+        </div>
+        <div class="muted small">${(p.days || []).length} workout days</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="ghost compact m-switch-prog" data-id="${p.id}">Select</button>
+        <button class="ghost compact m-dup-prog" data-id="${p.id}" title="Duplicate">Copy</button>
+        <button class="ghost compact m-ren-prog" data-id="${p.id}" title="Rename">Rename</button>
+        <button class="danger compact m-del-prog" data-id="${p.id}" title="Delete">✕</button>
+      </div>
+    </div>
+  `).join('');
+
+  const html = `
+    <div style="max-height:360px;overflow-y:auto;margin-bottom:12px;">${rows || '<div class="muted">No programs yet.</div>'}</div>
+    <button id="m-new-prog-sub" class="primary full-width">+ Create New Program</button>
+  `;
+
+  const m = $('#modal');
+  $('#modal-title').textContent = `Manage Programs (${progs.length})`;
+  $('#modal-body').innerHTML = html;
+  $('.modal-box', m).classList.add('wide');
+  $('#modal-ok').classList.add('hidden');
+  $('#modal-cancel').textContent = 'Close';
+  m.classList.remove('hidden');
+
+  $('#m-new-prog-sub').onclick = () => {
+    m.classList.add('hidden');
+    openCreateProgramDialog();
+  };
+
+  $$('.m-switch-prog', m).forEach((b) => {
+    b.onclick = async () => {
+      m.classList.add('hidden');
+      const state = await window.api.setActiveProgramId(b.dataset.id);
+      setState(state);
+      selectedProgramDayIdx = 0;
+      renderProgramView();
+    };
+  });
+
+  $$('.m-dup-prog', m).forEach((b) => {
+    b.onclick = async () => {
+      m.classList.add('hidden');
+      const state = await window.api.duplicateProgram(b.dataset.id);
+      setState(state);
+      renderProgramView();
+      toast('Program duplicated!', 'success');
+    };
+  });
+
+  $$('.m-ren-prog', m).forEach((b) => {
+    b.onclick = async () => {
+      m.classList.add('hidden');
+      const p = progs.find((x) => x.id === b.dataset.id);
+      if (!p) return;
+      const res = await modal({
+        title: 'Rename Program',
+        html: `<label>Program Name<input type="text" id="m-ren-val" value="${esc(p.programName)}" /></label>`,
+        okText: 'Save',
+      });
+      if (res) {
+        const newName = res.querySelector('#m-ren-val').value.trim();
+        if (newName) {
+          const state = await window.api.saveProgram({ ...p, programName: newName });
+          setState(state);
+          renderProgramView();
+        }
+      }
+    };
+  });
+
+  $$('.m-del-prog', m).forEach((b) => {
+    b.onclick = async () => {
+      if (confirm('Delete this program? This cannot be undone.')) {
+        m.classList.add('hidden');
+        const state = await window.api.deleteProgram(b.dataset.id);
+        setState(state);
+        selectedProgramDayIdx = 0;
+        renderProgramView();
+        toast('Program deleted');
+      }
+    };
+  });
+}
+
+async function openAddDayDialog() {
+  const progs = S.programs || [];
+  const activeProg = progs.find((p) => p.id === S.activeProgramId) || progs[0];
+  if (!activeProg) return;
+
+  const defaultDayNum = (activeProg.days || []).length + 1;
+  const res = await modal({
+    title: 'Add Workout Day',
+    html: `
+      <label>Day Name
+        <input type="text" id="m-day-name" value="Day ${defaultDayNum}: " placeholder="e.g. Day 1: Push, Upper Body, Chest & Triceps" />
+      </label>
+      <label>Focus (Optional)
+        <input type="text" id="m-day-focus" placeholder="e.g. Quad overload, Heavy bench progression" />
+      </label>
+    `,
+    okText: 'Add Day',
+  });
+
+  if (res) {
+    const dayName = res.querySelector('#m-day-name').value.trim();
+    const focus = res.querySelector('#m-day-focus').value.trim();
+    if (dayName) {
+      const days = [...(activeProg.days || [])];
+      days.push({
+        dayIndex: days.length,
+        dayName,
+        focus,
+        exercises: [],
+      });
+      selectedProgramDayIdx = days.length - 1;
+      await saveCurrentProgramDays(activeProg, days);
+    }
+  }
+}
+
+async function openEditDayDialog() {
+  const progs = S.programs || [];
+  const activeProg = progs.find((p) => p.id === S.activeProgramId) || progs[0];
+  if (!activeProg || !activeProg.days) return;
+  const day = activeProg.days[selectedProgramDayIdx];
+  if (!day) return;
+
+  const res = await modal({
+    title: 'Edit Workout Day',
+    html: `
+      <label>Day Name
+        <input type="text" id="m-day-name" value="${esc(day.dayName)}" />
+      </label>
+      <label>Focus (Optional)
+        <input type="text" id="m-day-focus" value="${esc(day.focus || '')}" />
+      </label>
+    `,
+    okText: 'Save Changes',
+  });
+
+  if (res) {
+    day.dayName = res.querySelector('#m-day-name').value.trim() || day.dayName;
+    day.focus = res.querySelector('#m-day-focus').value.trim();
+    await saveCurrentProgramDays(activeProg, activeProg.days);
+  }
+}
+
+async function deleteCurrentDay() {
+  const progs = S.programs || [];
+  const activeProg = progs.find((p) => p.id === S.activeProgramId) || progs[0];
+  if (!activeProg || !activeProg.days) return;
+  if (!confirm(`Delete day "${activeProg.days[selectedProgramDayIdx]?.dayName}"?`)) return;
+
+  activeProg.days.splice(selectedProgramDayIdx, 1);
+  selectedProgramDayIdx = Math.max(0, selectedProgramDayIdx - 1);
+  await saveCurrentProgramDays(activeProg, activeProg.days);
+}
+
+async function openAddExerciseToDayDialog() {
+  const progs = S.programs || [];
+  const activeProg = progs.find((p) => p.id === S.activeProgramId) || progs[0];
+  if (!activeProg || !activeProg.days) return;
+  const day = activeProg.days[selectedProgramDayIdx];
+  if (!day) return;
+
+  const allEx = S.exercises || [];
+  const categories = ['All', ...new Set(allEx.map((e) => e.category || 'Other').sort())];
+
+  let chosenCategory = 'All';
+  let targetSets = 3;
+  let targetReps = 8;
+
+  const renderPicker = () => {
+    const q = ($('#m-ex-search') ? $('#m-ex-search').value : '').toLowerCase().trim();
+    const filtered = allEx.filter((e) => {
+      const matchCat = chosenCategory === 'All' || (e.category || 'Other').toLowerCase() === chosenCategory.toLowerCase();
+      const matchQ = !q || e.name.toLowerCase().includes(q);
+      return matchCat && matchQ;
+    });
+
+    const catChips = categories.map((c) => `
+      <button class="chip ${c === chosenCategory ? 'active' : ''}" style="${c === chosenCategory ? 'background:var(--accent);color:#140d07;font-weight:700;' : ''}">${esc(c)}</button>
+    `).join('');
+
+    const rows = filtered.map((e) => `
+      <div class="bw-entry-row picker-item" data-name="${esc(e.name)}" style="padding:8px 12px;margin-bottom:6px;cursor:pointer;">
+        <div>
+          <span style="font-weight:700;color:var(--text);">${esc(e.name)}</span>
+          <span class="tag" style="margin-left:6px;">${esc(e.category || 'Other')}</span>
+          ${e.bodyweight ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
+        </div>
+        <button class="primary compact">+ Add</button>
+      </div>
+    `).join('');
+
+    return { catChips, rows };
+  };
+
+  const m = $('#modal');
+  $('#modal-title').textContent = `Add Exercise to ${day.dayName}`;
+  $('.modal-box', m).classList.add('large');
+  $('#modal-ok').classList.add('hidden');
+  $('#modal-cancel').textContent = 'Done';
+
+  $('#modal-body').innerHTML = `
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;background:var(--bg);padding:8px 12px;border-radius:10px;">
+      <span class="muted small uppercase font-bold">PRESCRIBED TARGETS:</span>
+      <div class="stepper-pill">
+        <button class="stepper-btn" id="m-set-dec">−</button>
+        <div class="stepper-value"><span class="val" id="m-sets-val">3</span><span class="lbl">Sets</span></div>
+        <button class="stepper-btn" id="m-set-inc">+</button>
+      </div>
+      <div class="stepper-pill">
+        <button class="stepper-btn" id="m-rep-dec">−</button>
+        <div class="stepper-value"><span class="val" id="m-reps-val">8</span><span class="lbl">Reps</span></div>
+        <button class="stepper-btn" id="m-rep-inc">+</button>
+      </div>
+    </div>
+    <input type="search" id="m-ex-search" placeholder="Search exercises..." style="margin-bottom:10px;" />
+    <div id="m-cat-chips" class="chips" style="margin-bottom:12px;"></div>
+    <div id="m-picker-list" style="max-height:300px;overflow-y:auto;"></div>
+  `;
+
+  m.classList.remove('hidden');
+
+  const updateList = () => {
+    const { catChips, rows } = renderPicker();
+    $('#m-cat-chips').innerHTML = catChips;
+    $('#m-picker-list').innerHTML = rows || '<div class="muted small" style="padding:16px;text-align:center;">No exercises match search.</div>';
+
+    $$('#m-cat-chips .chip').forEach((c) => {
+      c.onclick = () => {
+        chosenCategory = c.textContent.trim();
+        updateList();
+      };
+    });
+
+    $$('.picker-item', m).forEach((row) => {
+      row.onclick = () => {
+        const exName = row.dataset.name;
+        day.exercises = day.exercises || [];
+        day.exercises.push({
+          exerciseName: exName,
+          category: exInfo(exName).category || 'Other',
+          targetSets,
+          targetReps,
+        });
+        saveCurrentProgramDays(activeProg, activeProg.days);
+        toast(`Added ${exName} (${targetSets}×${targetReps})`, 'success');
+      };
+    });
+  };
+
+  $('#m-set-dec').onclick = () => { if (targetSets > 1) { targetSets--; $('#m-sets-val').textContent = targetSets; } };
+  $('#m-set-inc').onclick = () => { if (targetSets < 15) { targetSets++; $('#m-sets-val').textContent = targetSets; } };
+  $('#m-rep-dec').onclick = () => { if (targetReps > 1) { targetReps--; $('#m-reps-val').textContent = targetReps; } };
+  $('#m-rep-inc').onclick = () => { if (targetReps < 50) { targetReps++; $('#m-reps-val').textContent = targetReps; } };
+
+  $('#m-ex-search').oninput = updateList;
+  updateList();
+}
+
+async function openLoadProgramDayDialog() {
+  const progs = S.programs || [];
+  if (!progs.length) {
+    return toast('No programs created yet. Create one in the Program tab first!', 'error');
+  }
+
+  const daysOptions = [];
+  for (const p of progs) {
+    for (let i = 0; i < (p.days || []).length; i++) {
+      const d = p.days[i];
+      daysOptions.push({
+        progName: p.programName,
+        dayName: d.dayName,
+        focus: d.focus,
+        day: d,
+      });
+    }
+  }
+
+  if (!daysOptions.length) {
+    return toast('No workout days exist in your programs yet.', 'error');
+  }
+
+  const rows = daysOptions.map((opt, i) => `
+    <div class="bw-entry-row load-prog-day-item" data-idx="${i}" style="padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+      <div>
+        <div style="font-weight:700;color:var(--text);font-size:14.5px;">${esc(opt.dayName)}</div>
+        <div class="muted small">${esc(opt.progName)} • ${(opt.day.exercises || []).length} exercises ${opt.focus ? `(${esc(opt.focus)})` : ''}</div>
+      </div>
+      <button class="primary compact">Load</button>
+    </div>
+  `).join('');
+
+  const m = $('#modal');
+  $('#modal-title').textContent = 'Load Workout Day from Program';
+  $('#modal-body').innerHTML = `<div style="max-height:360px;overflow-y:auto;">${rows}</div>`;
+  $('.modal-box', m).classList.add('wide');
+  $('#modal-ok').classList.add('hidden');
+  $('#modal-cancel').textContent = 'Cancel';
+  m.classList.remove('hidden');
+
+  $$('.load-prog-day-item', m).forEach((item) => {
+    item.onclick = () => {
+      m.classList.add('hidden');
+      const idx = Number(item.dataset.idx);
+      const opt = daysOptions[idx];
+      const plan = {
+        title: opt.day.dayName,
+        notes: opt.day.focus ? `Focus: ${opt.day.focus}` : `Loaded from ${opt.progName}`,
+        exercises: (opt.day.exercises || []).map((e) => ({
+          exerciseName: e.exerciseName,
+          category: e.category,
+          prescribedSets: Array.from({ length: e.targetSets || 3 }, () => ({
+            weight: '',
+            reps: e.targetReps || 8,
+            notes: '',
+          })),
+        })),
+      };
+      loadPlanIntoLogger(plan);
+    };
+  });
+}
+
+// ---------------------------------------------------------------- GOALS MODULE (Decluttered)
+let activeGoalFilterTab = 'all';
 
 function getActiveGoalForExercise(name) {
   const k = String(name || '').trim().toLowerCase();
-  return goalsList.find((g) => g.enabled !== false && String(g.exercise || '').toLowerCase() === k) || null;
+  return (S.goals || []).find((g) => g.enabled !== false && String(g.exerciseName || g.exercise || '').toLowerCase() === k) || null;
 }
 
 function evaluateGoalDesktop(goal) {
-  const name = goal.exercise;
+  const name = goal.exerciseName || goal.exercise;
   const bw = isBW(name);
   const sessions = sessionsFor(name);
   const bestSess = sessions.reduce((m, s) => (s.e1rm !== null && (!m || s.e1rm > m.e1rm) ? s : m), null);
@@ -1394,385 +1270,1173 @@ function evaluateGoalDesktop(goal) {
   const currentWorkingE1rm = recentE1rm > 0 ? Math.max(recentE1rm, bestE1rm * 0.92) : 40;
 
   const targetE1rm = goal.goalType === 'SETS_REPS'
-    ? round(epley(goal.targetWeight || 0, Math.max(1, goal.targetReps || 5)))
-    : round(goal.targetE1rm || 0);
+    ? round(BodyWeightUtils.calculateE1rm(name, today(), goal.targetWeightKg || 0, Math.max(1, goal.targetReps || 8)))
+    : round(goal.targetE1rmKg || 0);
 
-  const startBase = goal.startingE1rm > 0 ? goal.startingE1rm : currentWorkingE1rm * 0.9;
+  const startBase = goal.baselineE1rmKg > 0 ? goal.baselineE1rmKg : currentWorkingE1rm * 0.88;
   const rawPct = targetE1rm > startBase
     ? Math.round(((Math.max(bestE1rm, recentE1rm) - startBase) / (targetE1rm - startBase)) * 100)
     : (Math.max(bestE1rm, recentE1rm) >= targetE1rm ? 100 : 0);
-  const progressPct = Math.max(0, Math.min(100, rawPct));
-  const e1rmGap = Math.max(0, round(targetE1rm - currentWorkingE1rm, 0.5));
 
-  const targetSummary = goal.goalType === 'SETS_REPS'
-    ? `${goal.targetSets || 3} × ${goal.targetReps || 5} @ ${fmt(goal.targetWeight || 0)}kg (≈ ${fmt(targetE1rm)}kg 1RM)`
-    : `${fmt(targetE1rm)}kg Est. 1RM`;
+  const isAchieved = !!goal.achievedDate || (targetE1rm > 0 && Math.max(bestE1rm, recentE1rm) >= targetE1rm);
+  const progressPct = isAchieved ? 100 : Math.max(0, Math.min(100, rawPct));
+
+  const targetHeadline = goal.goalType === 'SETS_REPS'
+    ? `${goal.targetSets || 3} × ${goal.targetReps || 8} @ ${bw ? (goal.targetWeightKg === 0 ? 'BW' : `BW+${fmt(goal.targetWeightKg)}kg`) : `${fmt(goal.targetWeightKg)}kg`}`
+    : `${fmt(targetE1rm)} kg 1RM`;
 
   const step = (exInfo(name).category === 'Arms' || name.toLowerCase().includes('raise')) ? 1.25 : 2.5;
-  let nextSets = 4, nextReps = 5, nextWeight = round((currentWorkingE1rm / (1 + 5 / 30)) * 0.96, step), blockTitle = 'Strength Intensification (4×5)';
+  let nextSets = 3, nextReps = 5, nextWeight = round((currentWorkingE1rm / (1 + 5 / 30)) * 0.97, step);
   if (goal.goalType === 'SETS_REPS') {
     nextSets = goal.targetSets || 3;
     nextReps = goal.targetReps || 8;
     const baseW = round(currentWorkingE1rm / (1 + nextReps / 30), step);
-    nextWeight = Math.min(goal.targetWeight || baseW, Math.max(step, baseW));
-    blockTitle = `Specificity Rep-Builder (${nextSets}×${nextReps})`;
-  } else if (e1rmGap <= 5) {
-    nextSets = 4; nextReps = 3;
-    nextWeight = round((currentWorkingE1rm / (1 + 3 / 30)) * 0.97, step);
-    blockTitle = 'Neural Realization & Peaking (4×3)';
-  } else if (e1rmGap > 15) {
-    nextSets = 4; nextReps = 8;
-    nextWeight = round((currentWorkingE1rm / (1 + 8 / 30)) * 0.95, step);
-    blockTitle = 'Hypertrophy & Work Capacity Base (4×8)';
+    nextWeight = Math.min(goal.targetWeightKg || baseW, Math.max(step, baseW));
   }
-  const nextSessionE1rm = round(epley(nextWeight, nextReps));
-  const nextSessionSummary = `${nextSets} sets × ${nextReps} reps @ ${bw && nextWeight === 0 ? 'BW' : fmt(nextWeight) + 'kg'}`;
-  const estSessionsRemaining = e1rmGap <= 0 ? 0 : Math.max(1, Math.min(24, Math.ceil(e1rmGap / 1.5)));
+  const nextSessionSummary = `${nextSets} × ${nextReps} @ ${bw && nextWeight === 0 ? 'BW' : fmt(nextWeight) + 'kg'}`;
+
+  // 4-Phase milestones
+  const phases = [
+    { title: 'Phase 1: Accumulation', prescription: `${nextSets} × ${nextReps + 2} @ ${fmt(Math.max(0, nextWeight - step * 2))}kg` },
+    { title: 'Phase 2: Intensification', prescription: `${nextSets} × ${nextReps} @ ${fmt(nextWeight)}kg` },
+    { title: 'Phase 3: Realization', prescription: `${nextSets} × ${Math.max(3, nextReps - 2)} @ ${fmt(nextWeight + step)}kg` },
+    { title: 'Phase 4: Goal Attempt', prescription: targetHeadline },
+  ];
 
   return {
-    goal, name, bw, sessionsCount: sessions.length,
-    bestE1rm: round(bestE1rm), recentE1rm: round(recentE1rm),
-    targetE1rm, targetSummary, progressPct, e1rmGap,
-    nextSets, nextReps, nextWeight, nextSessionE1rm, nextSessionSummary,
-    blockTitle, estSessionsRemaining,
-    latestSummary: latestSess ? `${shortDate(latestSess.date)}: ${summarize(name, latestSess.sets)}` : 'No sessions logged yet',
+    goal,
+    name,
+    bw,
+    category: exInfo(name).category || 'Other',
+    bestE1rm: round(bestE1rm),
+    targetE1rm,
+    targetHeadline,
+    progressPct,
+    isAchieved,
+    statusLabel: isAchieved ? 'Achieved 🏆' : (progressPct >= 80 ? 'On Track' : 'Building'),
+    nextSets,
+    nextReps,
+    nextWeight,
+    nextSessionSummary,
+    phases,
   };
-}
-
-function updateGoalsFromLoggedWorkout(dateStr, loggedSets) {
-  const byEx = new Map();
-  for (const s of loggedSets) {
-    if ((s.reps ?? 0) <= 0) continue;
-    const k = s.exercise.toLowerCase();
-    if (!byEx.has(k)) byEx.set(k, []);
-    byEx.get(k).push(s);
-  }
-  const updated = [];
-  for (const g of goalsList) {
-    if (g.enabled === false) continue;
-    const sets = byEx.get(String(g.exercise || '').toLowerCase());
-    if (!sets || !sets.length) continue;
-    let bestE = 0, bestW = 0, bestR = 0, vol = 0;
-    for (const s of sets) {
-      const w = s.weight || 0, r = s.reps || 0;
-      if (r > 0) {
-        vol += w * r;
-        const e = epley(w, r);
-        if (e > bestE) { bestE = e; bestW = w; bestR = r; }
-      }
-    }
-    const ev = evaluateGoalDesktop(g);
-    const achieved = g.goalType === 'SETS_REPS'
-      ? sets.filter((s) => (s.weight || 0) >= (g.targetWeight || 0) && (s.reps || 0) >= (g.targetReps || 1)).length >= (g.targetSets || 1)
-      : bestE >= (g.targetE1rm || 0);
-    g.achieved = g.achieved || achieved;
-    g.sessionHistory = g.sessionHistory || [];
-    g.sessionHistory.push({
-      date: fmtDdMonYyyy(dateStr),
-      bestWeight: bestW,
-      bestReps: bestR,
-      achievedE1rm: round(bestE),
-      workingSets: sets.length,
-      totalVolume: round(vol),
-      progressPct: achieved ? 100 : ev.progressPct,
-      hitSessionTarget: bestE >= ev.nextSessionE1rm * 0.98,
-      summary: `${sets.length} working sets · Best ${fmt(bestW)}kg × ${bestR} (≈ ${fmt(round(bestE))}kg e1RM)`,
-    });
-    updated.push(g);
-  }
-  if (updated.length) saveGoalsStore();
-  return updated;
 }
 
 function renderGoals() {
-  const evals = goalsList.map((g) => evaluateGoalDesktop(g));
-  const activeCount = evals.filter((e) => e.goal.enabled !== false).length;
-  const achievedCount = evals.filter((e) => e.goal.achieved || e.progressPct >= 100).length;
-  const avgPct = evals.length ? Math.round(evals.reduce((s, e) => s + e.progressPct, 0) / evals.length) : 0;
+  const allGoals = S.goals || [];
+  const evals = allGoals.map((g) => evaluateGoalDesktop(g));
 
-  $('#goals-summary-stats').innerHTML = [
-    `<div class="stat"><div class="lbl">Configured Goals</div><div class="val">${evals.length}</div><div class="sub">${activeCount} active in logger</div></div>`,
-    `<div class="stat"><div class="lbl">Goals Achieved</div><div class="val" style="color:var(--up)">${achievedCount}</div><div class="sub">Completed targets</div></div>`,
-    `<div class="stat"><div class="lbl">Average Progress</div><div class="val" style="color:var(--pr)">${avgPct}%</div><div class="sub">Across all goals</div></div>`,
-    `<div class="stat"><div class="lbl">Logged Goal Sessions</div><div class="val">${goalsList.reduce((acc, g) => acc + (g.sessionHistory?.length || 0), 0)}</div><div class="sub">Tracked reports</div></div>`,
-  ].join('');
+  const achievedCount = evals.filter((e) => e.isAchieved).length;
+  const activeCount = evals.filter((e) => !e.isAchieved && e.goal.enabled !== false).length;
+
+  $('#goals-count-all').textContent = evals.length;
+  $('#goals-count-active').textContent = activeCount;
+  $('#goals-count-achieved').textContent = achievedCount;
+
+  const filtered = evals.filter((e) => {
+    if (activeGoalFilterTab === 'active') return !e.isAchieved && e.goal.enabled !== false;
+    if (activeGoalFilterTab === 'achieved') return e.isAchieved;
+    return true;
+  });
 
   const host = $('#goals-list');
-  if (!evals.length) {
-    host.innerHTML = `<div class="empty">No Exercise Goals set yet. Click <b>+ Set New Goal</b> above to configure a 1RM or Sets × Reps target and unlock custom programming &amp; live workout coaching.</div>`;
+  if (!filtered.length) {
+    host.innerHTML = `
+      <div class="empty">
+        ${allGoals.length ? 'No goals match this filter.' : 'No strength goals set yet! Click <b>+ New Goal</b> above to set a 1RM or Sets × Reps target.'}
+      </div>
+    `;
     return;
   }
 
-  host.innerHTML = evals.map((ev) => {
-    const g = ev.goal;
-    const reports = g.sessionHistory || [];
-    const lastRep = reports[reports.length - 1];
-    return `
-      <div class="card" style="margin-bottom:12px" data-goal-id="${esc(g.id)}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div>
-            <span class="tag" style="color:var(--pr);border-color:var(--pr)">${g.goalType === 'SETS_REPS' ? 'SETS × REPS GOAL' : '1RM GOAL'}</span>
-            <span style="font-size:19px;font-weight:700;margin-left:8px">${esc(ev.name)}</span>
-            <div class="muted small" style="margin-top:4px">${esc(ev.latestSummary)}</div>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="ghost" data-gact="report">📊 Report</button>
-            <button class="ghost" data-gact="load">⚡ Load in Logger</button>
-            <button class="ghost" data-gact="edit">Edit</button>
-            <button class="ghost danger" data-gact="del">✕</button>
-          </div>
+  host.innerHTML = filtered.map((e) => `
+    <div class="goal-card ${e.isAchieved ? 'achieved' : ''}" data-id="${e.goal.id}">
+      <div class="goal-card-top">
+        <div class="goal-card-name">
+          <span>${esc(e.name)}</span>
+          <span class="tag">${esc(e.category)}</span>
+          ${e.bw ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px">
-          <div style="background:#0f1115;padding:10px;border-radius:8px;border:1px solid var(--border)">
-            <div class="muted small">CURRENT / PR e1RM</div>
-            <div style="font-size:16px;font-weight:700;margin-top:2px">${fmt(ev.recentE1rm)}kg <span class="muted small">(PR ${fmt(ev.bestE1rm)}kg)</span></div>
-          </div>
-          <div style="background:#0f1115;padding:10px;border-radius:8px;border:1px solid rgba(255,209,102,0.35)">
-            <div class="small" style="color:var(--pr);font-weight:700">TARGET GOAL</div>
-            <div style="font-size:15px;font-weight:700;color:var(--pr);margin-top:2px">${esc(ev.targetSummary)}</div>
-          </div>
-          <div style="background:#0f1115;padding:10px;border-radius:8px;border:1px solid rgba(255,122,69,0.35)">
-            <div class="small" style="color:var(--accent);font-weight:700">NEXT SESSION PRESCRIPTION</div>
-            <div style="font-size:15px;font-weight:700;color:var(--accent);margin-top:2px">${esc(ev.nextSessionSummary)}</div>
-          </div>
+        <div class="goal-card-target">${esc(e.targetHeadline)}</div>
+      </div>
+
+      <div class="goal-card-meta">
+        <div>
+          <span class="goal-pill ${e.isAchieved ? 'achieved' : (e.goal.enabled === false ? 'paused' : '')}">
+            ${e.goal.enabled === false ? 'Paused' : esc(e.statusLabel)}
+          </span>
         </div>
-        <div style="margin-top:10px">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-            <span>Block: <b>${esc(ev.blockTitle)}</b></span>
-            <span style="color:var(--pr);font-weight:700">${ev.progressPct}% · ${ev.e1rmGap <= 0 ? 'Goal Achieved! 🏆' : `${fmt(ev.e1rmGap)}kg E1RM gap (~${ev.estSessionsRemaining} sessions)`}</span>
-          </div>
-          <div style="height:7px;background:#232834;border-radius:4px;overflow:hidden">
-            <div style="height:100%;width:${Math.max(4, ev.progressPct)}%;background:var(--pr)"></div>
-          </div>
+        <div class="muted small font-bold">
+          Best: ${e.bestE1rm}kg • ${e.progressPct}%
         </div>
-        ${lastRep ? `<div class="muted small" style="margin-top:8px">Latest Logged Goal Session (${esc(lastRep.date)}): <b>${esc(lastRep.summary)}</b></div>` : ''}
-      </div>`;
-  }).join('');
+      </div>
+
+      <div class="goal-progress-bar">
+        <div class="goal-progress-fill ${e.isAchieved ? 'achieved' : ''}" style="width:${e.progressPct}%;"></div>
+      </div>
+
+      <div class="goal-card-foot">
+        <div class="goal-next-summary">${e.isAchieved ? 'Goal Reached! 🏆' : `Next: ${esc(e.nextSessionSummary)}`}</div>
+        <div class="goal-actions-group">
+          ${!e.isAchieved ? `<button class="primary compact train-goal-btn" data-id="${e.goal.id}">▶ Train</button>` : ''}
+          <button class="ghost compact toggle-goal-expand">Details ▾</button>
+        </div>
+      </div>
+
+      <div class="goal-expanded-body hidden">
+        <div class="small font-bold uppercase muted">Prescribed Working Sets</div>
+        <div style="font-size:13px;color:var(--text);">${e.nextSets} sets × ${e.nextReps} reps @ ${e.bw && e.nextWeight === 0 ? 'BW' : `${fmt(e.nextWeight)}kg`}</div>
+
+        <div class="small font-bold uppercase muted" style="margin-top:6px;">Milestones</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:6px;">
+          ${e.phases.map((p) => `
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:11.5px;">
+              <div style="font-weight:700;color:var(--text);">${esc(p.title)}</div>
+              <div style="color:var(--accent);">${esc(p.prescription)}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="ghost compact inspect-report-btn" data-id="${e.goal.id}">📊 Full Report</button>
+          <button class="ghost compact edit-goal-btn" data-id="${e.goal.id}">Edit</button>
+          <button class="ghost compact toggle-goal-btn" data-id="${e.goal.id}">${e.goal.enabled === false ? 'Resume' : 'Pause'}</button>
+          <button class="danger compact delete-goal-btn" data-id="${e.goal.id}">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  bindGoalEvents(evals);
+}
+
+function bindGoalEvents(evals) {
+  const host = $('#goals-list');
+
+  // Filter tabs
+  $$('.goal-tab').forEach((t) => {
+    t.onclick = () => {
+      $$('.goal-tab').forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      activeGoalFilterTab = t.dataset.tab;
+      renderGoals();
+    };
+  });
+
+  // Toggle expand
+  host.querySelectorAll('.toggle-goal-expand').forEach((btn) => {
+    btn.onclick = (e) => {
+      const card = e.target.closest('.goal-card');
+      const body = card.querySelector('.goal-expanded-body');
+      const isHidden = body.classList.toggle('hidden');
+      btn.textContent = isHidden ? 'Details ▾' : 'Hide ▴';
+    };
+  });
+
+  // Train button
+  host.querySelectorAll('.train-goal-btn').forEach((btn) => {
+    btn.onclick = () => {
+      const ev = evals.find((x) => x.goal.id === btn.dataset.id);
+      if (!ev) return;
+      const plan = {
+        title: `${ev.name} Goal Session`,
+        notes: `Target: ${ev.targetHeadline}`,
+        exercises: [{
+          exerciseName: ev.name,
+          category: ev.category,
+          prescribedSets: Array.from({ length: ev.nextSets }, () => ({
+            weight: ev.nextWeight || '',
+            reps: ev.nextReps || 8,
+            notes: '',
+          })),
+        }],
+      };
+      showView('log', plan);
+    };
+  });
+
+  // Actions
+  host.querySelectorAll('.inspect-report-btn').forEach((btn) => {
+    btn.onclick = () => openExerciseGoalReportModal(btn.dataset.id);
+  });
+
+  host.querySelectorAll('.edit-goal-btn').forEach((btn) => {
+    btn.onclick = () => {
+      const ev = evals.find((x) => x.goal.id === btn.dataset.id);
+      if (ev) openGoalModal(ev.goal);
+    };
+  });
+
+  host.querySelectorAll('.toggle-goal-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      const state = await window.api.toggleGoalEnabled(btn.dataset.id);
+      setState(state);
+      renderGoals();
+    };
+  });
+
+  host.querySelectorAll('.delete-goal-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      if (confirm('Delete this goal?')) {
+        const state = await window.api.deleteGoal(btn.dataset.id);
+        setState(state);
+        renderGoals();
+        toast('Goal deleted');
+      }
+    };
+  });
+}
+
+function initGoalsModule() {
+  $('#goals-add-btn').addEventListener('click', () => openGoalModal(null));
+  $('#goals-all-report').addEventListener('click', openAllGoalsMasterReportModal);
+  $('#progress-open-goals').addEventListener('click', () => showView('goals'));
 }
 
 async function openGoalModal(existingGoal = null) {
-  const defaultEx = existingGoal?.exercise || S.exercises[0]?.name || 'Bench Press';
-  const body = await modal({
-    title: existingGoal ? `Edit Goal — ${existingGoal.exercise}` : 'Set Exercise Goal',
-    okText: existingGoal ? 'Save Goal' : 'Create Goal',
+  const exercises = S.exercises || [];
+  const exNames = exercises.map((e) => e.name).sort();
+
+  const isSetsReps = existingGoal?.goalType === 'SETS_REPS';
+  const defaultEx = existingGoal?.exerciseName || exNames[0] || 'Bench Press';
+
+  const res = await modal({
+    title: existingGoal ? 'Edit Strength Goal' : 'Create Strength Goal',
+    wide: true,
     html: `
-      <label>Exercise
-        <input id="gm-ex" list="exercise-list" value="${esc(defaultEx)}">
+      <div style="display:flex;gap:12px;margin-bottom:12px;">
+        <label style="flex:1;">Exercise
+          <input type="text" id="m-goal-ex" list="exercise-list" value="${esc(defaultEx)}" ${existingGoal ? 'disabled' : ''} />
+        </label>
+        <label style="width:180px;">Goal Mode
+          <select id="m-goal-mode">
+            <option value="E1RM" ${!isSetsReps ? 'selected' : ''}>Estimated 1RM</option>
+            <option value="SETS_REPS" ${isSetsReps ? 'selected' : ''}>Sets × Reps @ Weight</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="m-mode-1rm" class="${isSetsReps ? 'hidden' : ''}">
+        <label>Target 1-Rep Max (kg)
+          <input type="number" step="0.5" id="m-goal-1rm" value="${existingGoal?.targetE1rmKg || 100}" />
+        </label>
+      </div>
+
+      <div id="m-mode-sets-reps" class="${!isSetsReps ? 'hidden' : ''}" style="display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:10px;">
+        <label>Sets<input type="number" id="m-goal-sets" value="${existingGoal?.targetSets || 3}" min="1" max="15" /></label>
+        <label>Reps<input type="number" id="m-goal-reps" value="${existingGoal?.targetReps || 8}" min="1" max="50" /></label>
+        <label>Weight (kg)<input type="number" step="0.5" id="m-goal-weight" value="${existingGoal?.targetWeightKg || 80}" /></label>
+      </div>
+
+      <label style="margin-top:12px;">Notes / Focus (Optional)
+        <input type="text" id="m-goal-notes" value="${esc(existingGoal?.notes || '')}" placeholder="e.g. Pause bench at bottom, hit before summer" />
       </label>
-      <label>Goal Type
-        <select id="gm-type">
-          <option value="E1RM" ${existingGoal?.goalType !== 'SETS_REPS' ? 'selected' : ''}>1RM Goal (Estimated or True 1-Rep Max)</option>
-          <option value="SETS_REPS" ${existingGoal?.goalType === 'SETS_REPS' ? 'selected' : ''}>Sets / Reps Goal (e.g. 3 sets × 8 reps @ 100kg)</option>
+    `,
+    okText: existingGoal ? 'Save Goal' : 'Create Goal',
+  });
+
+  if (res) {
+    const exName = res.querySelector('#m-goal-ex').value.trim();
+    const mode = res.querySelector('#m-goal-mode').value;
+    const notes = res.querySelector('#m-goal-notes').value.trim();
+
+    const targetE1rmKg = Number(res.querySelector('#m-goal-1rm').value) || 0;
+    const targetSets = Number(res.querySelector('#m-goal-sets').value) || 3;
+    const targetReps = Number(res.querySelector('#m-goal-reps').value) || 8;
+    const targetWeightKg = Number(res.querySelector('#m-goal-weight').value) || 0;
+
+    const goalObj = {
+      ...(existingGoal || {}),
+      exerciseName: exName,
+      goalType: mode,
+      targetE1rmKg,
+      targetSets,
+      targetReps,
+      targetWeightKg,
+      notes,
+    };
+
+    const state = await window.api.saveGoal(goalObj);
+    setState(state);
+    renderGoals();
+    toast('Goal saved!', 'success');
+  }
+}
+
+function openExerciseGoalReportModal(goalId) {
+  const g = (S.goals || []).find((x) => x.id === goalId);
+  if (!g) return;
+  const ev = evaluateGoalDesktop(g);
+  const reports = g.sessionReports || [];
+
+  const historyRows = reports.map((r) => `
+    <tr>
+      <td>${shortDate(r.date)}</td>
+      <td>${r.sessionTopWeight}kg × ${r.sessionTopReps}</td>
+      <td>${r.sessionBestE1rm}kg</td>
+      <td>${r.workingSetsCount}</td>
+      <td>${r.progressPct}%</td>
+      <td>${r.achievedGoal ? '🏆 Hit!' : 'In progress'}</td>
+    </tr>
+  `).join('');
+
+  modal({
+    title: `📊 Goal Report: ${ev.name}`,
+    wide: true,
+    html: `
+      <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
+        <div class="stat"><div class="lbl">Target</div><div class="val" style="color:var(--accent);font-size:17px;">${esc(ev.targetHeadline)}</div></div>
+        <div class="stat"><div class="lbl">Current Best</div><div class="val">${ev.bestE1rm}kg</div></div>
+        <div class="stat"><div class="lbl">Progress</div><div class="val" style="color:${ev.isAchieved ? 'var(--pr)' : 'var(--up)'}">${ev.progressPct}%</div></div>
+        <div class="stat"><div class="lbl">Status</div><div class="val" style="font-size:17px;">${esc(ev.statusLabel)}</div></div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="small font-bold uppercase muted" style="margin-bottom:6px;">Next Session Prescription</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);">${esc(ev.nextSessionSummary)}</div>
+      </div>
+
+      <div class="card">
+        <div class="small font-bold uppercase muted" style="margin-bottom:8px;">Logged Goal Sessions (${reports.length})</div>
+        <table class="table">
+          <thead>
+            <tr><th>Date</th><th>Top Set</th><th>E1RM</th><th>Sets</th><th>Progress</th><th>Status</th></tr>
+          </thead>
+          <tbody>${historyRows || '<tr><td colspan="6" class="muted">No goal sessions logged yet.</td></tr>'}</tbody>
+        </table>
+      </div>
+    `,
+    okText: 'Close',
+    cancelText: false,
+  });
+}
+
+function openAllGoalsMasterReportModal() {
+  const allGoals = S.goals || [];
+  const evals = allGoals.map((g) => evaluateGoalDesktop(g));
+
+  const rows = evals.map((e) => `
+    <div class="bw-entry-row" style="padding:10px 14px;margin-bottom:8px;">
+      <div style="flex:1;">
+        <span style="font-weight:700;font-size:15px;color:var(--text);">${esc(e.name)}</span>
+        <span class="tag" style="margin-left:8px;">${esc(e.targetHeadline)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="goal-pill ${e.isAchieved ? 'achieved' : ''}">${esc(e.statusLabel)}</span>
+        <span style="font-weight:700;color:var(--accent);">${e.progressPct}%</span>
+        <button class="ghost compact m-view-single-report" data-id="${e.goal.id}">View Report</button>
+      </div>
+    </div>
+  `).join('');
+
+  const m = $('#modal');
+  $('#modal-title').textContent = `📊 Master All-Goals Report (${evals.length})`;
+  $('#modal-body').innerHTML = `
+    <div style="max-height:400px;overflow-y:auto;">
+      ${rows || '<div class="muted">No goals configured yet.</div>'}
+    </div>
+  `;
+  $('.modal-box', m).classList.add('large');
+  $('#modal-ok').classList.add('hidden');
+  $('#modal-cancel').textContent = 'Close';
+  m.classList.remove('hidden');
+
+  $$('.m-view-single-report', m).forEach((b) => {
+    b.onclick = () => {
+      m.classList.add('hidden');
+      openExerciseGoalReportModal(b.dataset.id);
+    };
+  });
+}
+
+// ---------------------------------------------------------------- EXERCISES CATALOG VIEW
+function renderExercisesCatalog() {
+  const allEx = S.exercises || [];
+  const categories = ['All', ...new Set(allEx.map((e) => e.category || 'Other').sort())];
+
+  const chipsHost = $('#exercises-category-chips');
+  const activeCat = chipsHost.dataset.cat || 'All';
+
+  chipsHost.innerHTML = categories.map((c) => `
+    <button class="chip ${c === activeCat ? 'active' : ''}" style="${c === activeCat ? 'background:var(--accent);color:#140d07;font-weight:700;' : ''}">${esc(c)}</button>
+  `).join('');
+
+  chipsHost.querySelectorAll('.chip').forEach((chip) => {
+    chip.onclick = () => {
+      chipsHost.dataset.cat = chip.textContent.trim();
+      renderExercisesCatalog();
+    };
+  });
+
+  const q = ($('#exercises-search-input').value || '').toLowerCase().trim();
+  const filtered = allEx.filter((e) => {
+    const matchCat = activeCat === 'All' || (e.category || 'Other').toLowerCase() === activeCat.toLowerCase();
+    const matchQ = !q || e.name.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q);
+    return matchCat && matchQ;
+  });
+
+  const listHost = $('#exercises-catalog-list');
+  listHost.innerHTML = filtered.map((e) => `
+    <div class="ex-cat-card">
+      <div>
+        <div class="head">
+          <span class="title">${esc(e.name)}</span>
+          <div>
+            <span class="tag">${esc(e.category || 'Other')}</span>
+            ${e.bodyweight ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
+          </div>
+        </div>
+        <div class="desc" style="margin-top:6px;">${esc(e.description || 'Standard kinetic strength exercise.')}</div>
+      </div>
+      <div class="foot">
+        <button class="ghost compact jump-ex-progress" data-name="${esc(e.name)}">↗ Progress</button>
+        <button class="ghost compact edit-ex-btn" data-name="${esc(e.name)}">Edit</button>
+      </div>
+    </div>
+  `).join('');
+
+  listHost.querySelectorAll('.jump-ex-progress').forEach((b) => {
+    b.onclick = () => showView('progress', b.dataset.name);
+  });
+
+  listHost.querySelectorAll('.edit-ex-btn').forEach((b) => {
+    b.onclick = () => openEditExerciseModal(b.dataset.name);
+  });
+}
+
+function initExercisesModule() {
+  $('#exercises-search-input').addEventListener('input', renderExercisesCatalog);
+  $('#exercises-add-btn').addEventListener('click', openAddExerciseModal);
+}
+
+async function openAddExerciseModal() {
+  const res = await modal({
+    title: 'Add Custom Exercise',
+    html: `
+      <label>Exercise Name<input type="text" id="m-ex-name" placeholder="e.g. Incline Dumbbell Press" /></label>
+      <label>Category
+        <select id="m-ex-cat">
+          <option value="Chest">Chest</option>
+          <option value="Back">Back</option>
+          <option value="Legs">Legs</option>
+          <option value="Shoulders">Shoulders</option>
+          <option value="Arms">Arms</option>
+          <option value="Core">Core</option>
+          <option value="Other">Other</option>
         </select>
       </label>
-      <div id="gm-e1rm-wrap">
-        <label>Target 1RM (kg)<input id="gm-e1rm" type="number" step="0.5" value="${esc(existingGoal?.targetE1rm || 100)}"></label>
-      </div>
-      <div id="gm-sr-wrap">
-        <label>Target Weight (kg)<input id="gm-w" type="number" step="0.5" value="${esc(existingGoal?.targetWeight || 80)}"></label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <label>Target Sets<input id="gm-s" type="number" value="${esc(existingGoal?.targetSets || 3)}"></label>
-          <label>Target Reps<input id="gm-r" type="number" value="${esc(existingGoal?.targetReps || 8)}"></label>
-        </div>
-      </div>
-      <label>Notes (optional)<input id="gm-notes" value="${esc(existingGoal?.notes || '')}"></label>`,
+      <label class="check" style="margin-top:10px;">
+        <input type="checkbox" id="m-ex-bw" /> Bodyweight exercise (uses total-load E1RM)
+      </label>
+      <label style="margin-top:10px;">Description / Kinetic Benefit (Optional)
+        <input type="text" id="m-ex-desc" placeholder="e.g. Upper chest clavicular head overload" />
+      </label>
+    `,
+    okText: 'Add Exercise',
   });
-  if (!body) return;
-  const exName = $('#gm-ex', body).value.trim();
-  if (!exName) return;
-  const goalType = $('#gm-type', body).value;
-  const sessions = sessionsFor(exName);
-  const startE1rm = sessions.reduce((m, s) => Math.max(m, s.e1rm || 0), 0);
-  const goalObj = {
-    id: existingGoal?.id || `goal-${Date.now()}`,
-    exercise: exName,
-    goalType,
-    targetE1rm: Number($('#gm-e1rm', body).value) || 100,
-    targetWeight: Number($('#gm-w', body).value) || 80,
-    targetSets: Number($('#gm-s', body).value) || 3,
-    targetReps: Number($('#gm-r', body).value) || 8,
-    startingE1rm: existingGoal?.startingE1rm || startE1rm,
-    createdDate: existingGoal?.createdDate || fmtDdMonYyyy(today()),
-    enabled: true,
-    achieved: false,
-    notes: $('#gm-notes', body).value.trim(),
-    sessionHistory: existingGoal?.sessionHistory || [],
-  };
-  const idxExisting = goalsList.findIndex((g) => g.id === goalObj.id || g.exercise.toLowerCase() === exName.toLowerCase());
-  if (idxExisting >= 0) goalsList[idxExisting] = goalObj;
-  else goalsList.push(goalObj);
-  saveGoalsStore();
-  renderGoals();
-  renderLog();
-  toast(`Saved goal for ${exName}`, 'success');
-}
 
-async function openGoalProgressModal(ei) {
-  const ex = draft.exercises[ei];
-  if (!ex) return;
-  const g = getActiveGoalForExercise(ex.name);
-  if (!g) return;
-  const ev = evaluateGoalDesktop(g);
-  const validSets = ex.sets.map((s) => ({ w: parseWeight(s.weight) || 0, r: parseReps(s.reps) || 0 })).filter((s) => s.r > 0);
-  const bestTodayE1rm = validSets.reduce((m, s) => Math.max(m, round(epley(s.w, s.r))), 0);
-  const res = await modal({
-    title: `🎯 Goal Progress — ${ex.name}`,
-    okText: '⚡ Auto-Fill Prescribed Sets',
-    html: `
-      <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid rgba(255,209,102,0.4);margin-bottom:10px">
-        <div class="small" style="color:var(--pr);font-weight:700">ACTIVE GOAL (${ev.progressPct}% COMPLETE)</div>
-        <div style="font-size:16px;font-weight:700;margin-top:2px">${esc(ev.targetSummary)}</div>
-        <div class="muted small" style="margin-top:4px">Current Best e1RM: ${fmt(ev.bestE1rm)}kg · Gap: ${fmt(ev.e1rmGap)}kg</div>
-      </div>
-      <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid rgba(255,122,69,0.4);margin-bottom:10px">
-        <div class="small" style="color:var(--accent);font-weight:700">WHAT TO AIM FOR TODAY (${esc(ev.blockTitle)})</div>
-        <div style="font-size:17px;font-weight:700;color:var(--accent);margin-top:2px">${esc(ev.nextSessionSummary)}</div>
-        <div class="muted small" style="margin-top:4px">Target Session E1RM: ≈ ${fmt(ev.nextSessionE1rm)}kg · Rest 2–3 min between working sets</div>
-      </div>
-      <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid var(--border)">
-        <div class="small" style="font-weight:700">LIVE SESSION STATUS</div>
-        <div style="margin-top:4px">${validSets.length
-          ? `${validSets.length}/${ev.nextSets} working sets entered · Best today: <b>≈ ${fmt(bestTodayE1rm)}kg e1RM</b> ${bestTodayE1rm >= ev.nextSessionE1rm ? '✅ Target Hit!' : ''}`
-          : 'No completed sets entered yet. Click Auto-Fill below to populate today\'s target sets.'}</div>
-      </div>`,
-  });
   if (res) {
-    draft.exercises[ei].sets = Array.from({ length: ev.nextSets }, () => ({
-      weight: wToInput(ex.name, ev.nextWeight),
-      reps: String(ev.nextReps),
-      notes: '',
-    }));
-    saveDraft();
-    renderLog();
-    toast(`Auto-filled ${ev.nextSessionSummary}`, 'success');
+    const name = res.querySelector('#m-ex-name').value.trim();
+    const category = res.querySelector('#m-ex-cat').value;
+    const bodyweight = res.querySelector('#m-ex-bw').checked;
+    const description = res.querySelector('#m-ex-desc').value.trim();
+    if (name) {
+      const state = await window.api.addExercise({ name, category, bodyweight, description });
+      setState(state);
+      renderExercisesCatalog();
+      toast(`Exercise "${name}" added!`, 'success');
+    }
   }
 }
 
-async function openExerciseGoalReportModal(goalId) {
-  const g = goalsList.find((x) => x.id === goalId);
-  if (!g) return;
-  const ev = evaluateGoalDesktop(g);
-  const hist = [...(g.sessionHistory || [])].reverse();
-  await modal({
-    title: `📊 Exercise Goal Report — ${g.exercise}`,
-    okText: 'Close',
+async function openEditExerciseModal(exerciseName) {
+  const ex = exInfo(exerciseName);
+  const res = await modal({
+    title: `Edit Exercise: ${ex.name}`,
     html: `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid var(--border)">
-          <div class="muted small">TARGET</div>
-          <div style="font-weight:700;color:var(--pr)">${esc(ev.targetSummary)}</div>
+      <label>Exercise Name (renaming cascades to all historical sets & goals)
+        <input type="text" id="m-ex-name" value="${esc(ex.name)}" />
+      </label>
+      <label>Category
+        <select id="m-ex-cat">
+          ${['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core', 'Other'].map((c) => `<option value="${c}" ${c === ex.category ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </label>
+      <label class="check" style="margin-top:10px;">
+        <input type="checkbox" id="m-ex-bw" ${ex.bodyweight ? 'checked' : ''} /> Bodyweight exercise (uses total-load E1RM)
+      </label>
+      <label style="margin-top:10px;">Description / Kinetic Benefit
+        <input type="text" id="m-ex-desc" value="${esc(ex.description || '')}" />
+      </label>
+    `,
+    okText: 'Save Changes',
+  });
+
+  if (res) {
+    const newName = res.querySelector('#m-ex-name').value.trim();
+    const category = res.querySelector('#m-ex-cat').value;
+    const bodyweight = res.querySelector('#m-ex-bw').checked;
+    const description = res.querySelector('#m-ex-desc').value.trim();
+    if (newName) {
+      const state = await window.api.updateExercise({
+        oldName: ex.name,
+        updated: { name: newName, category, bodyweight, description },
+      });
+      setState(state);
+      renderExercisesCatalog();
+      toast(`Exercise updated!`, 'success');
+    }
+  }
+}
+
+// ---------------------------------------------------------------- SETTINGS & BODY WEIGHT
+function renderSettings() {
+  // Google Sheets info
+  const cfg = S.storage || {};
+  const statusEl = $('#sheets-status');
+  if (cfg.kind === 'sheets') {
+    statusEl.innerHTML = `<span class="ok">Connected to Google Sheets</span> • <code>${esc(cfg.title || cfg.spreadsheetId)}</code>`;
+  } else {
+    statusEl.innerHTML = `<span class="warn">Using offline local storage</span>`;
+  }
+  $('#cfg-sheet').value = cfg.spreadsheetId || '';
+  $('#cfg-key').value = cfg.keyFile || '';
+
+  const emailEl = $('#cfg-email');
+  if (cfg.serviceEmail) {
+    emailEl.innerHTML = `Share your Google Sheet with: <code>${esc(cfg.serviceEmail)}</code> (Editor)`;
+    emailEl.classList.remove('hidden');
+  } else {
+    emailEl.classList.add('hidden');
+  }
+
+  // Body weight tracker
+  const bwList = S.bodyWeights || [];
+  const latestBw = BodyWeightUtils.latestWeight();
+  $('#bw-current-value').textContent = `${latestBw} kg`;
+  $('#bw-input-date').value = today();
+
+  const sortedBw = [...bwList].sort((a, b) => toSortableIso(b.date).localeCompare(toSortableIso(a.date)));
+  const bwHost = $('#bw-history-list');
+  bwHost.innerHTML = sortedBw.map((b) => `
+    <div class="bw-entry-row">
+      <span class="bw-entry-date">${shortDate(b.date)}</span>
+      <span class="bw-entry-weight">${b.weightKg} kg</span>
+      <button class="icon del-bw-btn" data-date="${esc(b.date)}" title="Delete reading">✕</button>
+    </div>
+  `).join('') || '<div class="muted small">No body weight readings logged yet.</div>';
+
+  bwHost.querySelectorAll('.del-bw-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      const state = await window.api.deleteBodyWeight(btn.dataset.date);
+      setState(state);
+      renderSettings();
+    };
+  });
+
+  // Data summary
+  $('#data-summary').textContent = `${S.workouts.length} workouts • ${S.sets.length} sets • ${S.exercises.length} exercises`;
+}
+
+function initSettingsModule() {
+  $('#bw-log-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const dVal = $('#bw-input-date').value;
+    const kgVal = $('#bw-input-kg').value;
+    if (!dVal || !kgVal) return;
+    const state = await window.api.addBodyWeight({
+      date: fmtDdMonYyyy(dVal),
+      weightKg: Number(kgVal),
+      source: 'manual',
+    });
+    setState(state);
+    $('#bw-input-kg').value = '';
+    renderSettings();
+    toast(`Body weight logged: ${kgVal} kg`, 'success');
+  });
+
+  $('#cfg-browse').addEventListener('click', async () => {
+    const file = await window.api.pickKeyFile();
+    if (file) $('#cfg-key').value = file;
+  });
+
+  $('#cfg-connect').addEventListener('click', async () => {
+    const spreadsheetId = $('#cfg-sheet').value.trim();
+    const keyFile = $('#cfg-key').value.trim();
+    await busy(async () => {
+      const state = await window.api.connect({ spreadsheetId, keyFile });
+      setState(state);
+      toast('Connected to Google Sheets!', 'success');
+    });
+  });
+
+  $('#cfg-disconnect').addEventListener('click', async () => {
+    await busy(async () => {
+      const state = await window.api.disconnect();
+      setState(state);
+      toast('Disconnected. Using local storage.', 'warn');
+    });
+  });
+
+  $('#import-history').addEventListener('click', async () => {
+    await busy(async () => {
+      const res = await window.api.importHistory();
+      setState(res.state);
+      toast(`Imported ${res.added} workouts (${res.sets} sets), skipped ${res.skipped}`, 'success');
+    });
+  });
+
+  $('#copy-local').addEventListener('click', async () => {
+    await busy(async () => {
+      const res = await window.api.copyLocalToSheets();
+      setState(res.state);
+      toast(`Copied ${res.added} workouts to Google Sheets!`, 'success');
+    });
+  });
+
+  $('#clear-data').addEventListener('click', async () => {
+    if (confirm('Clear all stored workouts and sets? This will keep exercises, goals, and programs.')) {
+      await busy(async () => {
+        const state = await window.api.clearAllData();
+        setState(state);
+        toast('Stored workouts cleared');
+      });
+    }
+  });
+
+  // External link handler
+  $$('[data-ext]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.api.openExternal(a.dataset.ext);
+    });
+  });
+}
+
+// ---------------------------------------------------------------- SUGGEST A WORKOUT ENGINE
+const SUGGEST_SPLITS = {
+  PUSH: {
+    title: 'Push',
+    desc: 'Chest, Quads, Shoulders, Triceps',
+    slots: [
+      { name: 'Primary Compound Press', candidates: ['Bench Press', 'Incline Dumbbell Press', 'Floor Press'] },
+      { name: 'Push Leg: Quad Overload', candidates: ['Leg Press', 'Bulgarian Split Squat', 'Hack Squat', 'Squat', 'Front Squat'] },
+      { name: 'Vertical / Shoulder Press', candidates: ['Overhead Press', 'Dumbbell Shoulder Press', 'Seated Dumbbell Press'] },
+      { name: 'Push Accessory', candidates: ['Dips', 'Incline Machine Press', 'Chest Fly', 'Cable Fly'] },
+      { name: 'Quad Finisher', candidates: ['Bulgarian Split Squat', 'Leg Extension', 'Pistol Squat'] },
+      { name: 'Delts & Triceps', candidates: ['Lateral Raise', 'Overhead Tricep Extension', 'Tricep Pushdown'] },
+    ],
+  },
+  PULL: {
+    title: 'Pull',
+    desc: 'Vertical Pull, Rows, Posterior Chain, Biceps',
+    slots: [
+      { name: 'Primary Vertical Pull', candidates: ['Pull Ups', 'Chin Ups', 'Lat Pulldown'] },
+      { name: 'Heavy Horizontal Row', candidates: ['Pendlay Row', 'Dumbbell Row', 'Barbell Row', 'T-Bar Row'] },
+      { name: 'Posterior Chain Hinge', candidates: ['Good Morning', 'Romanian Deadlift', 'Deadlift', 'Hyperextension'] },
+      { name: 'Hamstring & Glute Isolation', candidates: ['Leg Curl', 'Glute Ham Raise', 'Hyperextension'] },
+      { name: 'Upper Back & Rear Delts', candidates: ['Band Face Pull', 'Rear Delt Fly', 'Face Pulls', 'Shrugs'] },
+      { name: 'Biceps & Grip Finisher', candidates: ['Fat Gripz Hammer Curl', 'Barbell Curl', 'Incline Dumbbell Curl'] },
+    ],
+  },
+  FB: {
+    title: 'Full Body',
+    desc: 'High-yield compounds hitting all movement planes',
+    slots: [
+      { name: 'Primary Lower', candidates: ['Squat', 'Leg Press', 'Deadlift', 'Romanian Deadlift'] },
+      { name: 'Primary Upper Push', candidates: ['Bench Press', 'Overhead Press', 'Dips'] },
+      { name: 'Primary Upper Pull', candidates: ['Pull Ups', 'Pendlay Row', 'Lat Pulldown'] },
+      { name: 'Secondary Lower', candidates: ['Bulgarian Split Squat', 'Leg Curl', 'Hyperextension'] },
+      { name: 'Shoulders & Upper Back', candidates: ['Lateral Raise', 'Band Face Pull'] },
+      { name: 'Arms Finisher', candidates: ['Fat Gripz Hammer Curl', 'Overhead Tricep Extension'] },
+    ],
+  },
+};
+
+let activeSuggestSplit = 'PUSH';
+let suggestCandidateChoices = {};
+
+function renderSuggest() {
+  const ctrlHost = $('#suggest-controls');
+  ctrlHost.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="seg">
+        <button class="${activeSuggestSplit === 'PUSH' ? 'active' : ''}" data-split="PUSH">Push</button>
+        <button class="${activeSuggestSplit === 'PULL' ? 'active' : ''}" data-split="PULL">Pull</button>
+        <button class="${activeSuggestSplit === 'FB' ? 'active' : ''}" data-split="FB">Full Body</button>
+      </div>
+      <div class="muted small">${SUGGEST_SPLITS[activeSuggestSplit].desc}</div>
+    </div>
+  `;
+
+  ctrlHost.querySelectorAll('button[data-split]').forEach((b) => {
+    b.onclick = () => {
+      activeSuggestSplit = b.dataset.split;
+      suggestCandidateChoices = {};
+      renderSuggest();
+    };
+  });
+
+  const splitDef = SUGGEST_SPLITS[activeSuggestSplit];
+  const listHost = $('#suggest-list');
+
+  const items = splitDef.slots.map((slot, sIdx) => {
+    const chosenName = suggestCandidateChoices[sIdx] || slot.candidates[0];
+    const prevSessions = sessionsFor(chosenName);
+    const last = prevSessions[prevSessions.length - 1];
+    const bw = isBW(chosenName);
+
+    const step = (exInfo(chosenName).category === 'Arms' || chosenName.toLowerCase().includes('raise')) ? 1.25 : 2.5;
+    const lastW = last?.top ?? 0;
+    const targetW = last ? lastW + step : 40;
+    const targetR = 8;
+
+    return `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+          <div>
+            <span class="muted small uppercase font-bold">${esc(slot.name)}</span>
+            <div style="font-size:16px;font-weight:700;color:var(--text);margin-top:2px;">
+              ${esc(chosenName)}
+              <span class="tag" style="margin-left:6px;">${esc(exInfo(chosenName).category)}</span>
+              ${bw ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:14px;font-weight:700;color:var(--accent);">Target: 3 × ${targetR} @ ${bw && targetW === 0 ? 'BW' : `${fmt(targetW)}kg`}</div>
+            <div class="muted small">${last ? `Last: ${summarize(chosenName, last.sets)}` : 'First time'}</div>
+          </div>
         </div>
-        <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid var(--border)">
-          <div class="muted small">PROGRESS</div>
-          <div style="font-weight:700;color:var(--up)">${ev.progressPct}% (${fmt(ev.bestE1rm)}kg / ${fmt(ev.targetE1rm)}kg)</div>
+        <div class="desc muted small">${esc(exInfo(chosenName).description || 'Compound overload movement.')}</div>
+      </div>
+    `;
+  }).join('');
+
+  listHost.innerHTML = items;
+
+  $('#suggest-shuffle').onclick = () => {
+    splitDef.slots.forEach((slot, sIdx) => {
+      const idx = Math.floor(Math.random() * slot.candidates.length);
+      suggestCandidateChoices[sIdx] = slot.candidates[idx];
+    });
+    renderSuggest();
+    toast('Shuffled exercise variations');
+  };
+
+  $('#suggest-load').onclick = () => {
+    const plan = {
+      title: `${splitDef.title} Workout`,
+      notes: `Generated by Workout Suggestion Engine (${splitDef.desc})`,
+      exercises: splitDef.slots.map((slot, sIdx) => {
+        const chosenName = suggestCandidateChoices[sIdx] || slot.candidates[0];
+        const step = (exInfo(chosenName).category === 'Arms' || chosenName.toLowerCase().includes('raise')) ? 1.25 : 2.5;
+        const last = sessionsFor(chosenName).slice(-1)[0];
+        const targetW = last ? (last.top ?? 0) + step : 40;
+        return {
+          exerciseName: chosenName,
+          category: exInfo(chosenName).category,
+          prescribedSets: Array.from({ length: 3 }, () => ({
+            weight: targetW,
+            reps: 8,
+            notes: '',
+          })),
+        };
+      }),
+    };
+    showView('log', plan);
+  };
+}
+
+// ---------------------------------------------------------------- HISTORY & DETAIL
+function renderHistory() {
+  const q = ($('#history-search').value || '').toLowerCase().trim();
+  const filtered = idx.workouts.filter((w) => {
+    if (!q) return true;
+    if (w.title.toLowerCase().includes(q) || (w.notes || '').toLowerCase().includes(q) || shortDate(w.date).toLowerCase().includes(q)) return true;
+    const sets = idx.byW.get(w.id) || [];
+    return sets.some((s) => s.exercise.toLowerCase().includes(q));
+  });
+
+  $('#history-sub').textContent = `${filtered.length} workout session${filtered.length === 1 ? '' : 's'}`;
+
+  const host = $('#history-list');
+  if (!filtered.length) {
+    host.innerHTML = '<div class="empty">No workouts found.</div>';
+    return;
+  }
+
+  host.innerHTML = filtered.map((w) => {
+    const sets = idx.byW.get(w.id) || [];
+    const grouped = groupByExercise(sets);
+    const dt = toDate(w.date);
+
+    const exLines = [...grouped.entries()].map(([name, sList]) => `
+      <div class="w-ex">
+        <span class="nm" data-jump-progress="${esc(name)}">${esc(name)}</span>
+        <span class="st">${summarize(name, sList)}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="card w-card" data-w-id="${w.id}">
+        <div class="w-date">
+          <div class="d">${dt.getDate()}</div>
+          <div class="dw">${MONTHS_SHORT[dt.getMonth()]} ${dt.getFullYear()}</div>
+        </div>
+        <div class="w-body">
+          <div class="w-title">${esc(w.title || 'Workout')}</div>
+          ${w.notes ? `<div class="w-notes">${esc(w.notes)}</div>` : ''}
+          <div class="w-exercises">${exLines}</div>
+        </div>
+        <div class="w-actions">
+          <button class="ghost compact w-repeat-btn" data-id="${w.id}">Repeat</button>
+          <button class="ghost compact w-inspect-btn" data-id="${w.id}">Details</button>
         </div>
       </div>
-      <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid var(--border);margin-bottom:10px">
-        <div class="small" style="color:var(--accent);font-weight:700">PROGRAMMING &amp; NEXT SESSION RECOMMENDATION</div>
-        <div style="margin-top:4px"><b>${esc(ev.blockTitle)}:</b> Aim for <b>${esc(ev.nextSessionSummary)}</b> (≈ ${fmt(ev.nextSessionE1rm)}kg e1RM). Estimated ${ev.estSessionsRemaining} sessions to goal.</div>
-      </div>
-      <div class="small" style="font-weight:700;margin-bottom:6px">LOGGED GOAL SESSION HISTORY (${hist.length})</div>
-      ${hist.length ? hist.map((h) => `
-        <div style="padding:8px 10px;background:#0f1115;border-radius:6px;border:1px solid var(--border);margin-bottom:6px;font-size:12px">
-          <div style="display:flex;justify-content:space-between"><b>${esc(h.date)}</b><span style="color:var(--pr)">${h.progressPct}% to goal</span></div>
-          <div class="muted" style="margin-top:2px">${esc(h.summary)}</div>
-        </div>`).join('') : '<div class="muted small">Log a workout containing this exercise to record session-by-session goal reports.</div>'}`,
+    `;
+  }).join('');
+
+  host.querySelectorAll('.w-card').forEach((c) => {
+    c.onclick = (e) => {
+      if (e.target.closest('button') || e.target.closest('[data-jump-progress]')) return;
+      showView('workout-detail', c.dataset.wId);
+    };
+  });
+
+  host.querySelectorAll('.w-inspect-btn').forEach((b) => {
+    b.onclick = () => showView('workout-detail', b.dataset.id);
+  });
+
+  host.querySelectorAll('.w-repeat-btn').forEach((b) => {
+    b.onclick = () => {
+      const w = idx.workouts.find((x) => x.id === b.dataset.id);
+      if (!w) return;
+      const sets = idx.byW.get(w.id) || [];
+      const grouped = groupByExercise(sets);
+      const plan = {
+        title: w.title,
+        notes: `Repeat of ${shortDate(w.date)}`,
+        exercises: [...grouped.entries()].map(([name, sList]) => ({
+          exerciseName: name,
+          category: exInfo(name).category,
+          prescribedSets: sList.map((s) => ({
+            weight: s.weight,
+            reps: s.reps,
+            notes: s.notes || '',
+          })),
+        })),
+      };
+      showView('log', plan);
+    };
+  });
+
+  host.querySelectorAll('[data-jump-progress]').forEach((el) => {
+    el.onclick = () => showView('progress', el.dataset.jumpProgress);
   });
 }
 
-async function openAllGoalsReportModal() {
-  const evals = goalsList.map((g) => evaluateGoalDesktop(g));
-  await modal({
-    title: '📊 All Exercise Goals — Master Report',
-    okText: 'Close',
-    html: evals.length ? evals.map((ev) => `
-      <div style="padding:10px;background:#0f1115;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between">
-          <b>${esc(ev.name)}</b>
-          <span style="color:var(--pr);font-weight:700">${ev.progressPct}%</span>
+function renderWorkoutDetail(workoutId) {
+  const w = idx.workouts.find((x) => x.id === workoutId);
+  if (!w) return showView('history');
+
+  $('#workout-detail-heading').textContent = w.title || 'Workout Session';
+  $('#workout-detail-sub').textContent = `${shortDate(w.date)} ${w.notes ? `• ${w.notes}` : ''}`;
+
+  $('#workout-detail-back').onclick = () => showView('history');
+
+  const sets = idx.byW.get(w.id) || [];
+  const grouped = groupByExercise(sets);
+
+  let totalVol = 0;
+  for (const s of sets) {
+    if (s.weight && s.reps) totalVol += s.weight * s.reps;
+  }
+
+  $('#workout-detail-stats').innerHTML = `
+    <div class="stat"><div class="lbl">Date</div><div class="val" style="font-size:18px;">${shortDate(w.date)}</div></div>
+    <div class="stat"><div class="lbl">Exercises</div><div class="val">${grouped.size}</div></div>
+    <div class="stat"><div class="lbl">Total Sets</div><div class="val">${sets.length}</div></div>
+    <div class="stat"><div class="lbl">Total Volume</div><div class="val">${Math.round(totalVol)} kg</div></div>
+  `;
+
+  $('#workout-detail-exercises').innerHTML = [...grouped.entries()].map(([name, sList]) => {
+    const bw = isBW(name);
+    const tableRows = sList.map((s) => {
+      const eVal = (s.weight !== null && s.reps)
+        ? Math.round(BodyWeightUtils.calculateE1rm(name, w.date, s.weight, s.reps) * 10) / 10
+        : '–';
+      return `
+        <tr>
+          <td>${s.setNo || 1}</td>
+          <td>${bw ? (s.weight === 0 ? 'BW' : `BW+${s.weight}kg`) : `${s.weight ?? '–'}kg`}</td>
+          <td>${s.reps ?? '–'}</td>
+          <td>${eVal}k</td>
+          <td>${esc(s.notes || '')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <div class="card detail-ex-card">
+        <div class="detail-ex-head">
+          <div class="detail-ex-title">
+            <span class="ex-name" data-jump-progress="${esc(name)}">${esc(name)}</span>
+            <span class="tag">${esc(exInfo(name).category)}</span>
+            ${bw ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
+          </div>
+          <div class="detail-summary-badge">${summarize(name, sList)}</div>
         </div>
-        <div class="small" style="margin-top:2px">Target: <b>${esc(ev.targetSummary)}</b> · Current Best: <b>${fmt(ev.bestE1rm)}kg</b></div>
-        <div class="muted small" style="margin-top:2px">Next Session: ${esc(ev.nextSessionSummary)} (${esc(ev.blockTitle)})</div>
-      </div>`).join('') : '<div class="muted">No goals configured yet.</div>',
+        <table class="detail-sets-table">
+          <thead><tr><th>Set</th><th>Weight</th><th>Reps</th><th>Est 1RM</th><th>Notes</th></tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+
+  $('#workout-detail-repeat').onclick = () => {
+    const plan = {
+      title: w.title,
+      notes: `Repeat of ${shortDate(w.date)}`,
+      exercises: [...grouped.entries()].map(([name, sList]) => ({
+        exerciseName: name,
+        category: exInfo(name).category,
+        prescribedSets: sList.map((s) => ({ weight: s.weight, reps: s.reps, notes: s.notes || '' })),
+      })),
+    };
+    showView('log', plan);
+  };
+
+  $('#workout-detail-delete').onclick = async () => {
+    if (confirm('Delete this workout session permanently?')) {
+      const state = await window.api.deleteWorkout(w.id);
+      setState(state);
+      showView('history');
+      toast('Workout deleted');
+    }
+  };
+
+  $$('[data-jump-progress]').forEach((el) => {
+    el.onclick = () => showView('progress', el.dataset.jumpProgress);
   });
 }
 
-function bindGoals() {
-  $('#goals-back-progress')?.addEventListener('click', () => showView('progress'));
-  $('#goals-add-btn')?.addEventListener('click', () => openGoalModal(null));
-  $('#goals-master-report-btn')?.addEventListener('click', () => openAllGoalsReportModal());
-  $('#goals-list')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-gact]');
-    if (!btn) return;
-    const card = btn.closest('[data-goal-id]');
-    const id = card?.dataset.goalId;
-    const g = goalsList.find((x) => x.id === id);
-    if (!g) return;
-    const act = btn.dataset.gact;
-    if (act === 'report') openExerciseGoalReportModal(id);
-    if (act === 'edit') openGoalModal(g);
-    if (act === 'del') {
-      goalsList = goalsList.filter((x) => x.id !== id);
-      saveGoalsStore();
-      renderGoals();
-      renderLog();
-      toast('Goal removed');
-    }
-    if (act === 'load') {
-      const ev = evaluateGoalDesktop(g);
-      const sets = Array.from({ length: ev.nextSets }, () => ({
-        weight: wToInput(g.exercise, ev.nextWeight),
-        reps: String(ev.nextReps),
-        notes: '',
-      }));
-      const existingIdx = draft.exercises.findIndex((x) => x.name.toLowerCase() === g.exercise.toLowerCase());
-      if (existingIdx >= 0) draft.exercises[existingIdx].sets = sets;
-      else draft.exercises.push({ name: g.exercise, sets });
-      saveDraft();
-      renderLog();
-      showView('log');
-      toast(`Loaded ${ev.nextSessionSummary} for ${g.exercise} into logger`, 'success');
-    }
+// ---------------------------------------------------------------- PROGRESS & CHARTING
+let progressChartInstance = null;
+
+function renderProgressOverview() {
+  $('#progress-heading').textContent = 'Progress';
+  $('#progress-sub').textContent = 'Track strength curves and estimated 1RMs over time.';
+  $('#progress-back').classList.add('hidden');
+  $('#progress-detail').classList.add('hidden');
+  $('#progress-overview').classList.remove('hidden');
+
+  const exList = S.exercises || [];
+  const withSessions = exList.map((e) => {
+    const sess = sessionsFor(e.name);
+    const best = sess.reduce((m, s) => (s.e1rm && (!m || s.e1rm > m.e1rm) ? s : m), null);
+    return { ...e, sessionsCount: sess.length, bestE1rm: best?.e1rm || 0 };
+  }).filter((e) => e.sessionsCount > 0)
+    .sort((a, b) => b.sessionsCount - a.sessionsCount);
+
+  $('#progress-overview').innerHTML = `
+    <div class="grid">
+      ${withSessions.map((e) => `
+        <div class="card lift-card" data-ex="${esc(e.name)}">
+          <div class="top">
+            <span class="nm">${esc(e.name)}</span>
+            <span class="tag">${esc(e.category)}</span>
+          </div>
+          <div class="big">${e.bestE1rm ? `${e.bestE1rm}<small>kg 1RM</small>` : `${e.sessionsCount}<small>sessions</small>`}</div>
+          <div class="muted small" style="margin-top:4px;">${e.sessionsCount} session${e.sessionsCount === 1 ? '' : 's'} logged</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  $$('#progress-overview .lift-card').forEach((c) => {
+    c.onclick = () => renderProgressDetail(c.dataset.ex);
   });
 }
 
-// ================================================================ boot
+function renderProgressDetail(exerciseName) {
+  $('#progress-overview').classList.add('hidden');
+  $('#progress-detail').classList.remove('hidden');
+  $('#progress-back').classList.remove('hidden');
+  $('#progress-back').onclick = renderProgressOverview;
+
+  const ex = exInfo(exerciseName);
+  $('#progress-heading').textContent = ex.name;
+  $('#progress-sub').textContent = `${ex.category} • ${ex.bodyweight ? 'Bodyweight (Total Load Calculated)' : 'Barbell / Dumbbell Lift'}`;
+
+  const sess = sessionsFor(ex.name);
+  const bestE1rm = sess.reduce((m, s) => Math.max(m, s.e1rm || 0), 0);
+  const bestW = sess.reduce((m, s) => Math.max(m, s.top || 0), 0);
+  const totalVol = sess.reduce((m, s) => m + (s.volume || 0), 0);
+
+  $('#progress-stats').innerHTML = `
+    <div class="stat"><div class="lbl">Best Est. 1RM</div><div class="val" style="color:var(--pr);">${bestE1rm ? `${bestE1rm} kg` : '–'}</div></div>
+    <div class="stat"><div class="lbl">Top Weight</div><div class="val">${bestW ? `${bestW} kg` : '–'}</div></div>
+    <div class="stat"><div class="lbl">Total Sessions</div><div class="val">${sess.length}</div></div>
+    <div class="stat"><div class="lbl">Total Volume</div><div class="val">${Math.round(totalVol)} kg</div></div>
+  `;
+
+  renderProgressChart(ex.name, sess);
+
+  // Sessions table
+  const tableRows = [...sess].reverse().map((s) => `
+    <tr>
+      <td>${shortDate(s.date)}</td>
+      <td>${summarize(ex.name, s.sets)}</td>
+      <td>${s.e1rm ? `${s.e1rm} kg` : '–'}</td>
+      <td>${s.top !== null ? `${s.top} kg` : '–'}</td>
+      <td>${s.volume ? `${Math.round(s.volume)} kg` : '–'}</td>
+    </tr>
+  `).join('');
+
+  $('#progress-table').innerHTML = `
+    <thead><tr><th>Date</th><th>Sets Summary</th><th>Est 1RM</th><th>Top W</th><th>Volume</th></tr></thead>
+    <tbody>${tableRows || '<tr><td colspan="5" class="muted">No sessions recorded yet.</td></tr>'}</tbody>
+  `;
+}
+
+function renderProgressChart(exerciseName, sessions) {
+  const canvas = $('#progress-chart');
+  if (!canvas) return;
+  if (progressChartInstance) progressChartInstance.destroy();
+
+  const labels = sessions.map((s) => shortDate(s.date));
+  const dataPoints = sessions.map((s) => s.e1rm || s.top || 0);
+
+  progressChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Est. 1RM (kg)',
+        data: dataPoints,
+        borderColor: COLORS.accent,
+        backgroundColor: 'rgba(255, 122, 69, 0.1)',
+        borderWidth: 2.5,
+        pointBackgroundColor: COLORS.accent,
+        pointRadius: 4,
+        tension: 0.25,
+        fill: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#171a21',
+          borderColor: '#2a2f3a',
+          borderWidth: 1,
+          titleColor: '#e8eaf0',
+          bodyColor: '#ffd166',
+          callbacks: {
+            label: (ctx) => `Est. 1RM: ${ctx.parsed.y} kg`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(42, 47, 58, 0.4)' },
+          ticks: { color: '#8b93a7', maxTicksLimit: 8 },
+        },
+        y: {
+          grid: { color: 'rgba(42, 47, 58, 0.4)' },
+          ticks: { color: '#8b93a7' },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------- RENDER ALL ON STATE CHANGE
 function renderAll() {
+  // Update datalists
   $('#exercise-list').innerHTML = S.exercises.map((e) => `<option value="${esc(e.name)}">${esc(e.category || '')}</option>`).join('');
-  $('#title-list').innerHTML = [...new Set(S.workouts.map((w) => w.title).filter(Boolean))].map((t) => `<option value="${esc(t)}">`).join('');
-  renderLog();
-  renderHistory();
-  renderSettings();
-  if ($('#view-progress').classList.contains('active')) renderProgress();
-  if ($('#view-goals')?.classList.contains('active')) renderGoals();
-  if ($('#view-suggest').classList.contains('active')) renderSuggest();
-  if ($('#view-workout-detail').classList.contains('active') && currentDetailWorkoutId) renderWorkoutDetail(currentDetailWorkoutId);
-}
 
-function bindGlobal() {
-  $$('.nav-btn').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
-  document.addEventListener('keydown', (e) => {
-    if (!$('#modal').classList.contains('hidden')) return;
-    if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); if ($('#view-log').classList.contains('active')) saveWorkout(); }
-    if (e.ctrlKey && /^[1-5]$/.test(e.key)) { e.preventDefault(); showView(['log', 'suggest', 'history', 'progress', 'settings'][+e.key - 1]); }
+  // Update recent chips in logger
+  const recent = [...new Set(idx.workouts.flatMap((w) => (idx.byW.get(w.id) || []).map((s) => s.exercise)))].slice(0, 10);
+  $('#recent-chips').innerHTML = recent.map((n) => `<button class="chip add-chip" data-name="${esc(n)}">+ ${esc(n)}</button>`).join('');
+  $$('#recent-chips .add-chip').forEach((c) => {
+    c.onclick = () => addExerciseToLog(c.dataset.name);
   });
+
+  // Storage badge
+  const b = $('#storage-badge');
+  if (S.storage.kind === 'sheets') {
+    b.className = 'storage-badge sheets';
+    b.textContent = `Google Sheets (${S.storage.title || 'Connected'})`;
+  } else {
+    b.className = 'storage-badge local';
+    b.textContent = 'Local Offline JSON';
+  }
+
+  // Active view refresh
+  const activeViewEl = $('.view.active');
+  if (activeViewEl) {
+    const vName = activeViewEl.id.replace('view-', '');
+    if (vName === 'history') renderHistory();
+    else if (vName === 'program') renderProgramView();
+    else if (vName === 'suggest') renderSuggest();
+    else if (vName === 'goals') renderGoals();
+    else if (vName === 'exercises') renderExercisesCatalog();
+    else if (vName === 'settings') renderSettings();
+  }
 }
 
-(async function boot() {
-  Chart.defaults.font.family = '"Segoe UI", system-ui, sans-serif';
-  Chart.defaults.color = COLORS.muted;
-  bindGlobal();
-  bindLog();
-  bindSuggest();
-  bindHistory();
-  bindWorkoutDetail();
-  bindProgress();
-  bindGoals();
-  bindSettings();
+// ---------------------------------------------------------------- INITIALIZATION
+window.addEventListener('DOMContentLoaded', async () => {
+  // Setup keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === '1') { e.preventDefault(); showView('log'); }
+      else if (e.key === '2') { e.preventDefault(); showView('program'); }
+      else if (e.key === '3') { e.preventDefault(); showView('suggest'); }
+      else if (e.key === '4') { e.preventDefault(); showView('history'); }
+      else if (e.key === '5') { e.preventDefault(); showView('progress'); }
+      else if (e.key === '6') { e.preventDefault(); showView('goals'); }
+      else if (e.key === '7') { e.preventDefault(); showView('exercises'); }
+      else if (e.key === '8') { e.preventDefault(); showView('settings'); }
+      else if (e.key === 's' || e.key === 'S') {
+        if ($('#view-log').classList.contains('active')) {
+          e.preventDefault();
+          saveWorkoutFromLog();
+        }
+      }
+    }
+  });
+
+  // Sidebar navigation buttons
+  $$('.nav-btn').forEach((b) => {
+    b.addEventListener('click', () => showView(b.dataset.view));
+  });
+
+  $('#history-search').addEventListener('input', renderHistory);
+  $('#progress-input').addEventListener('input', (e) => {
+    const val = e.target.value.trim();
+    if (S.exercises.some((x) => x.name.toLowerCase() === val.toLowerCase())) {
+      renderProgressDetail(val);
+      e.target.value = '';
+    }
+  });
+
+  initLog();
+  initProgramModule();
+  initGoalsModule();
+  initExercisesModule();
+  initSettingsModule();
+
+  // Load initial backend state
   try {
-    setState(await window.api.state());
-    if (S.storage.error) toast(S.storage.error, 'error');
+    const state = await window.api.state();
+    setState(state);
   } catch (err) {
+    console.error('Initial state load failed:', err);
     toast(err.message, 'error');
   }
-})();
+});

@@ -17,16 +17,16 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.strengthlogz.mobile.data.WorkoutRepository
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ProgramDay
 import com.strengthlogz.mobile.model.ProgramExerciseItem
@@ -58,114 +57,55 @@ import com.strengthlogz.mobile.util.SetUtils.formatWeightValue
 
 @Composable
 fun ProgramScreen(
-    program: WorkoutProgram,
+    programs: List<WorkoutProgram>,
+    activeProgramId: String?,
     availableExercises: List<Exercise>,
     workouts: List<Workout>,
     allSets: List<WorkoutSet>,
     getPreviousSets: (String) -> List<WorkoutSet>,
     onSaveProgram: (WorkoutProgram) -> Unit,
+    onCreateProgram: (String) -> Unit,
+    onDeleteProgram: (String) -> Unit,
+    onSelectProgram: (String) -> Unit,
+    onDuplicateProgram: (String) -> Unit,
     onAddCustomExercise: (Exercise) -> Unit,
     onLoadProgramDayToLogger: (SuggestedWorkoutPlan) -> Unit
 ) {
-    val daysCount = program.daysPerWeek.coerceIn(1, 7)
-    val safeDays = remember(program) {
-        val current = program.safeDays
-        if (current.size == daysCount) {
-            current
-        } else {
-            val template = WorkoutRepository.buildDefaultProgram(daysCount).safeDays
-            (0 until daysCount).map { idx ->
-                current.getOrNull(idx)?.copy(dayIndex = idx)
-                    ?: template.getOrNull(idx)?.copy(dayIndex = idx)
-                    ?: ProgramDay(dayIndex = idx, dayName = "Day ${idx + 1}", focus = "Custom Training Day")
-            }
-        }
-    }
+    var showProgramSwitcher by remember { mutableStateOf(false) }
+    var showCreateProgramDialog by remember { mutableStateOf(false) }
+    var programToRename by remember { mutableStateOf<WorkoutProgram?>(null) }
+    var programToDelete by remember { mutableStateOf<WorkoutProgram?>(null) }
 
-    var selectedDayIdx by remember(daysCount) {
-        val nextSuggested = if (program.lastLoadedDayIndex in 0 until daysCount) {
-            (program.lastLoadedDayIndex + 1) % daysCount
-        } else 0
-        mutableIntStateOf(nextSuggested.coerceIn(0, (daysCount - 1).coerceAtLeast(0)))
-    }
-
-    val activeDay = safeDays.getOrNull(selectedDayIdx) ?: safeDays.firstOrNull()
-        ?: ProgramDay(0, "Day 1: Training", "Full Body")
-
-    var showEditDayMetaDialog by remember { mutableStateOf(false) }
+    var showAddDayDialog by remember { mutableStateOf(false) }
+    var dayToEdit by remember { mutableStateOf<ProgramDay?>(null) }
     var showExercisePicker by remember { mutableStateOf(false) }
-    var showResetTemplateConfirm by remember { mutableStateOf(false) }
-    var coachBannerMessage by remember { mutableStateOf("") }
 
-    // Compute coaching insights for the program & active day
-    val activeExercises = activeDay.safeExercises
-    val totalDaySets = activeExercises.sumOf { it.targetSets.coerceAtLeast(1) }
-
-    val splitRecommendation = remember(daysCount) {
-        when (daysCount) {
-            1 -> "1-Day Split: Focus on heavy compound movements (Squat, Press, Pull, Hinge) to stimulate all major muscle groups in a single high-intensity session."
-            2 -> "2-Day Split: Upper / Lower or Full Body A/B gives each muscle group optimal recovery while hitting key lifts every week."
-            3 -> "3-Day Split: Classic Push / Pull / Legs or 3x Full Body balances volume and central nervous system recovery."
-            4 -> "4-Day Split: Upper / Lower (Strength & Hypertrophy) hits every muscle group 2x/week — the gold standard for natural strength & size."
-            5 -> "5-Day Split: Upper / Lower + Push / Pull / Legs hybrid maximizes both heavy barbell progression and hypertrophy volume."
-            6 -> "6-Day Split: Push / Pull / Legs × 2 provides high weekly frequency. Keep session volume around 12–18 sets to recover well."
-            else -> "7-Day Split: Daily specialization. Keep intensity regulated and include lighter mobility/arm/core days to prevent overtraining."
-        }
+    val activeProgram = remember(programs, activeProgramId) {
+        programs.firstOrNull { it.id == activeProgramId } ?: programs.firstOrNull()
     }
 
-    val dayCoachAdvice = remember(activeExercises, totalDaySets, allSets) {
-        when {
-            activeExercises.isEmpty() ->
-                "👋 This day has no exercises yet! Tap '+ Add Exercise to Day' below to build your routine, or tap 'Auto-Fill Template' for a proven split."
-            totalDaySets < 8 ->
-                "💡 Light Session ($totalDaySets total sets): Great for a quick strength focus or deload. Add 1–2 accessory lifts if you want more hypertrophy volume."
-            totalDaySets in 8..18 ->
-                "🔥 Optimal Session Volume ($totalDaySets working sets across ${activeExercises.size} lifts): Ready to load! Weights auto-fill from your last session so you only need to adjust reps or sets."
-            else ->
-                "⚡ High-Volume Session ($totalDaySets sets across ${activeExercises.size} lifts): Prioritize your first 2 compound movements when fresh and keep rest times crisp."
-        }
+    val activeDays = activeProgram?.safeDays ?: emptyList()
+    var selectedDayIdx by remember(activeProgram?.id, activeDays.size) {
+        val lastIdx = activeProgram?.lastLoadedDayIndex ?: -1
+        val initial = if (lastIdx in 0 until activeDays.size) (lastIdx + 1) % activeDays.size else 0
+        mutableIntStateOf(initial.coerceIn(0, (activeDays.size - 1).coerceAtLeast(0)))
     }
 
-    fun updateDay(updatedDay: ProgramDay) {
-        val newDays = safeDays.mapIndexed { idx, d ->
-            if (idx == selectedDayIdx) updatedDay.copy(dayIndex = idx) else d
-        }
-        onSaveProgram(
-            program.copy(
-                daysPerWeek = daysCount,
-                days = newDays
-            )
-        )
-    }
+    // Ensure selectedDayIdx is valid
+    val safeDayIdx = if (activeDays.isEmpty()) 0 else selectedDayIdx.coerceIn(0, activeDays.size - 1)
+    val activeDay = activeDays.getOrNull(safeDayIdx)
+    val activeExercises = activeDay?.safeExercises ?: emptyList()
 
-    fun changeDaysPerWeek(newCount: Int) {
-        val coerced = newCount.coerceIn(1, 7)
-        if (coerced == daysCount) return
-        val defaultForCount = WorkoutRepository.buildDefaultProgram(coerced).safeDays
-        val mergedDays = (0 until coerced).map { idx ->
-            val existing = safeDays.getOrNull(idx)
-            if (existing != null && existing.safeExercises.isNotEmpty()) {
-                existing.copy(dayIndex = idx)
-            } else {
-                defaultForCount.getOrNull(idx)?.copy(dayIndex = idx)
-                    ?: ProgramDay(idx, "Day ${idx + 1}", "Custom Day", emptyList())
-            }
+    fun updateActiveDay(updatedDay: ProgramDay) {
+        if (activeProgram == null) return
+        val newDays = activeDays.mapIndexed { idx, d ->
+            if (idx == safeDayIdx) updatedDay.copy(dayIndex = idx) else d
         }
-        if (selectedDayIdx >= coerced) {
-            selectedDayIdx = coerced - 1
-        }
-        onSaveProgram(
-            program.copy(
-                daysPerWeek = coerced,
-                programName = "$coerced-Day Training Split",
-                days = mergedDays
-            )
-        )
-        coachBannerMessage = "Switched to $coerced days/week! Tap 'Reset Split Template' anytime if you want fresh default routines for all $coerced days."
+        onSaveProgram(activeProgram.copy(days = newDays))
     }
 
     fun loadDayIntoLogger(day: ProgramDay) {
-        if (day.safeExercises.isEmpty()) return
+        if (activeProgram == null || day.safeExercises.isEmpty()) return
         val suggestedItems = day.safeExercises.map { item ->
             val prevSets = getPreviousSets(item.exerciseName).filter { (it.reps ?: 0) > 0 }
             val lastWeight = prevSets.maxOfOrNull { it.weight ?: 0.0 } ?: 0.0
@@ -179,8 +119,8 @@ fun ProgramScreen(
                 val weightStr = if (prevWeightForSet > 0.0) formatWeightValue(prevWeightForSet) else ""
                 PrescribedSet(
                     weight = weightStr,
-                    reps = item.targetReps.coerceAtLeast(1).toString(),
-                    notes = item.safeNotes
+                    reps = item.targetReps.toString(),
+                    notes = ""
                 )
             }
 
@@ -192,23 +132,22 @@ fun ProgramScreen(
                 lastSummary = lastSummary,
                 peakE1rm = 0.0,
                 currentE1rm = 0.0,
-                reasonTag = "Program Target: ${item.targetSets} × ${item.targetReps}",
+                reasonTag = "Target: ${item.targetSets} × ${item.targetReps}",
                 targetSummary = "${item.targetSets} sets × ${item.targetReps} reps",
                 prescribedSets = prescribedSets
             )
         }
 
-        val updatedProg = program.copy(
-            daysPerWeek = daysCount,
-            days = safeDays,
-            lastLoadedDayIndex = day.dayIndex
+        val updatedProg = activeProgram.copy(
+            days = activeDays,
+            lastLoadedDayIndex = safeDayIdx
         )
         onSaveProgram(updatedProg)
 
         val plan = SuggestedWorkoutPlan(
             split = WorkoutSplitType.FULL_BODY,
             title = day.dayName,
-            notes = if (day.safeFocus.isNotBlank()) "Program Focus: ${day.safeFocus}" else "Loaded from ${program.safeProgramName}",
+            notes = if (day.safeFocus.isNotBlank()) "Program Focus: ${day.safeFocus}" else "Loaded from ${activeProgram.safeProgramName}",
             exercises = suggestedItems
         )
         onLoadProgramDayToLogger(plan)
@@ -217,94 +156,53 @@ fun ProgramScreen(
     Scaffold(
         containerColor = BgDark,
         bottomBar = {
-            Surface(
-                color = SurfaceDark,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding(),
-                tonalElevation = 8.dp,
-                border = BorderStroke(1.dp, BorderDark)
-            ) {
-                Row(
+            if (activeDay != null && activeExercises.isNotEmpty()) {
+                Surface(
+                    color = SurfaceDark,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .navigationBarsPadding(),
+                    tonalElevation = 8.dp,
+                    border = BorderStroke(1.dp, BorderDark)
                 ) {
-                    OutlinedButton(
-                        onClick = { showExercisePicker = true },
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(50.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, BorderDark)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = null,
-                            tint = AccentOrange,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "Add Exercise",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = activeDay.dayName,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${activeExercises.size} exercise${if (activeExercises.size == 1) "" else "s"} • ${activeExercises.sumOf { it.targetSets }} working sets",
+                                fontSize = 11.5.sp,
+                                color = TextSecondary,
+                                maxLines = 1
+                            )
+                        }
 
-                    Button(
-                        onClick = { loadDayIntoLogger(activeDay) },
-                        enabled = activeExercises.isNotEmpty(),
-                        modifier = Modifier
-                            .weight(1.25f)
-                            .height(50.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AccentOrange,
-                            contentColor = Color(0xFF140D07),
-                            disabledContainerColor = SurfaceDark,
-                            disabledContentColor = TextSecondary
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                        Spacer(Modifier.width(12.dp))
+
+                        Button(
+                            onClick = { loadDayIntoLogger(activeDay) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AccentOrange,
+                                contentColor = Color(0xFF140D07)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = "Load Day ${selectedDayIdx + 1} to Logger",
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            if (activeExercises.isNotEmpty()) {
-                                Text(
-                                    text = "${activeExercises.size} lifts • $totalDaySets sets ready",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF140D07).copy(alpha = 0.85f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Start Workout", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -315,267 +213,111 @@ fun ProgramScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(BgDark),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
-                Spacer(Modifier.height(10.dp))
-                ModernScreenHeader(
-                    title = "Weekly Program",
-                    subtitle = "Design your weekly split & load any day in 1 tap",
-                    badgeText = "${daysCount}D / WK",
-                    action = {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = SurfaceDark,
-                            border = BorderStroke(1.dp, BorderDark),
-                            modifier = Modifier.clickable { showResetTemplateConfirm = true }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Refresh,
-                                    contentDescription = "Reset Template",
-                                    tint = AccentPeach,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "Template",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AccentPeach,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-
-            // 1. Days Per Week Selector Card
-            item {
-                StrengthCard(shape = RoundedCornerShape(16.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    Icons.Default.CalendarMonth,
-                                    contentDescription = null,
-                                    tint = AccentOrange,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "How many days a week do you train?",
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            (1..7).forEach { count ->
-                                val isSelected = count == daysCount
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(40.dp)
-                                        .clickable { changeDaysPerWeek(count) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (isSelected) AccentOrange else BgDark,
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSelected) AccentOrange else BorderDark
-                                    )
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "${count}d",
-                                            fontSize = 13.sp,
-                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                            color = if (isSelected) Color(0xFF140D07) else TextSecondary,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = splitRecommendation,
-                            fontSize = 11.5.sp,
-                            color = TextSecondary,
-                            lineHeight = 16.sp
-                        )
-                    }
-                }
-            }
-
-            // 2. Day Selector Pills
-            item {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+            // Header: Program Switcher & Actions
+            item(key = "program_header") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    itemsIndexed(safeDays) { idx, day ->
-                        val isSelected = idx == selectedDayIdx
-                        val isNextUp = program.lastLoadedDayIndex >= 0 &&
-                            ((program.lastLoadedDayIndex + 1) % daysCount) == idx
-                        val exCount = day.safeExercises.size
-
+                    if (activeProgram != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) AccentOrange.copy(alpha = 0.18f) else SurfaceCard,
-                            border = BorderStroke(
-                                1.2.dp,
-                                if (isSelected) AccentOrange else if (isNextUp) GoldPR.copy(alpha = 0.6f) else BorderDark
-                            ),
-                            modifier = Modifier.clickable { selectedDayIdx = idx }
+                            color = SurfaceCard,
+                            border = BorderStroke(1.dp, BorderDark),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .clickable { showProgramSwitcher = true }
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = day.dayName.ifBlank { "Day ${idx + 1}" },
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) AccentOrange else TextPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (isNextUp) {
-                                        Surface(
-                                            color = GoldPR.copy(alpha = 0.2f),
-                                            shape = RoundedCornerShape(5.dp)
-                                        ) {
-                                            Text(
-                                                text = "NEXT",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = GoldPR,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                                Text(
-                                    text = "$exCount lift${if (exCount == 1) "" else "s"} • ${day.safeExercises.sumOf { it.targetSets }} sets",
-                                    fontSize = 11.sp,
-                                    color = TextSecondary,
-                                    maxLines = 1
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = AccentOrange,
+                                    modifier = Modifier.size(17.dp)
                                 )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Active Day Header & Helpful Coach Banner
-            item {
-                StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.45f))
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = activeDay.dayName.ifBlank { "Day ${selectedDayIdx + 1}" },
-                                    fontSize = 17.sp,
+                                    text = activeProgram.safeProgramName,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = TextPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                if (activeDay.safeFocus.isNotBlank()) {
-                                    Text(
-                                        text = activeDay.safeFocus,
-                                        fontSize = 12.sp,
-                                        color = AccentPeach,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Switch Program",
+                                    tint = TextSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
                             }
-                            Spacer(Modifier.width(8.dp))
+                        }
+                    } else {
+                        Text(
+                            text = "Workout Program",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextPrimary
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (activeProgram != null) {
                             Surface(
-                                shape = RoundedCornerShape(9.dp),
-                                color = SurfaceDark,
+                                shape = RoundedCornerShape(10.dp),
+                                color = SurfaceCard,
                                 border = BorderStroke(0.8.dp, BorderDark),
-                                modifier = Modifier.clickable { showEditDayMetaDialog = true }
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clickable { showProgramSwitcher = true }
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        Icons.Default.Edit,
-                                        contentDescription = "Rename Day",
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Manage Programs",
                                         tint = TextSecondary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "Rename",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TextSecondary
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Helpful Coaching Message Box
                         Surface(
-                            color = BgDark,
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(0.8.dp, BorderDark),
-                            modifier = Modifier.fillMaxWidth()
+                            color = AccentOrange,
+                            modifier = Modifier
+                                .height(34.dp)
+                                .clickable { showCreateProgramDialog = true }
                         ) {
                             Row(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.Top
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = GoldPR,
-                                    modifier = Modifier
-                                        .padding(top = 1.dp)
-                                        .size(16.dp)
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "New Program",
+                                    tint = Color(0xFF140D07),
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = if (coachBannerMessage.isNotBlank()) coachBannerMessage else dayCoachAdvice,
+                                    text = "New Program",
                                     fontSize = 11.5.sp,
-                                    color = TextPrimary.copy(alpha = 0.9f),
-                                    lineHeight = 16.sp,
-                                    modifier = Modifier.weight(1f)
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF140D07)
                                 )
                             }
                         }
@@ -583,50 +325,207 @@ fun ProgramScreen(
                 }
             }
 
-            // 4. Exercise Cards for Selected Day
-            if (activeExercises.isEmpty()) {
-                item {
-                    StrengthCard(shape = RoundedCornerShape(16.dp)) {
+            // Case 1: No Programs Exist
+            if (activeProgram == null) {
+                item(key = "no_programs_empty_state") {
+                    StrengthCard(
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp)
+                    ) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 20.dp),
+                                .padding(vertical = 16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Surface(
                                 shape = CircleShape,
                                 color = AccentOrange.copy(alpha = 0.16f),
-                                modifier = Modifier.size(52.dp)
+                                modifier = Modifier.size(56.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        Icons.Default.FitnessCenter,
+                                        imageVector = Icons.Default.CalendarMonth,
                                         contentDescription = null,
                                         tint = AccentOrange,
-                                        modifier = Modifier.size(26.dp)
+                                        modifier = Modifier.size(28.dp)
                                     )
                                 }
                             }
+
                             Text(
-                                text = "No Exercises on ${activeDay.dayName}",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                textAlign = TextAlign.Center
+                                text = "Build Your Custom Program",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = TextPrimary
                             )
+
                             Text(
-                                text = "Add exercises from the built-in catalog or load the recommended split template.",
+                                text = "Create your training split from scratch. Add your workout days, customize exercises, and set target sets & reps.",
                                 fontSize = 12.5.sp,
                                 color = TextSecondary,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
                             )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.padding(top = 4.dp)
+
+                            Spacer(Modifier.height(4.dp))
+
+                            Button(
+                                onClick = { showCreateProgramDialog = true },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = AccentOrange,
+                                    contentColor = Color(0xFF140D07)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp)
                             ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Create Your First Program", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Days Row / Selector Tabs
+                item(key = "program_days_selector") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "WORKOUT DAYS (${activeDays.size})",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary,
+                                letterSpacing = 0.6.sp
+                            )
+
+                            Text(
+                                text = "+ Add Day",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = AccentOrange,
+                                modifier = Modifier
+                                    .clickable { showAddDayDialog = true }
+                                    .padding(4.dp)
+                            )
+                        }
+
+                        if (activeDays.isNotEmpty()) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                itemsIndexed(activeDays) { idx, day ->
+                                    val isSelected = idx == safeDayIdx
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isSelected) AccentOrange else SurfaceCard,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) AccentOrange else BorderDark
+                                        ),
+                                        modifier = Modifier.clickable { selectedDayIdx = idx }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = day.dayName,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                color = if (isSelected) Color(0xFF140D07) else TextPrimary
+                                            )
+                                            if (day.safeExercises.isNotEmpty()) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = if (isSelected) Color(0xFF140D07).copy(alpha = 0.2f) else BgDark
+                                                ) {
+                                                    Text(
+                                                        text = "${day.safeExercises.size}",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isSelected) Color(0xFF140D07) else TextSecondary,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                item {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = SurfaceDark,
+                                        border = BorderStroke(1.dp, BorderDark),
+                                        modifier = Modifier.clickable { showAddDayDialog = true }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "Add Day",
+                                                tint = AccentPeach,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = "Add Day",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = AccentPeach
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Active Day Content
+                if (activeDay == null || activeDays.isEmpty()) {
+                    item(key = "no_days_empty_state") {
+                        StrengthCard(
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "No Workout Days Yet",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = "Add your first training day (e.g. Day 1: Push, Upper Body, or Full Body) to start programming.",
+                                    fontSize = 12.5.sp,
+                                    color = TextSecondary,
+                                    textAlign = TextAlign.Center
+                                )
                                 Button(
-                                    onClick = { showExercisePicker = true },
+                                    onClick = { showAddDayDialog = true },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = AccentOrange,
                                         contentColor = Color(0xFF140D07)
@@ -634,228 +533,722 @@ fun ProgramScreen(
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Add Exercise", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                }
-                                OutlinedButton(
-                                    onClick = {
-                                        val templateDay = WorkoutRepository.buildDefaultProgram(daysCount)
-                                            .safeDays.getOrNull(selectedDayIdx)
-                                        if (templateDay != null) {
-                                            updateDay(templateDay)
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, BorderDark),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
-                                ) {
-                                    Text("Auto-Fill Day", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("+ Add Workout Day", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                     }
-                }
-            } else {
-                itemsIndexed(
-                    activeExercises,
-                    key = { index, item -> "${selectedDayIdx}_${item.exerciseName}_$index" }
-                ) { idx, exItem ->
-                    val prevSets = remember(exItem.exerciseName, allSets) {
-                        getPreviousSets(exItem.exerciseName).filter { (it.reps ?: 0) > 0 }
-                    }
-                    val prevSummary = remember(prevSets) {
-                        if (prevSets.isNotEmpty()) SetUtils.formatSetsSummary(prevSets) else "No prior session logged"
-                    }
-                    val isBw = remember(exItem.exerciseName, availableExercises) {
-                        BodyWeightUtils.isBodyweightExercise(exItem.exerciseName)
+                } else {
+                    // Day Header & Edit Day Action
+                    item(key = "active_day_banner_${activeDay.dayIndex}") {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = SurfaceCard,
+                            border = BorderStroke(0.8.dp, BorderDark),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = activeDay.dayName,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (activeDay.safeFocus.isNotBlank()) {
+                                        Text(
+                                            text = activeDay.safeFocus,
+                                            fontSize = 11.5.sp,
+                                            color = AccentPeach,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.width(8.dp))
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = BgDark,
+                                    border = BorderStroke(0.6.dp, BorderDark),
+                                    modifier = Modifier.clickable { dayToEdit = activeDay }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit Day",
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = "Edit Day",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    ProgramExerciseCard(
-                        index = idx,
-                        totalCount = activeExercises.size,
-                        item = exItem,
-                        previousSummary = prevSummary,
-                        isBodyweight = isBw,
-                        onUpdateSetsReps = { newSets, newReps ->
-                            val updatedList = activeExercises.toMutableList()
-                            updatedList[idx] = exItem.copy(
-                                targetSets = newSets.coerceIn(1, 10),
-                                targetReps = newReps.coerceIn(1, 50)
-                            )
-                            updateDay(activeDay.copy(exercises = updatedList))
-                        },
-                        onMoveUp = {
-                            if (idx > 0) {
-                                val updatedList = activeExercises.toMutableList()
-                                val tmp = updatedList[idx - 1]
-                                updatedList[idx - 1] = updatedList[idx]
-                                updatedList[idx] = tmp
-                                updateDay(activeDay.copy(exercises = updatedList))
+                    // Exercises in Active Day
+                    if (activeExercises.isEmpty()) {
+                        item(key = "day_exercises_empty") {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = BgDark,
+                                border = BorderStroke(0.8.dp, BorderDark.copy(alpha = 0.7f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 20.dp, horizontal = 16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.FitnessCenter,
+                                        contentDescription = null,
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Text(
+                                        text = "No exercises in this day yet",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Add exercises from the catalog and set target sets & reps.",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Button(
+                                        onClick = { showExercisePicker = true },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = AccentOrange,
+                                            contentColor = Color(0xFF140D07)
+                                        ),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("+ Add Exercise to Day", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                    }
+                                }
                             }
-                        },
-                        onMoveDown = {
-                            if (idx < activeExercises.lastIndex) {
-                                val updatedList = activeExercises.toMutableList()
-                                val tmp = updatedList[idx + 1]
-                                updatedList[idx + 1] = updatedList[idx]
-                                updatedList[idx] = tmp
-                                updateDay(activeDay.copy(exercises = updatedList))
-                            }
-                        },
-                        onRemove = {
-                            val updatedList = activeExercises.toMutableList().apply { removeAt(idx) }
-                            updateDay(activeDay.copy(exercises = updatedList))
                         }
-                    )
+                    } else {
+                        itemsIndexed(activeExercises, key = { idx, item -> "${item.exerciseName}_$idx" }) { exIdx, item ->
+                            val prevSets = getPreviousSets(item.exerciseName).filter { (it.reps ?: 0) > 0 }
+                            val prevSummary = if (prevSets.isNotEmpty()) SetUtils.formatSetsSummary(prevSets) else "First time"
+                            val isBw = BodyWeightUtils.isBodyweightExercise(item.exerciseName)
+
+                            ProgramExerciseCard(
+                                index = exIdx,
+                                totalCount = activeExercises.size,
+                                item = item,
+                                previousSummary = prevSummary,
+                                isBodyweight = isBw,
+                                onUpdateSetsReps = { s, r ->
+                                    val list = activeExercises.toMutableList()
+                                    list[exIdx] = item.copy(targetSets = s, targetReps = r)
+                                    updateActiveDay(activeDay.copy(exercises = list))
+                                },
+                                onMoveUp = {
+                                    if (exIdx > 0) {
+                                        val list = activeExercises.toMutableList()
+                                        val itm = list.removeAt(exIdx)
+                                        list.add(exIdx - 1, itm)
+                                        updateActiveDay(activeDay.copy(exercises = list))
+                                    }
+                                },
+                                onMoveDown = {
+                                    if (exIdx < activeExercises.size - 1) {
+                                        val list = activeExercises.toMutableList()
+                                        val itm = list.removeAt(exIdx)
+                                        list.add(exIdx + 1, itm)
+                                        updateActiveDay(activeDay.copy(exercises = list))
+                                    }
+                                },
+                                onRemove = {
+                                    val list = activeExercises.toMutableList().apply { removeAt(exIdx) }
+                                    updateActiveDay(activeDay.copy(exercises = list))
+                                }
+                            )
+                        }
+
+                        // Add Exercise Button below list
+                        item(key = "add_exercise_button") {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = SurfaceDark,
+                                border = BorderStroke(1.dp, BorderDark),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showExercisePicker = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = AccentOrange,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = "+ Add Exercise to ${activeDay.dayName}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AccentOrange
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
-
-            item { Spacer(Modifier.height(28.dp)) }
         }
     }
 
-    // Edit Day Name & Focus Dialog
-    if (showEditDayMetaDialog) {
-        var nameInput by remember(activeDay) { mutableStateOf(activeDay.dayName) }
-        var focusInput by remember(activeDay) { mutableStateOf(activeDay.safeFocus) }
-
-        AlertDialog(
-            onDismissRequest = { showEditDayMetaDialog = false },
-            containerColor = SurfaceDark,
-            title = {
-                Text(
-                    text = "Customize Day ${selectedDayIdx + 1}",
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
+    // Program Switcher & Manager Dialog
+    if (showProgramSwitcher) {
+        ProgramSwitcherDialog(
+            programs = programs,
+            activeProgramId = activeProgram?.id,
+            onSelectProgram = { progId ->
+                onSelectProgram(progId)
+                showProgramSwitcher = false
             },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = nameInput,
-                        onValueChange = { nameInput = it },
-                        label = { Text("Day Title (e.g. Day 1: Push)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = focusInput,
-                        onValueChange = { focusInput = it },
-                        label = { Text("Muscle Group Focus (optional)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+            onCreateNew = {
+                showProgramSwitcher = false
+                showCreateProgramDialog = true
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        updateDay(
-                            activeDay.copy(
-                                dayName = nameInput.trim().ifBlank { "Day ${selectedDayIdx + 1}" },
-                                focus = focusInput.trim()
-                            )
-                        )
-                        showEditDayMetaDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentOrange,
-                        contentColor = Color(0xFF140D07)
-                    )
-                ) {
-                    Text("Save", fontWeight = FontWeight.Bold)
-                }
+            onRenameProgram = { prog ->
+                showProgramSwitcher = false
+                programToRename = prog
             },
-            dismissButton = {
-                TextButton(onClick = { showEditDayMetaDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
-                }
-            }
+            onDuplicateProgram = { prog ->
+                onDuplicateProgram(prog.id)
+                showProgramSwitcher = false
+            },
+            onDeleteProgram = { prog ->
+                showProgramSwitcher = false
+                programToDelete = prog
+            },
+            onDismiss = { showProgramSwitcher = false }
         )
     }
 
-    // Reset Template Confirmation Dialog
-    if (showResetTemplateConfirm) {
+    // Create New Program Dialog
+    if (showCreateProgramDialog) {
+        CreateOrRenameProgramDialog(
+            title = "Create New Program",
+            initialName = "",
+            confirmButtonText = "Create Program",
+            onConfirm = { name ->
+                onCreateProgram(name)
+                showCreateProgramDialog = false
+            },
+            onDismiss = { showCreateProgramDialog = false }
+        )
+    }
+
+    // Rename Program Dialog
+    programToRename?.let { prog ->
+        CreateOrRenameProgramDialog(
+            title = "Rename Program",
+            initialName = prog.safeProgramName,
+            confirmButtonText = "Save Name",
+            onConfirm = { newName ->
+                onSaveProgram(prog.copy(programName = newName.trim()))
+                programToRename = null
+            },
+            onDismiss = { programToRename = null }
+        )
+    }
+
+    // Delete Program Confirmation Dialog
+    programToDelete?.let { prog ->
         AlertDialog(
-            onDismissRequest = { showResetTemplateConfirm = false },
-            containerColor = SurfaceDark,
+            onDismissRequest = { programToDelete = null },
+            containerColor = SurfaceCard,
             title = {
-                Text(
-                    text = "Reset $daysCount-Day Split Template?",
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
+                Text("Delete Program?", fontWeight = FontWeight.Bold, color = TextPrimary)
             },
             text = {
                 Text(
-                    text = "This will load the recommended $daysCount-day training split across all days. Your workout history and exercise catalog will not be affected.",
+                    "Are you sure you want to delete \"${prog.safeProgramName}\"? This cannot be undone.",
                     color = TextSecondary,
-                    fontSize = 13.sp
+                    fontSize = 13.5.sp
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val fresh = WorkoutRepository.buildDefaultProgram(daysCount)
-                        onSaveProgram(fresh)
-                        coachBannerMessage = "Loaded recommended $daysCount-Day Split template!"
-                        showResetTemplateConfirm = false
+                        onDeleteProgram(prog.id)
+                        programToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentOrange,
-                        contentColor = Color(0xFF140D07)
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = DecreaseRed)
                 ) {
-                    Text("Load Template", fontWeight = FontWeight.Bold)
+                    Text("Delete", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetTemplateConfirm = false }) {
+                TextButton(onClick = { programToDelete = null }) {
                     Text("Cancel", color = TextSecondary)
                 }
             }
         )
     }
 
-    // Exercise Picker Modal for Adding Exercises to Active Day
-    if (showExercisePicker) {
+    // Add Workout Day Dialog
+    if (showAddDayDialog && activeProgram != null) {
+        AddOrEditDayDialog(
+            title = "Add Workout Day",
+            initialName = "Day ${activeDays.size + 1}: ",
+            initialFocus = "",
+            canDelete = false,
+            onSave = { name, focus ->
+                val newDay = ProgramDay(
+                    dayIndex = activeDays.size,
+                    dayName = name.trim().ifBlank { "Day ${activeDays.size + 1}" },
+                    focus = focus.trim(),
+                    exercises = emptyList()
+                )
+                val updatedDays = activeDays + newDay
+                onSaveProgram(activeProgram.copy(days = updatedDays))
+                selectedDayIdx = updatedDays.size - 1
+                showAddDayDialog = false
+            },
+            onDelete = {},
+            onDismiss = { showAddDayDialog = false }
+        )
+    }
+
+    // Edit Workout Day Dialog
+    dayToEdit?.let { day ->
+        AddOrEditDayDialog(
+            title = "Edit Workout Day",
+            initialName = day.dayName,
+            initialFocus = day.safeFocus,
+            canDelete = true,
+            onSave = { newName, newFocus ->
+                val updatedDays = activeDays.mapIndexed { idx, d ->
+                    if (d.dayIndex == day.dayIndex) d.copy(dayName = newName.trim(), focus = newFocus.trim()) else d
+                }
+                onSaveProgram(activeProgram!!.copy(days = updatedDays))
+                dayToEdit = null
+            },
+            onDelete = {
+                val updatedDays = activeDays.filter { it.dayIndex != day.dayIndex }
+                    .mapIndexed { idx, d -> d.copy(dayIndex = idx) }
+                onSaveProgram(activeProgram!!.copy(days = updatedDays))
+                selectedDayIdx = (safeDayIdx - 1).coerceAtLeast(0)
+                dayToEdit = null
+            },
+            onDismiss = { dayToEdit = null }
+        )
+    }
+
+    // Exercise Picker Modal
+    if (showExercisePicker && activeDay != null) {
         ProgramExercisePickerDialog(
             availableExercises = availableExercises,
             alreadyAddedNames = activeExercises.map { it.exerciseName.lowercase() }.toSet(),
             onDismiss = { showExercisePicker = false },
             onSelectExercise = { ex, sets, reps ->
-                val updatedList = activeExercises.toMutableList().apply {
-                    add(
-                        ProgramExerciseItem(
-                            exerciseName = ex.name,
-                            category = ex.category.ifBlank { "Other" },
-                            targetSets = sets,
-                            targetReps = reps
-                        )
-                    )
-                }
-                updateDay(activeDay.copy(exercises = updatedList))
-                coachBannerMessage = "Added ${ex.name} (${sets} × ${reps}) to ${activeDay.dayName}."
+                val updatedList = activeExercises + ProgramExerciseItem(
+                    exerciseName = ex.name,
+                    category = ex.category.ifBlank { "Other" },
+                    targetSets = sets,
+                    targetReps = reps
+                )
+                updateActiveDay(activeDay.copy(exercises = updatedList))
                 showExercisePicker = false
             },
             onCreateAndSelectExercise = { name, category, isBw, sets, reps ->
                 val newEx = Exercise(name = name.trim(), category = category, bodyweight = isBw)
                 onAddCustomExercise(newEx)
-                val updatedList = activeExercises.toMutableList().apply {
-                    add(
-                        ProgramExerciseItem(
-                            exerciseName = newEx.name,
-                            category = newEx.category,
-                            targetSets = sets,
-                            targetReps = reps
-                        )
-                    )
-                }
-                updateDay(activeDay.copy(exercises = updatedList))
-                coachBannerMessage = "Created & added ${newEx.name} (${sets} × ${reps})!"
+                val updatedList = activeExercises + ProgramExerciseItem(
+                    exerciseName = newEx.name,
+                    category = newEx.category,
+                    targetSets = sets,
+                    targetReps = reps
+                )
+                updateActiveDay(activeDay.copy(exercises = updatedList))
                 showExercisePicker = false
             }
         )
+    }
+}
+
+@Composable
+private fun ProgramSwitcherDialog(
+    programs: List<WorkoutProgram>,
+    activeProgramId: String?,
+    onSelectProgram: (String) -> Unit,
+    onCreateNew: () -> Unit,
+    onRenameProgram: (WorkoutProgram) -> Unit,
+    onDuplicateProgram: (WorkoutProgram) -> Unit,
+    onDeleteProgram: (WorkoutProgram) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(20.dp),
+            color = SurfaceCard,
+            border = BorderStroke(1.dp, BorderDark)
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "My Programs (${programs.size})",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                    }
+                }
+
+                if (programs.isEmpty()) {
+                    Text(
+                        text = "No programs stored yet. Create one below to get started.",
+                        fontSize = 13.sp,
+                        color = TextSecondary
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 340.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(programs, key = { it.id }) { prog ->
+                            val isActive = prog.id == activeProgramId
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isActive) AccentOrange.copy(alpha = 0.12f) else BgDark,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isActive) AccentOrange else BorderDark
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectProgram(prog.id) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = prog.safeProgramName,
+                                                fontSize = 14.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isActive) AccentOrange else TextPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (isActive) {
+                                                Icon(
+                                                    Icons.Default.Check,
+                                                    contentDescription = "Active",
+                                                    tint = AccentOrange,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "${prog.safeDays.size} workout day${if (prog.safeDays.size == 1) "" else "s"}",
+                                            fontSize = 11.5.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        IconButton(
+                                            onClick = { onDuplicateProgram(prog) },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "Duplicate",
+                                                tint = TextSecondary,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onRenameProgram(prog) },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = "Rename",
+                                                tint = TextSecondary,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onDeleteProgram(prog) },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Delete",
+                                                tint = DecreaseRed.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onCreateNew,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentOrange,
+                        contentColor = Color(0xFF140D07)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("+ Create New Program", fontWeight = FontWeight.ExtraBold, fontSize = 13.5.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreateOrRenameProgramDialog(
+    title: String,
+    initialName: String,
+    confirmButtonText: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nameText by remember { mutableStateOf(initialName) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = SurfaceCard,
+            border = BorderStroke(1.dp, BorderDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+
+                OutlinedTextField(
+                    value = nameText,
+                    onValueChange = { nameText = it },
+                    label = { Text("Program Name") },
+                    placeholder = { Text("e.g. Push Pull Legs, Upper Lower, 5-Day Split") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentOrange,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (nameText.isNotBlank()) onConfirm(nameText.trim())
+                        },
+                        enabled = nameText.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AccentOrange,
+                            contentColor = Color(0xFF140D07)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(confirmButtonText, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddOrEditDayDialog(
+    title: String,
+    initialName: String,
+    initialFocus: String,
+    canDelete: Boolean,
+    onSave: (String, String) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var dayName by remember { mutableStateOf(initialName) }
+    var dayFocus by remember { mutableStateOf(initialFocus) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = SurfaceCard,
+            border = BorderStroke(1.dp, BorderDark),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+
+                OutlinedTextField(
+                    value = dayName,
+                    onValueChange = { dayName = it },
+                    label = { Text("Day Name") },
+                    placeholder = { Text("e.g. Day 1: Push, Upper Body, Chest & Triceps") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentOrange,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = dayFocus,
+                    onValueChange = { dayFocus = it },
+                    label = { Text("Target Focus (Optional)") },
+                    placeholder = { Text("e.g. Quad overload, Heavy bench progression") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentOrange,
+                        unfocusedBorderColor = BorderDark,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (canDelete) {
+                        TextButton(
+                            onClick = onDelete,
+                            colors = ButtonDefaults.textButtonColors(contentColor = DecreaseRed)
+                        ) {
+                            Text("Delete Day", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Spacer(Modifier.width(1.dp))
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onDismiss) {
+                            Text("Cancel", color = TextSecondary)
+                        }
+                        Button(
+                            onClick = {
+                                if (dayName.isNotBlank()) onSave(dayName.trim(), dayFocus.trim())
+                            },
+                            enabled = dayName.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AccentOrange,
+                                contentColor = Color(0xFF140D07)
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Save", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1108,21 +1501,25 @@ private fun ProgramExercisePickerDialog(
     var selectedCategory by remember { mutableStateOf("All") }
     var targetSets by remember { mutableIntStateOf(3) }
     var targetReps by remember { mutableIntStateOf(8) }
+
     var newCustomCategory by remember { mutableStateOf("Chest") }
     var newCustomBodyweight by remember { mutableStateOf(false) }
 
-    val categories = listOf("All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core", "Other")
+    val categories = remember(availableExercises) {
+        listOf("All") + availableExercises.map { it.category }.distinct().filter { it.isNotBlank() }.sorted()
+    }
 
     val filtered = remember(availableExercises, searchQuery, selectedCategory) {
-        val q = searchQuery.trim()
         availableExercises.filter { ex ->
-            val cat = ex.category.ifBlank { "Other" }
-            val matchesCat = selectedCategory == "All" || cat.equals(selectedCategory, ignoreCase = true)
-            val matchesQuery = q.isEmpty() ||
-                ex.name.contains(q, ignoreCase = true) ||
-                cat.contains(q, ignoreCase = true)
-            matchesCat && matchesQuery
-        }.sortedBy { it.name.lowercase() }
+            val matchesCategory = selectedCategory == "All" || ex.category.equals(selectedCategory, ignoreCase = true)
+            val matchesQuery = searchQuery.isBlank() || ex.name.contains(searchQuery.trim(), ignoreCase = true)
+            matchesCategory && matchesQuery
+        }
+    }
+
+    val exactMatchExists = remember(availableExercises, searchQuery) {
+        val q = searchQuery.trim()
+        q.isNotBlank() && availableExercises.any { it.name.equals(q, ignoreCase = true) }
     }
 
     Dialog(
@@ -1132,7 +1529,7 @@ private fun ProgramExercisePickerDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.86f),
+                .fillMaxHeight(0.85f),
             shape = RoundedCornerShape(20.dp),
             color = SurfaceDark,
             border = BorderStroke(1.dp, BorderDark)
@@ -1141,37 +1538,33 @@ private fun ProgramExercisePickerDialog(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Header
+                // Header & Target Sets/Reps presets
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Add Exercise to Day",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = "Set default sets × reps and tap any movement",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                    }
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Text(
+                        text = "Add Exercise to Day",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(30.dp)
+                    ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
-                // Default Sets & Reps Bar
+                // Steppers for Target Sets & Reps
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = BgDark,
-                    border = BorderStroke(0.8.dp, BorderDark),
+                    color = SurfaceCard,
+                    border = BorderStroke(0.7.dp, BorderDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1182,12 +1575,17 @@ private fun ProgramExercisePickerDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Target Prescription:",
-                            fontSize = 12.sp,
+                            text = "PRESCRIBED TARGETS",
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            letterSpacing = 0.5.sp
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             CompactStepperPill(
                                 label = "SETS",
                                 value = targetSets,
@@ -1204,45 +1602,62 @@ private fun ProgramExercisePickerDialog(
                     }
                 }
 
-                // Search Bar
-                ModernSearchBar(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it },
-                    placeholder = "Search ${availableExercises.size} exercises or type a new one..."
-                )
-
-                // Category Chips
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                // Search box
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = BgDark,
+                    border = BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
+                        cursorBrush = SolidColor(AccentOrange),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text("Search exercises catalog...", color = TextMuted, fontSize = 14.sp)
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
+
+                // Category chips
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(categories) { cat ->
-                        val active = selectedCategory == cat
+                        val isSelected = selectedCategory == cat
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (active) AccentOrange else SurfaceCard,
-                            border = BorderStroke(1.dp, if (active) AccentOrange else BorderDark),
+                            color = if (isSelected) AccentOrange else SurfaceCard,
+                            border = BorderStroke(0.7.dp, if (isSelected) AccentOrange else BorderDark),
                             modifier = Modifier.clickable { selectedCategory = cat }
                         ) {
                             Text(
                                 text = cat,
                                 fontSize = 11.5.sp,
-                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                                color = if (active) Color(0xFF140D07) else TextSecondary,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) Color(0xFF140D07) else TextSecondary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
                     }
                 }
 
-                // Exercise List or Quick-Create
+                // Exercise list
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (searchQuery.trim().isNotEmpty() &&
-                        availableExercises.none { it.name.equals(searchQuery.trim(), ignoreCase = true) }
-                    ) {
+                    // Create new custom exercise banner if searched exercise doesn't exist
+                    if (searchQuery.trim().isNotBlank() && !exactMatchExists) {
                         item {
                             Surface(
                                 shape = RoundedCornerShape(12.dp),

@@ -9,6 +9,12 @@ mobile-android/.gradle/
 mobile-android/build/
 mobile-android/app/build/
 mobile-android/local.properties
+mobile-android/gradle/gradle-daemon-jvm.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
 
 # Private Credentials & Service Account Keys
 keys/

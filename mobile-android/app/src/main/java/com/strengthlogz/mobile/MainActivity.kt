@@ -270,7 +270,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     bottomBar = {
-                        // Streamlined 4-tab Primary Bottom Navigation Bar
+                        // Streamlined 5-tab Primary Bottom Navigation Bar with centered icons & top clearance
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -281,8 +281,8 @@ class MainActivity : ComponentActivity() {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(64.dp)
-                                    .padding(horizontal = 8.dp),
+                                    .height(68.dp)
+                                    .padding(horizontal = 6.dp, vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceAround,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -411,7 +411,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         )
                                         Screen.PROGRAM -> ProgramScreen(
-                                            program = repository.getProgram(),
+                                            programs = repository.getPrograms(),
+                                            activeProgramId = repository.getActiveProgram()?.id,
                                             availableExercises = repository.appData.exercises,
                                             workouts = repository.appData.workouts,
                                             allSets = repository.appData.sets,
@@ -420,6 +421,22 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onSaveProgram = { updatedProg ->
                                                 repository.saveProgram(updatedProg)
+                                                dataVersion++
+                                            },
+                                            onCreateProgram = { name ->
+                                                repository.createProgram(name)
+                                                dataVersion++
+                                            },
+                                            onDeleteProgram = { id ->
+                                                repository.deleteProgram(id)
+                                                dataVersion++
+                                            },
+                                            onSelectProgram = { id ->
+                                                repository.setActiveProgramId(id)
+                                                dataVersion++
+                                            },
+                                            onDuplicateProgram = { id ->
+                                                repository.duplicateProgram(id)
                                                 dataVersion++
                                             },
                                             onAddCustomExercise = { newEx ->
@@ -596,7 +613,7 @@ private fun ModernNavItem(
     val interactionSource = remember { MutableInteractionSource() }
 
     val iconScale by animateFloatAsState(
-        targetValue = if (isSelected) 1.12f else 1.0f,
+        targetValue = if (isSelected) 1.08f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -613,23 +630,26 @@ private fun ModernNavItem(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
-            ),
+            )
+            .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .scale(iconScale)
+                .height(28.dp)
+                .width(48.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(if (isSelected) AccentOrange.copy(alpha = 0.16f) else Color.Transparent)
-                .padding(horizontal = 12.dp, vertical = 5.dp),
+                .background(if (isSelected) AccentOrange.copy(alpha = 0.18f) else Color.Transparent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = screen.icon,
                 contentDescription = screen.title,
                 tint = contentColor,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier
+                    .size(20.dp)
+                    .scale(iconScale)
             )
 
             // Active draft badge dot
@@ -638,6 +658,7 @@ private fun ModernNavItem(
                     modifier = Modifier
                         .size(7.dp)
                         .align(Alignment.TopEnd)
+                        .padding(top = 2.dp, end = 2.dp)
                         .clip(CircleShape)
                         .background(AccentOrange)
                 )

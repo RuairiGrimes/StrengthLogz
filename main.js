@@ -41,11 +41,33 @@ handle('reload', async () => { await data.reload(); return data.state(); });
 handle('saveWorkout', (payload) => data.saveWorkout(payload));
 handle('deleteWorkout', (id) => data.deleteWorkout(id));
 handle('addExercise', (ex) => data.addExercise(ex));
+handle('updateExercise', (payload) => data.updateExercise(payload));
 handle('connect', (cfg) => data.connect(cfg));
 handle('disconnect', () => data.disconnect());
 handle('importHistory', () => data.importHistory());
 handle('copyLocalToSheets', (opts) => data.copyLocalToSheets(opts));
 handle('clearAllData', () => data.clearAllData());
+
+// Programs
+handle('saveProgram', (prog) => data.saveProgram(prog));
+handle('createProgram', (name) => data.createProgram(name));
+handle('deleteProgram', (id) => data.deleteProgram(id));
+handle('duplicateProgram', (id) => data.duplicateProgram(id));
+handle('setActiveProgramId', (id) => data.setActiveProgramId(id));
+
+// Goals
+handle('saveGoal', (goal) => data.saveGoal(goal));
+handle('deleteGoal', (id) => data.deleteGoal(id));
+handle('toggleGoalEnabled', (id) => data.toggleGoalEnabled(id));
+
+// Body Weights
+handle('addBodyWeight', (entry) => data.addBodyWeight(entry));
+handle('deleteBodyWeight', (date) => data.deleteBodyWeight(date));
+
+// Draft
+handle('saveDraft', (draft) => data.saveDraft(draft));
+handle('clearDraft', () => data.clearDraft());
+
 handle('pickKeyFile', async () => {
   const res = await dialog.showOpenDialog(win, {
     title: 'Select Google service account key (JSON)',

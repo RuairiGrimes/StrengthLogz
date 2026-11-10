@@ -131,13 +131,6 @@ fun GoalsScreen(
         }
     }
 
-    // Auto-expand first goal if none expanded yet
-    LaunchedEffect(evaluations.size) {
-        if (expandedGoalIds.isEmpty() && evaluations.isNotEmpty()) {
-            expandedGoalIds = setOf(evaluations.first().goal.id)
-        }
-    }
-
     val filteredEvaluations = remember(evaluations, filterTab) {
         when (filterTab) {
             GoalFilterTab.ALL -> evaluations
@@ -158,64 +151,56 @@ fun GoalsScreen(
         } else 0.0
     }
 
-    // Single unified scrollable screen (header, KPIs, filters, and goal cards scroll together as one page)
+    // Single unified scrollable screen
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(BgDark),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 1. Unified Header: Back + Title aligned with All Reports & New Goal buttons, plus single-line subtitle
+        // 1. Clean, uncluttered header
         item(key = "goals_header") {
-            Column(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(SurfaceCard, CircleShape)
                     ) {
-                        IconButton(
-                            onClick = onBack,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(SurfaceCard, CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to Progress",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Text(
-                            text = "Strength Goals",
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Strength Goals",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TextPrimary
+                    )
+                }
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (goals.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = SurfaceCard,
-                            border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.55f)),
+                            border = BorderStroke(1.dp, BorderDark),
                             modifier = Modifier
                                 .height(34.dp)
                                 .clickable { showAllGoalsMasterReport = true }
@@ -227,120 +212,55 @@ fun GoalsScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Assessment,
-                                    contentDescription = "All Goals Report",
+                                    contentDescription = "Reports",
                                     tint = GoldPR,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "All Reports",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GoldPR,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = AccentOrange,
-                            modifier = Modifier
-                                .height(34.dp)
-                                .clickable {
-                                    editingGoal = null
-                                    preselectedExerciseName = null
-                                    showCreateEditDialog = true
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "New Goal",
-                                    tint = Color(0xFF140D07),
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Text(
-                                    text = "New Goal",
+                                    text = "Reports",
                                     fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF140D07),
-                                    maxLines = 1,
-                                    softWrap = false
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
                                 )
                             }
                         }
                     }
-                }
 
-                // Single-line subtitle with active badge
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "All Periodization, Session Targets & Progress Reports",
-                        fontSize = 11.5.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = AccentOrange.copy(alpha = 0.16f),
-                        border = BorderStroke(0.7.dp, AccentOrange.copy(alpha = 0.45f))
+                        shape = RoundedCornerShape(10.dp),
+                        color = AccentOrange,
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clickable {
+                                editingGoal = null
+                                preselectedExerciseName = null
+                                showCreateEditDialog = true
+                            }
                     ) {
-                        Text(
-                            text = "${goals.size} active",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AccentOrange,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "New Goal",
+                                tint = Color(0xFF140D07),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "New Goal",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF140D07)
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // 2. Executive Summary KPI Strip
-        item(key = "goals_kpi_strip") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                GoalSummaryMiniCard(
-                    label = "PORTFOLIO AVG",
-                    value = "${formatWeightValue(avgCompletion)}%",
-                    sub = "${evaluations.size} total goals",
-                    valueColor = AccentOrange,
-                    modifier = Modifier.weight(1f)
-                )
-                GoalSummaryMiniCard(
-                    label = "ACHIEVED",
-                    value = "$achievedCount / ${evaluations.size}",
-                    sub = if (achievedCount > 0) "Milestones hit 🏆" else "In pursuit",
-                    valueColor = GoldPR,
-                    modifier = Modifier.weight(1f)
-                )
-                GoalSummaryMiniCard(
-                    label = "BODY WEIGHT",
-                    value = "${formatWeightValue(latestBwKg)} kg",
-                    sub = "Used for Rel. BW",
-                    valueColor = IncreaseGreen,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        // 3. Filter Tabs
+        // 2. Filter Tabs
         item(key = "goals_filter_tabs") {
             Row(
                 modifier = Modifier
@@ -351,18 +271,23 @@ fun GoalsScreen(
             ) {
                 GoalFilterTab.entries.forEach { tab ->
                     val selected = filterTab == tab
+                    val label = when (tab) {
+                        GoalFilterTab.ALL -> "All (${evaluations.size})"
+                        GoalFilterTab.ACTIVE -> "In Progress (${evaluations.count { !it.isAchieved && it.goal.enabled }})"
+                        GoalFilterTab.ACHIEVED -> "Achieved (${evaluations.count { it.isAchieved }})"
+                    }
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (selected) AccentOrange else Color.Transparent)
                             .clickable { filterTab = tab }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 7.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = tab.label,
-                            fontSize = 12.sp,
+                            text = label,
+                            fontSize = 11.sp,
                             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
                             color = if (selected) Color(0xFF140D07) else TextSecondary,
                             maxLines = 1
@@ -677,7 +602,6 @@ private fun GoalProgrammingCard(
     onTrainGoalNow: () -> Unit
 ) {
     val goal = evaluation.goal
-    var showWarmups by remember { mutableStateOf(false) }
 
     val statusColor = when (evaluation.status) {
         GoalStatus.ACHIEVED -> GoldPR
@@ -703,10 +627,10 @@ private fun GoalProgrammingCard(
     )
 
     StrengthCard(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
-            width = if (evaluation.isAchieved) 1.4.dp else 1.dp,
-            color = if (evaluation.isAchieved) GoldPR.copy(alpha = 0.7f)
+            width = if (evaluation.isAchieved) 1.2.dp else 1.dp,
+            color = if (evaluation.isAchieved) GoldPR.copy(alpha = 0.6f)
             else if (!goal.enabled) BorderDark.copy(alpha = 0.4f)
             else BorderDark
         ),
@@ -714,403 +638,241 @@ private fun GoalProgrammingCard(
             .fillMaxWidth()
             .animateContentSize()
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Card Header: Exercise Name, Category, Type Badge & Status
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Row 1: Exercise name + Category pill on left, Target headline on right
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onToggleExpand() },
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        Text(
-                            text = goal.exerciseName,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (goal.enabled) TextPrimary else TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        CategoryPill(category = evaluation.category)
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = SurfaceDark,
-                            border = BorderStroke(0.7.dp, BorderDark)
-                        ) {
-                            Text(
-                                text = if (goal.isSetsRepsGoal) "SETS × REPS GOAL" else "1RM GOAL",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AccentPeach,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = statusColor.copy(alpha = 0.16f),
-                            border = BorderStroke(0.7.dp, statusColor.copy(alpha = 0.55f))
-                        ) {
-                            Text(
-                                text = evaluation.status.label,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = statusColor,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-
-                        if (!goal.enabled) {
-                            Text(
-                                text = "• Paused",
-                                fontSize = 10.5.sp,
-                                color = TextMuted,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
-                            )
-                        }
-                    }
+                    Text(
+                        text = goal.exerciseName,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (goal.enabled) TextPrimary else TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    CategoryPill(category = evaluation.category)
                 }
 
                 Spacer(Modifier.width(8.dp))
 
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = targetHeadline,
-                        fontSize = 15.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (evaluation.isAchieved) GoldPR else AccentOrange,
-                        maxLines = 1
-                    )
-                    Text(
-                        text = if (goal.isSetsRepsGoal) "≈ ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg E1RM"
-                        else "Target (${"%.2f".format(evaluation.targetRelBw)}× BW)",
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        maxLines = 1
-                    )
-                }
+                Text(
+                    text = targetHeadline,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (evaluation.isAchieved) GoldPR else AccentOrange,
+                    maxLines = 1
+                )
             }
 
-            // Progress Bar & Current vs Target Strip
-            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Current Best: ${formatWeightValue(evaluation.currentBestE1rm)}kg E1RM (${"%.2f".format(evaluation.currentRelBw)}× BW • ${evaluation.strengthTier})",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "${formatWeightValue(evaluation.progressPct)}%",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (evaluation.isAchieved) GoldPR else AccentOrange,
-                        maxLines = 1
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(BgDark)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(animatedProgress)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (evaluation.isAchieved) GoldGradient else OrangeGradient
-                            )
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (goal.isSetsRepsGoal)
-                            "Qualifying sets at ${formatWeightValue(goal.targetWeightKg)}kg×${goal.targetReps}: ${evaluation.bestMatchingSetsAtTargetWeightReps}/${goal.targetSets}"
-                        else "Best Set: ${evaluation.bestSetSummary}",
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = if (evaluation.isAchieved) "Achieved ${goal.achievedDate ?: "✓"}"
-                        else "${formatWeightValue(evaluation.remainingKg)}kg left • ~${evaluation.estimatedWeeksToGoal}w",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AccentPeach,
-                        maxLines = 1
-                    )
-                }
-            }
-
-            // Quick Next Session Prescription Banner (Always visible)
-            Surface(
-                shape = RoundedCornerShape(11.dp),
-                color = BgDark,
-                border = BorderStroke(0.8.dp, BorderDark),
+            // Row 2: Status pill on left, Current best & progress % on right
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onToggleExpand() }
+                    .clickable { onToggleExpand() },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    Surface(
+                        shape = RoundedCornerShape(5.dp),
+                        color = statusColor.copy(alpha = 0.14f),
+                        border = BorderStroke(0.7.dp, statusColor.copy(alpha = 0.45f))
                     ) {
                         Text(
-                            text = "NEXT SESSION TARGET • ${evaluation.methodologyTitle.uppercase()}",
+                            text = evaluation.status.label,
                             fontSize = 9.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = AccentOrange,
-                            letterSpacing = 0.4.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = evaluation.nextSessionSummary,
-                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
+                            color = statusColor,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
+
+                    if (!goal.enabled) {
                         Text(
-                            text = if (isExpanded) "Hide Plan" else "Programming",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AccentPeach,
-                            maxLines = 1
+                            text = "Paused",
+                            fontSize = 10.sp,
+                            color = TextMuted,
+                            fontWeight = FontWeight.Medium
                         )
+                    }
+                }
+
+                Text(
+                    text = "Best: ${formatWeightValue(evaluation.currentBestE1rm)}kg • ${formatWeightValue(evaluation.progressPct)}%",
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextSecondary
+                )
+            }
+
+            // Row 3: Progress Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(BgDark)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(animatedProgress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            if (evaluation.isAchieved) GoldGradient else OrangeGradient
+                        )
+                )
+            }
+
+            // Row 4: Next Session Target + Train Button + Expand toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onToggleExpand() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (evaluation.isAchieved) "Goal Reached! 🏆" else "Next: ${evaluation.nextSessionSummary}",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (evaluation.isAchieved) GoldPR else TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (!evaluation.isAchieved) {
+                        Surface(
+                            shape = RoundedCornerShape(7.dp),
+                            color = AccentOrange,
+                            modifier = Modifier.clickable { onTrainGoalNow() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Train",
+                                    tint = Color(0xFF140D07),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Train",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF140D07)
+                                )
+                            }
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onToggleExpand,
+                        modifier = Modifier.size(26.dp)
+                    ) {
                         Icon(
                             imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = AccentPeach,
+                            contentDescription = if (isExpanded) "Collapse" else "Expand",
+                            tint = TextSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            // EXPANDED PROGRAMMING RECOMMENDATIONS, ROADMAP & ACCESSORIES
+            // EXPANDED CONTENT: Clean, concise & actionable (no clutter)
             AnimatedVisibility(visible = isExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.padding(top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     HorizontalDivider(color = BorderDark, thickness = 0.6.dp)
 
-                    // 1. In-App Programming Rationale & Body Weight Analysis
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = SurfaceDark,
-                        border = BorderStroke(0.8.dp, BorderDark)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
+                    // 1. Next Workout Prescribed Sets
+                    if (evaluation.nextSessionSets.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "🧠 IN-APP PROGRAMMING RECOMMENDATION",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = GoldPR,
-                                letterSpacing = 0.6.sp
-                            )
-                            Text(
-                                text = evaluation.methodologyRationale,
-                                fontSize = 12.5.sp,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = "⚖️ Body Weight & Leverage: ${evaluation.bodyWeightAdvice}",
-                                fontSize = 11.5.sp,
-                                color = TextSecondary
-                            )
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                ProgrammingMetricBadge(
-                                    title = "FREQUENCY",
-                                    value = "${evaluation.sessionsPerWeek}/wk → ${evaluation.recommendedSessionsPerWeek}/wk",
-                                    modifier = Modifier.weight(1f)
-                                )
-                                ProgrammingMetricBadge(
-                                    title = "WEEKLY VOLUME",
-                                    value = "${evaluation.recommendedSetsPerWeek} sets",
-                                    modifier = Modifier.weight(1f)
-                                )
-                                ProgrammingMetricBadge(
-                                    title = "VELOCITY",
-                                    value = "+${formatWeightValue(evaluation.monthlyE1rmGainKg)}kg/mo",
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
-
-                    // 2. Detailed Next Session Working Sets + Optional Warmup Ramp
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "NEXT WORKOUT SET-BY-SET PRESCRIPTION",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                text = "NEXT SESSION SETS",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = TextSecondary,
-                                letterSpacing = 0.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
+                                letterSpacing = 0.5.sp
                             )
-                            if (evaluation.warmupSets.isNotEmpty()) {
-                                Spacer(Modifier.width(8.dp))
+                            evaluation.nextSessionSets.forEach { ps ->
+                                PrescribedSetRow(set = ps, isBodyweight = evaluation.isBodyweight, isWarmup = false)
+                            }
+                            if (evaluation.nextSessionFocusCue.isNotBlank()) {
                                 Text(
-                                    text = if (showWarmups) "Hide Warmups" else "+ ${evaluation.warmupSets.size} Warmups",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "💡 ${evaluation.nextSessionFocusCue}",
+                                    fontSize = 10.5.sp,
                                     color = AccentPeach,
-                                    maxLines = 1,
-                                    modifier = Modifier.clickable { showWarmups = !showWarmups }
+                                    modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
                         }
-
-                        if (showWarmups && evaluation.warmupSets.isNotEmpty()) {
-                            evaluation.warmupSets.forEach { ws ->
-                                PrescribedSetRow(set = ws, isBodyweight = evaluation.isBodyweight, isWarmup = true)
-                            }
-                        }
-
-                        evaluation.nextSessionSets.forEach { ps ->
-                            PrescribedSetRow(set = ps, isBodyweight = evaluation.isBodyweight, isWarmup = false)
-                        }
-
-                        Text(
-                            text = "💡 Cue: ${evaluation.nextSessionFocusCue}",
-                            fontSize = 11.5.sp,
-                            color = AccentPeach,
-                            fontWeight = FontWeight.Medium
-                        )
                     }
 
-                    // 3. 4-Phase Periodization Roadmap
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "4-PHASE PERIODIZATION ROADMAP TO GOAL",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
-                        )
-                        evaluation.roadmapPhases.forEach { phase ->
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = BgDark,
-                                border = BorderStroke(0.7.dp, BorderDark)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                    // 2. 4-Phase Periodization Milestones
+                    if (evaluation.roadmapPhases.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "MILESTONES",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextSecondary,
+                                letterSpacing = 0.5.sp
+                            )
+                            evaluation.roadmapPhases.forEach { phase ->
+                                Surface(
+                                    shape = RoundedCornerShape(7.dp),
+                                    color = BgDark,
+                                    border = BorderStroke(0.6.dp, BorderDark)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = phase.title,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TextPrimary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false)
-                                            )
-                                            Text(
-                                                text = "• ${phase.weeksLabel}",
-                                                fontSize = 11.sp,
-                                                color = AccentPeach,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1
-                                            )
-                                        }
                                         Text(
-                                            text = phase.focusCue,
+                                            text = phase.title,
                                             fontSize = 11.sp,
-                                            color = TextSecondary
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextPrimary
                                         )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Column(horizontalAlignment = Alignment.End) {
                                         Text(
                                             text = phase.prescriptionSummary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = AccentOrange,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = "≈ ${formatWeightValue(phase.milestoneE1rmKg)}kg E1RM",
-                                            fontSize = 10.5.sp,
-                                            color = GoldPR,
-                                            maxLines = 1
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AccentOrange
                                         )
                                     }
                                 }
@@ -1118,212 +880,65 @@ private fun GoalProgrammingCard(
                         }
                     }
 
-                    // 4. Rep-Max Equivalence Table (How to hit Target Goal across rep ranges)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "EQUIVALENT REP TARGETS FOR ${formatWeightValue(evaluation.effectiveTargetE1rm)}KG E1RM",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    // 3. Goal Actions Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = onOpenReport,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(0.8.dp, BorderDark),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(30.dp)
                         ) {
-                            evaluation.repEquivalenceTable.forEach { (reps, weight) ->
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = BgDark,
-                                    border = BorderStroke(0.7.dp, BorderDark)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 3.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "${reps}RM",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextSecondary,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = if (evaluation.isBodyweight && weight <= 0.0) "BW"
-                                            else if (evaluation.isBodyweight) "+${formatWeightValue(weight)}k"
-                                            else "${formatWeightValue(weight)}k",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = TextPrimary,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
+                            Text("Report", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = onEditGoal,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(0.8.dp, BorderDark),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(30.dp)
+                        ) {
+                            Text("Edit", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = onToggleEnabled,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(0.8.dp, BorderDark),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (goal.enabled) TextSecondary else IncreaseGreen),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(30.dp)
+                        ) {
+                            Text(if (goal.enabled) "Pause" else "Resume", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        IconButton(
+                            onClick = onDeleteGoal,
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete",
+                                tint = DecreaseRed.copy(alpha = 0.8f),
+                                modifier = Modifier.size(15.dp)
+                            )
                         }
                     }
-
-                    // 5. Complementary / Weak-Point Accessory Lifts
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "RECOMMENDED WEAK-POINT ACCESSORY LIFTS",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
-                        )
-                        evaluation.accessories.forEach { acc ->
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = BgDark,
-                                border = BorderStroke(0.7.dp, BorderDark)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = acc.exerciseName,
-                                                fontSize = 12.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TextPrimary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.weight(1f, fill = false)
-                                            )
-                                            CategoryPill(category = acc.category)
-                                        }
-                                        Text(
-                                            text = acc.transferBenefit,
-                                            fontSize = 11.sp,
-                                            color = TextSecondary
-                                        )
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = if (acc.recentSessions > 0) IncreaseGreen.copy(alpha = 0.14f) else AccentOrange.copy(alpha = 0.14f)
-                                    ) {
-                                        Text(
-                                            text = acc.statusBadge,
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (acc.recentSessions > 0) IncreaseGreen else AccentOrange,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Card Bottom Action Row: Load in Logger | Goal Report | Edit | Pause | Delete
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onTrainGoalNow,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentOrange,
-                        contentColor = Color(0xFF140D07)
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .weight(1.15f)
-                        .height(36.dp)
-                ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "Load in Logger",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onOpenReport,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GoldPR),
-                    border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.55f)),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                    modifier = Modifier
-                        .weight(0.95f)
-                        .height(36.dp)
-                ) {
-                    Icon(Icons.Default.Assessment, contentDescription = null, tint = GoldPR, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "Goal Report",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                IconButton(
-                    onClick = onEditGoal,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(BgDark, RoundedCornerShape(9.dp))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit Goal",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onToggleEnabled,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(BgDark, RoundedCornerShape(9.dp))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Flag,
-                        contentDescription = if (goal.enabled) "Disable Goal" else "Enable Goal",
-                        tint = if (goal.enabled) IncreaseGreen else TextMuted,
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onDeleteGoal,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(BgDark, RoundedCornerShape(9.dp))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete Goal",
-                        tint = DecreaseRed.copy(alpha = 0.8f),
-                        modifier = Modifier.size(15.dp)
-                    )
                 }
             }
         }

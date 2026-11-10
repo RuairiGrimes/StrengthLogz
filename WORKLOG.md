@@ -585,3 +585,75 @@ This worklog back-dates and details all active features, milestones, refactors, 
    - Tapping **`Load Day N to Logger`** pre-populates `LogWorkoutScreen` with all exercises for that day, automatically carrying forward the lifter's previous working weights alongside their programmed sets and reps.
 4. **GitHub Actions CI/CD Pipeline ([`.github/workflows/build-apk.yml`](file:///c:/MyProjects/StrengthLogz/.github/workflows/build-apk.yml))**:
    - Configured automated Ubuntu CI workflow with JDK 17 (Temurin) and Gradle 8.7 that runs `testDebugUnitTest`, compiles `assembleDebug`, and publishes `StrengthLogz-Native-APK` as a downloadable build artifact on every push and pull request.
+
+---
+
+## [Phase 14: Navigation Spacing, Goals Decluttering & Multi-Program Custom Builder] — 10-NOV-2026 (Evening)
+*Commit Scope: Android client (`mobile-android/`) — Bottom navigation pill clearance & vertical centering, decluttered Goals screen with focused goal cards, and full custom multi-program system with zero forced defaults.*
+
+### Features & Refactors
+1. **Navigation Bar Gap & Vertical Centering ([`MainActivity.kt`](file:///c:/MyProjects/StrengthLogz/mobile-android/app/src/main/java/com/strengthlogz/mobile/MainActivity.kt))**:
+   - Resolved the top edge collision where the highlighted oval selection capsule pushed directly against the top border of the bottom navigation bar.
+   - Expanded bar height from `64.dp` to `68.dp` and added comfortable vertical padding (`padding(horizontal = 6.dp, vertical = 4.dp)`).
+   - Constrained the selection capsule to a fixed, centered `28.dp × 48.dp` container with `RoundedCornerShape(14.dp)`, applying icon scaling purely to the vector glyph rather than scaling the outer container bounds upward.
+   - Guaranteed an ~11–12dp top clearance margin from the top border for all selected and unselected navigation items.
+2. **Goals Screen Decluttering ([`GoalsScreen.kt`](file:///c:/MyProjects/StrengthLogz/mobile-android/app/src/main/java/com/strengthlogz/mobile/ui/GoalsScreen.kt))**:
+   - Stripped away the bulky 3-card executive KPI strip (`PORTFOLIO AVG`, `ACHIEVED`, `BODY WEIGHT`) and long subtitle banners that previously pushed actual goals below the fold.
+   - Removed the automatic expansion of the first goal card on load, keeping all goal cards neatly collapsed by default.
+   - Redesigned `GoalProgrammingCard` into a clean, modern card:
+     - **Card Header**: Bold exercise name + category pill on the left, target headline (`120 kg 1RM` or `3 × 8 @ 100 kg`) on the right.
+     - **Progress Row**: Clean status badge (`On Track`, `Achieved 🏆`, `Paused`) + current best and percentage (`Best: 105 kg • 88%`).
+     - **Visual Bar**: Thin 5dp rounded progress bar with smooth gold/orange gradients.
+     - **Quick Action Row**: Single-line next session target (`Next: 3 × 5 @ 102.5 kg`) + 1-tap **`Train`** button (loads session into Logger) + subtle expand chevron.
+     - **Expanded Content**: Kept strictly actionable—next session prescribed working sets, periodization milestones, and clean action buttons (`Report`, `Edit`, `Pause/Resume`, `Delete`), eliminating long walls of redundant text.
+3. **Multi-Program Custom Builder ([`ProgramScreen.kt`](file:///c:/MyProjects/StrengthLogz/mobile-android/app/src/main/java/com/strengthlogz/mobile/ui/ProgramScreen.kt), [`WorkoutRepository.kt`](file:///c:/MyProjects/StrengthLogz/mobile-android/app/src/main/java/com/strengthlogz/mobile/data/WorkoutRepository.kt), [`Models.kt`](file:///c:/MyProjects/StrengthLogz/mobile-android/app/src/main/java/com/strengthlogz/mobile/model/Models.kt))**:
+   - Removed all hardcoded split templates, forced days per week (1–7), preset exercise lists, and template reset buttons.
+   - Added support for storing and switching between **multiple custom programs** (`AppData.programs`, `activeProgramId`).
+   - Built a **Program Switcher & Manager** modal allowing lifters to create new programs, switch between active programs, rename programs, duplicate programs, and delete programs.
+   - Empty state cleanly guides lifters to create their first program from scratch.
+   - Lifters can add any number of custom workout days (`+ Add Day`), customize day names (e.g. `Day 1: Push`, `Upper Body A`, `Quad Focus`) and muscle focus, and add exercises directly from the catalog or create custom exercises on the fly.
+   - Exercise management per day includes target sets and reps steppers, last session performance indicators, reordering (Move Up / Down), and deletion.
+   - 1-tap **`Start Workout`** / **`Load in Logger`** loads the selected day's exercises and target sets into `LogWorkoutScreen` with previous weights automatically carried forward.
+
+---
+
+## [Phase 15: Full Desktop Parity Rebuild & Windows Distribution Packaging] — 10-NOV-2026 (Night)
+*Commit Scope: Electron desktop app rebuild (`main.js`, `preload.js`, `src/stores/local-store.js`, `src/data-service.js`, `renderer/`) to achieve 100% feature parity with the Native Android client, and fresh compilation of Windows installers and portable executables.*
+
+### Features & Architecture
+1. **Multi-Program Custom Split Builder (`#view-program`)**:
+   - Built a dedicated Program tab and full split builder view mirroring Android's `ProgramScreen.kt`.
+   - Complete multi-program management (`LocalStore.saveProgram`, `createProgram`, `deleteProgram`, `duplicateProgram`, `setActiveProgramId`): lifters can create programs completely from scratch (no forced templates or defaults), switch active programs, and manage days.
+   - Dynamic day editor with custom day naming, focus annotations, day reordering (Up/Down), and deletion.
+   - Exercise builder per day with search autocomplete from catalog, target sets stepper, reps min/max steppers, RPE target, rest timer target, notes, and previous performance weight hints.
+   - 1-tap **`Start Workout`** / **`Load in Logger`** seamlessly pre-fills `#view-log` with the day's exercises and automatically carries forward previous working weights.
+2. **Decluttered Modern Goals Module (`#view-goals`)**:
+   - Replaced old goals view with a modern, decluttered design matching Android's compact card layout.
+   - Quick filter tabs: `All`, `Active`, and `Achieved`.
+   - Compact goal cards with exercise name, category badge, target headline (`120 kg 1RM` or `3 × 8 @ 100 kg`), current best E1RM, status badge (`On Track`, `Achieved 🏆`, `Plateau Alert`, `Building Base`), thin progress bar, and gap closed percentage.
+   - Next Session prescription headline (`Next: 3 × 5 @ 102.5 kg`) and 1-tap **`Train`** action button that directly loads the prescribed session into `#view-log`.
+   - Collapsible deep-dive section with 4-phase periodization roadmap, weak-point accessories, and frequency/volume breakdown.
+   - Comprehensive **Create & Edit Goal** modal with smart start weight/reps auto-filled from personal records.
+   - Detailed **Exercise Goal Report** and **Master All-Goals Report** dialogs with status distributions, weekly programming blueprints, and history logs.
+3. **Body Weight Tracker & Total-Load E1RM Engine (`#view-settings`)**:
+   - Created a dedicated Body Weight logging card in Settings with date picker, weight input (kg), and instant logging.
+   - Chronological bodyweight log table with individual entry deletion.
+   - Integrated `BodyWeightUtils` with date carry-forward lookups across all historical and future sessions.
+   - Total-load E1RM computation for bodyweight movements (`Pull Ups`, `Chin Ups`, `Dips`): $\text{totalLoad} = \text{bodyWeightOnDate} + \text{addedLoad}$, correctly updating all analytics, personal records, and goal evaluations.
+4. **Dedicated Exercises Catalog Manager (`#view-exercises`)**:
+   - Full 82+ movement catalog browser with muscle category filter pills and live search.
+   - Category tags, kinetic descriptions, and bodyweight exercise badges.
+   - Custom exercise creator with name, category, bodyweight checkbox, and kinetic description.
+   - Exercise rename / edit modal featuring cascading updates across historical workout sets, active exercise goals, and weekly workout programs.
+5. **Enhanced Workout Logger (`#view-log`)**:
+   - Added **`Load Program`** quick-action button in header opening the Day picker modal to load any programmed day in 1 tap.
+   - Dynamic **`Goal Progress`** indicator and modal when logging an active goal exercise.
+   - Live total-load E1RM display for bodyweight lifts as weights and reps are entered.
+   - Automatic draft persistence across sessions (`saveDraft` / `clearDraft`).
+   - Post-workout goal evaluation popup presenting achieved milestones and updated progress upon saving.
+6. **Unified Navigation & Windows Native Distribution Packaging**:
+   - 8 sidebar navigation tabs (`Log`, `Program`, `Suggest`, `History`, `Progress`, `Goals`, `Exercises`, `Settings`) with keyboard shortcuts `Ctrl 1` through `Ctrl 8` and `Ctrl S` for saving.
+   - Obsidian dark UI theme (`#0F1115` obsidian, `#FF7A45` orange, `#FFD166` gold).
+   - Packaged production distribution via `electron-builder` into:
+     - `builds/StrengthLogz Setup 1.0.0.exe` (Windows NSIS installer, 82.5MB)
+     - `builds/StrengthLogz 1.0.0.exe` (Windows portable standalone, 82.3MB)
