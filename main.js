@@ -38,6 +38,7 @@ function handle(channel, fn) {
 
 handle('state', () => data.state());
 handle('reload', async () => { await data.reload(); return data.state(); });
+handle('syncNow', async () => { await data.reload(); return data.state(); });
 handle('saveWorkout', (payload) => data.saveWorkout(payload));
 handle('deleteWorkout', (id) => data.deleteWorkout(id));
 handle('addExercise', (ex) => data.addExercise(ex));

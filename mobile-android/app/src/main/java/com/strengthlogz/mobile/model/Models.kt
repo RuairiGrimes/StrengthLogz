@@ -36,9 +36,11 @@ data class Exercise(
 /** Body weight reading in kg. [date] is DD-MON-YYYY; [source] is "seed", "manual" or "healthconnect". */
 @Immutable
 data class BodyWeightEntry(
-    @SerializedName("date") val date: String,
-    @SerializedName("weightKg") val weightKg: Double,
-    @SerializedName("source") val source: String = "manual"
+    @SerializedName("date") val date: String = "",
+    @SerializedName("weightKg") val weightKg: Double = 0.0,
+    @SerializedName("source") val source: String = "manual",
+    /** Epoch ms of the last edit; 0 for legacy entries. Used for cross-device sync conflict resolution. */
+    @SerializedName("updatedAt") val updatedAt: Long = 0L
 )
 
 /**
@@ -67,8 +69,8 @@ data class GoalSessionReport(
  */
 @Immutable
 data class ExerciseGoal(
-    @SerializedName("id") val id: String,
-    @SerializedName("exerciseName") val exerciseName: String,
+    @SerializedName("id") val id: String = "",
+    @SerializedName("exerciseName") val exerciseName: String = "",
     @SerializedName("goalType") val goalType: String? = "E1RM",
     @SerializedName("targetE1rmKg") val targetE1rmKg: Double = 0.0,
     @SerializedName("targetWeightKg") val targetWeightKg: Double = 0.0,
@@ -84,7 +86,8 @@ data class ExerciseGoal(
     @SerializedName("achievedDate") val achievedDate: String? = null,
     @SerializedName("lastUpdatedDate") val lastUpdatedDate: String? = null,
     @SerializedName("notes") val notes: String? = "",
-    @SerializedName("sessionReports") val sessionReports: List<GoalSessionReport>? = emptyList()
+    @SerializedName("sessionReports") val sessionReports: List<GoalSessionReport>? = emptyList(),
+    @SerializedName("updatedAt") val updatedAt: Long = 0L
 ) {
     val safeGoalType: String get() = if (goalType == "SETS_REPS") "SETS_REPS" else "E1RM"
     val isSetsRepsGoal: Boolean get() = safeGoalType == "SETS_REPS"
@@ -123,7 +126,8 @@ data class WorkoutProgram(
     @SerializedName("programName") val programName: String? = "",
     @SerializedName("days") val days: List<ProgramDay>? = emptyList(),
     @SerializedName("lastLoadedDayIndex") val lastLoadedDayIndex: Int = -1,
-    @SerializedName("createdAt") val createdAt: String? = ""
+    @SerializedName("createdAt") val createdAt: String? = "",
+    @SerializedName("updatedAt") val updatedAt: Long = 0L
 ) {
     val safeId: String get() = if (id.isNotBlank()) id else java.util.UUID.randomUUID().toString()
     val safeProgramName: String get() = programName?.ifBlank { "Custom Program" } ?: "Custom Program"

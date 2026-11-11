@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { LocalStore } = require('./stores/local-store');
 const { SheetsStore } = require('./stores/sheets-store');
+const SyncMerge = require('./sync-merge');
 const DEFAULT_EXERCISES = require('../data/exercises.json');
 
 class DataService {
@@ -54,19 +55,95 @@ class DataService {
     this.store = store;
   }
 
-  async reload() {
-    const storeData = await this.store.loadAll();
+  async reload(options = {}) {
     const localData = await this.local.loadAll();
+    let storeData = localData;
+    let loadOk = true;
+    if (this.store.kind === 'sheets') {
+      try {
+        storeData = await this.store.loadAll();
+      } catch (err) {
+        if (options.strict) throw err;
+        loadOk = false;
+        console.error('[sync] loadAll', err);
+        this.lastError = `Could not load from Google Sheets: ${err.message}`;
+        storeData = {
+          workouts: this.cache.workouts.length ? this.cache.workouts : localData.workouts,
+          sets: this.cache.sets.length ? this.cache.sets : localData.sets,
+          exercises: this.cache.exercises.length ? this.cache.exercises : localData.exercises,
+        };
+      }
+    }
+    let meta = {
+      bodyWeights: localData.bodyWeights || [],
+      goals: localData.goals || [],
+      programs: localData.programs || [],
+      activeProgramId: localData.activeProgramId || null,
+    };
+    if (this.store.kind === 'sheets' && loadOk) {
+      try {
+        meta = await this._syncMetadata(storeData, localData);
+        this.lastError = null;
+      } catch (err) {
+        console.error('[sync] body weights / goals / programs', err);
+        this.lastError = `Could not sync body weights, goals and programs: ${err.message}`;
+      }
+    }
     this.cache = {
       workouts: storeData.workouts || [],
       sets: storeData.sets || [],
       exercises: storeData.exercises || [],
-      bodyWeights: localData.bodyWeights || [],
-      goals: localData.goals || [],
-      programs: localData.programs || [],
-      activeProgramId: localData.activeProgramId || (localData.programs && localData.programs[0] ? localData.programs[0].id : null),
+      bodyWeights: meta.bodyWeights,
+      goals: meta.goals,
+      programs: meta.programs,
+      activeProgramId: meta.activeProgramId || (meta.programs && meta.programs[0] ? meta.programs[0].id : null),
       draft: localData.draft || null,
     };
+  }
+
+  /**
+   * Merges local BodyWeights / Goals / Programs with the Google Sheets tabs (same rules as Android),
+   * writes the result to local storage and pushes a tab only when it actually changed.
+   */
+  async _syncMetadata(remote, local) {
+    const sync = local.sync || {};
+    const sameSheet = !sync.spreadsheetId || sync.spreadsheetId === this.store.spreadsheetId;
+    const arr = (k) => (sameSheet ? (sync[k] || []) : []);
+    const cmp = (v) => SyncMerge.stable(JSON.parse(JSON.stringify(v)));
+    const normBw = (b) => ({ date: b.date, weightKg: Number(b.weightKg), source: b.source || 'manual', updatedAt: Number(b.updatedAt) || 0 });
+    const normStamp = (x) => ({ ...x, updatedAt: Number(x.updatedAt) || 0 });
+
+    const remoteBw = (remote.bodyWeights || []).map(normBw).sort((a, b) => SyncMerge.isoKey(a.date).localeCompare(SyncMerge.isoKey(b.date)));
+    const bw = SyncMerge.mergeBodyWeights((local.bodyWeights || []).map(normBw), remoteBw, arr('pendingBodyWeights'), arr('syncedBodyWeights'));
+    if (cmp(bw) !== cmp(remoteBw)) await this.store.overwriteBodyWeights(bw);
+
+    const remoteGoals = (remote.goals || []).map(normStamp);
+    const goals = SyncMerge.mergeGoals((local.goals || []).map(normStamp), remoteGoals, arr('pendingGoals'), arr('syncedGoals'));
+    if (cmp([...goals].sort((a, b) => a.id.localeCompare(b.id))) !== cmp([...remoteGoals].sort((a, b) => a.id.localeCompare(b.id)))) {
+      await this.store.overwriteGoals(goals);
+    }
+
+    const remotePrograms = (remote.programs || []).map(normStamp);
+    const programs = SyncMerge.mergePrograms((local.programs || []).map(normStamp), remotePrograms, arr('pendingPrograms'), arr('syncedPrograms'));
+    const has = (id) => !!id && programs.some((p) => p.id === id);
+    const activeProgramId = has(local.activeProgramId) ? local.activeProgramId
+      : (has(remote.activeProgramId) ? remote.activeProgramId : (programs[0] ? programs[0].id : null));
+    if (cmp([...programs].sort((a, b) => a.id.localeCompare(b.id))) !== cmp([...remotePrograms].sort((a, b) => a.id.localeCompare(b.id)))
+      || (programs.length && activeProgramId !== remote.activeProgramId)) {
+      await this.store.overwritePrograms(programs, activeProgramId);
+    }
+
+    await this.local.saveBodyWeights(bw);
+    await this.local.saveGoals(goals);
+    await this.local.savePrograms(programs, activeProgramId);
+    await this.local.saveSync({
+      spreadsheetId: this.store.spreadsheetId,
+      pendingBodyWeights: [], pendingGoals: [], pendingPrograms: [],
+      syncedBodyWeights: bw.map((b) => SyncMerge.isoKey(b.date)),
+      syncedGoals: goals.map((g) => g.id),
+      syncedPrograms: programs.map((p) => p.id),
+    });
+    return { bodyWeights: bw, goals, programs, activeProgramId };
   }
 
   serviceAccountEmail(keyFile) {
@@ -138,7 +215,7 @@ class DataService {
     await this.store.addWorkouts([w], rows);
 
     // Update goals matching any logged exercise
-    const updatedGoals = this._updateGoalsOnWorkoutSave(w, rows);
+    const updatedGoals = await this._updateGoalsOnWorkoutSave(w, rows);
 
     await this.reload();
     return { state: this.state(), updatedGoals };
@@ -165,9 +242,29 @@ class DataService {
   }
 
   async updateExercise({ oldName, updated }) {
-    await this.local.updateExercise(oldName, updated);
+    const cleanOld = (oldName || '').trim();
+    const cleanNew = (updated?.name || '').trim();
+    if (!cleanNew) throw new Error('Exercise name required');
+    if (cleanOld.toLowerCase() !== cleanNew.toLowerCase()
+      && this.exercises().some((e) => e.name.toLowerCase() === cleanNew.toLowerCase())) {
+      throw new Error(`An exercise named "${cleanNew}" already exists`);
+    }
+    const cleanUpdated = {
+      name: cleanNew,
+      category: updated.category || 'Other',
+      bodyweight: !!updated.bodyweight,
+      description: updated.description || '',
+    };
+    await this.local.updateExercise(cleanOld, cleanUpdated);
     if (this.store.kind === 'sheets') {
-      await this.store.addExercises([updated]);
+      if (cleanOld.toLowerCase() !== cleanNew.toLowerCase()) {
+        await this.store.renameExerciseInSets(cleanOld, cleanNew);
+      }
+      const list = [...(this.cache.exercises || [])];
+      const idx = list.findIndex((e) => e.name.trim().toLowerCase() === cleanOld.toLowerCase());
+      if (idx >= 0) list[idx] = cleanUpdated;
+      else list.push(cleanUpdated);
+      await this.store.overwriteExercises(list);
     }
     await this.reload();
     return this.state();
@@ -178,6 +275,7 @@ class DataService {
   async saveProgram(program) {
     const programs = [...(this.cache.programs || [])];
     const idx = programs.findIndex((p) => p.id === program.id);
+    program = { ...program, updatedAt: Date.now() };
     if (idx >= 0) {
       programs[idx] = program;
     } else {
@@ -185,6 +283,7 @@ class DataService {
     }
     let activeId = this.cache.activeProgramId;
     if (!activeId || activeId === program.id) activeId = program.id;
+    await this.local.removePendingDelete('Programs', program.id);
     await this.local.savePrograms(programs, activeId);
     await this.reload();
     return this.state();
@@ -198,6 +297,7 @@ class DataService {
       days: [],
       lastLoadedDayIndex: -1,
       createdAt: new Date().toISOString().slice(0, 10),
+      updatedAt: Date.now(),
     };
     const programs = [...(this.cache.programs || []), newProg];
     await this.local.savePrograms(programs, newProg.id);
@@ -206,6 +306,7 @@ class DataService {
   }
 
   async deleteProgram(id) {
+    await this.local.addPendingDelete('Programs', id);
     let programs = (this.cache.programs || []).filter((p) => p.id !== id);
     let activeId = this.cache.activeProgramId;
     if (activeId === id) {
@@ -224,6 +325,7 @@ class DataService {
       id: newId('prog'),
       programName: `${orig.programName || 'Custom Program'} (Copy)`,
       createdAt: new Date().toISOString().slice(0, 10),
+      updatedAt: Date.now(),
     };
     const programs = [...(this.cache.programs || []), copy];
     await this.local.savePrograms(programs, copy.id);
@@ -245,8 +347,10 @@ class DataService {
       ...goal,
       id: goal.id || newId('goal'),
       exerciseName: (goal.exerciseName || goal.exercise || '').trim(),
+      enabled: goal.enabled !== false,
       createdDate: goal.createdDate || new Date().toISOString().slice(0, 10),
       sessionReports: goal.sessionReports || [],
+      updatedAt: Date.now(),
     };
     const idx = goals.findIndex((g) => g.id === clean.id || g.exerciseName.toLowerCase() === clean.exerciseName.toLowerCase());
     if (idx >= 0) {
@@ -254,12 +358,14 @@ class DataService {
     } else {
       goals.unshift(clean);
     }
+    await this.local.removePendingDelete('Goals', clean.id);
     await this.local.saveGoals(goals);
     await this.reload();
     return this.state();
   }
 
   async deleteGoal(id) {
+    await this.local.addPendingDelete('Goals', id);
     const goals = (this.cache.goals || []).filter((g) => g.id !== id);
     await this.local.saveGoals(goals);
     await this.reload();
@@ -267,7 +373,7 @@ class DataService {
   }
 
   async toggleGoalEnabled(id) {
-    const goals = (this.cache.goals || []).map((g) => (g.id === id ? { ...g, enabled: !g.enabled } : g));
+    const goals = (this.cache.goals || []).map((g) => (g.id === id ? { ...g, enabled: g.enabled === false, updatedAt: Date.now() } : g));
     await this.local.saveGoals(goals);
     await this.reload();
     return this.state();
@@ -279,20 +385,24 @@ class DataService {
     if (!date || !weightKg) throw new Error('Date and weight required');
     const list = [...(this.cache.bodyWeights || [])];
     const cleanKg = Number(weightKg);
-    const existingIdx = list.findIndex((e) => e.date === date);
-    const entry = { date, weightKg: cleanKg, source: source || 'manual' };
+    const key = SyncMerge.isoKey(date);
+    const existingIdx = list.findIndex((e) => SyncMerge.isoKey(e.date) === key);
+    const entry = { date, weightKg: cleanKg, source: source || 'manual', updatedAt: Date.now() };
     if (existingIdx >= 0) {
       list[existingIdx] = entry;
     } else {
       list.push(entry);
     }
+    await this.local.removePendingDelete('BodyWeights', key);
     await this.local.saveBodyWeights(list);
     await this.reload();
     return this.state();
   }
 
   async deleteBodyWeight(date) {
-    const list = (this.cache.bodyWeights || []).filter((e) => e.date !== date);
+    const key = SyncMerge.isoKey(date);
+    if (key) await this.local.addPendingDelete('BodyWeights', key);
+    const list = (this.cache.bodyWeights || []).filter((e) => SyncMerge.isoKey(e.date) !== key);
     await this.local.saveBodyWeights(list);
     await this.reload();
     return this.state();
@@ -314,7 +424,7 @@ class DataService {
 
   // ---------------- Internal Goal Updater ----------------
 
-  _updateGoalsOnWorkoutSave(workout, sets) {
+  async _updateGoalsOnWorkoutSave(workout, sets) {
     const goals = [...(this.cache.goals || [])];
     if (!goals.length) return [];
 
@@ -376,13 +486,14 @@ class DataService {
         sessionReports: reports,
         achievedDate: isAchieved && !g.achievedDate ? workout.date : g.achievedDate,
         lastUpdatedDate: workout.date,
+        updatedAt: Date.now(),
       };
       goals[i] = updatedGoal;
       updatedGoals.push(updatedGoal);
     }
 
     if (updatedGoals.length) {
-      this.local.saveGoals(goals);
+      await this.local.saveGoals(goals);
     }
     return updatedGoals;
   }
@@ -396,7 +507,7 @@ class DataService {
     await this._connectSheets({ spreadsheetId, keyFile });
     this.writeConfig({ spreadsheetId, keyFile });
     this.lastError = null;
-    await this.reload();
+    await this.reload({ strict: true });
     return this.state();
   }
 
@@ -413,7 +524,17 @@ class DataService {
     const local = await this.local.loadAll();
     if (options.overwrite) {
       await this.store.clearAll();
-      await this.reload();
+    }
+    // Clear last-synced keys for this sheet so local bodyWeights/goals/programs push even if remote was wiped
+    await this.local.saveSync({
+      ...(local.sync || {}),
+      spreadsheetId: this.store.spreadsheetId,
+      syncedBodyWeights: [],
+      syncedGoals: [],
+      syncedPrograms: [],
+    });
+    if (options.overwrite) {
+      await this.reload({ strict: true });
     }
     const existing = new Set(this.cache.workouts.map((w) => w.id));
     const newW = local.workouts.filter((w) => !existing.has(w.id));
@@ -423,7 +544,7 @@ class DataService {
     const newEx = local.exercises.filter((e) => !knownEx.has(e.name.toLowerCase()));
     if (newEx.length) await this.store.addExercises(newEx);
     if (newW.length) await this.store.addWorkouts(newW, newS);
-    await this.reload();
+    await this.reload({ strict: true });
     return { added: newW.length, sets: newS.length, skipped: local.workouts.length - newW.length, state: this.state() };
   }
 

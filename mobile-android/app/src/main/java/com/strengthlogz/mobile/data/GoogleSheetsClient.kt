@@ -4,7 +4,10 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.strengthlogz.mobile.model.AppData
+import com.strengthlogz.mobile.model.BodyWeightEntry
 import com.strengthlogz.mobile.model.Exercise
+import com.strengthlogz.mobile.model.ExerciseGoal
+import com.strengthlogz.mobile.model.WorkoutProgram
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import java.io.OutputStreamWriter
@@ -193,7 +196,10 @@ class GoogleSheetsClient(
         val requiredTabs = mapOf(
             "Workouts" to listOf("Id", "Date", "Title", "Notes"),
             "Sets" to listOf("Id", "WorkoutId", "Date", "Exercise", "Set", "Weight (kg)", "Reps", "Notes"),
-            "Exercises" to listOf("Name", "Category", "Bodyweight", "Description")
+            "Exercises" to listOf("Name", "Category", "Bodyweight", "Description"),
+            "BodyWeights" to listOf("Date", "WeightKg", "Source", "UpdatedAt"),
+            "Goals" to listOf("Id", "ExerciseName", "PayloadJson", "UpdatedAt"),
+            "Programs" to listOf("Id", "ProgramName", "IsActive", "PayloadJson", "UpdatedAt")
         )
 
         val missing = requiredTabs.keys.filter { it !in existing }
@@ -247,7 +253,7 @@ class GoogleSheetsClient(
         ensureTabs(spreadsheetId)
 
         val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values:batchGet" +
-            "?ranges=Workouts!A2:D&ranges=Sets!A2:H&ranges=Exercises!A2:D&valueRenderOption=UNFORMATTED_VALUE"
+            "?ranges=Workouts!A2:D&ranges=Sets!A2:H&ranges=Exercises!A2:D&ranges=BodyWeights!A2:D&ranges=Goals!A2:D&ranges=Programs!A2:E&valueRenderOption=UNFORMATTED_VALUE"
 
         val res = requestJson("GET", url)
         val valueRanges = res.getAsJsonArray("valueRanges")
@@ -275,6 +281,9 @@ class GoogleSheetsClient(
         val wRows = getRows(0)
         val sRows = getRows(1)
         val eRows = getRows(2)
+        val bwRows = getRows(3)
+        val gRows = getRows(4)
+        val pRows = getRows(5)
 
         val workouts = wRows
             .filter { it.firstOrNull()?.isNotBlank() == true }
@@ -318,7 +327,104 @@ class GoogleSheetsClient(
             }
             .toMutableList()
 
-        return AppData(workouts = workouts, sets = sets, exercises = exercises)
+        val bodyWeights = bwRows
+            .filter { it.firstOrNull()?.isNotBlank() == true }
+            .mapNotNull { r ->
+                val kg = r.getOrElse(1) { "" }.toDoubleOrNull() ?: return@mapNotNull null
+                BodyWeightEntry(
+                    date = r.getOrElse(0) { "" },
+                    weightKg = kg,
+                    source = r.getOrElse(2) { "" }.ifBlank { "manual" },
+                    updatedAt = r.getOrElse(3) { "" }.toDoubleOrNull()?.toLong() ?: 0L
+                )
+            }
+            .toMutableList()
+
+        val goals = gRows
+            .filter { it.firstOrNull()?.isNotBlank() == true }
+            .mapNotNull { r ->
+                try {
+                    val g = gson.fromJson(r.getOrElse(2) { "" }, ExerciseGoal::class.java) ?: return@mapNotNull null
+                    val stamp = r.getOrElse(3) { "" }.toDoubleOrNull()?.toLong() ?: g.updatedAt
+                    g.copy(id = r[0], updatedAt = stamp)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            .toMutableList()
+
+        var remoteActiveId: String? = null
+        val programs = pRows
+            .filter { it.firstOrNull()?.isNotBlank() == true }
+            .mapNotNull { r ->
+                try {
+                    val p = gson.fromJson(r.getOrElse(3) { "" }, WorkoutProgram::class.java) ?: return@mapNotNull null
+                    if (r.getOrElse(2) { "" }.equals("true", ignoreCase = true)) remoteActiveId = r[0]
+                    val stamp = r.getOrElse(4) { "" }.toDoubleOrNull()?.toLong() ?: p.updatedAt
+                    p.copy(id = r[0], updatedAt = stamp)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            .toMutableList()
+
+        return AppData(
+            workouts = workouts,
+            sets = sets,
+            exercises = exercises,
+            bodyWeights = bodyWeights,
+            goals = goals,
+            programs = programs,
+            activeProgramId = remoteActiveId
+        )
+    }
+
+    /** Replaces the data rows (row 2 onward) of [tab] with [rows], keeping/creating the header row. */
+    private fun overwriteTab(spreadsheetId: String, tab: String, header: List<String>, rows: List<List<Any>>) {
+        val lastCol = 'A' + (header.size - 1)
+        requestJson(
+            "POST",
+            "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values:batchUpdate",
+            mapOf(
+                "valueInputOption" to "RAW",
+                "data" to listOf(mapOf("range" to "$tab!A1:${lastCol}1", "values" to listOf(header)))
+            )
+        )
+        requestJson(
+            "POST",
+            "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$tab!A2:$lastCol:clear",
+            emptyMap<String, Any>()
+        )
+        if (rows.isNotEmpty()) {
+            requestJson(
+                "POST",
+                "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values:batchUpdate",
+                mapOf(
+                    "valueInputOption" to "RAW",
+                    "data" to listOf(mapOf("range" to "$tab!A2:$lastCol", "values" to rows))
+                )
+            )
+        }
+    }
+
+    fun overwriteBodyWeights(rawSpreadsheetId: String, entries: List<BodyWeightEntry>) {
+        val id = extractSheetId(rawSpreadsheetId)
+        val rows = entries.map { listOf<Any>(it.date, it.weightKg, it.source, it.updatedAt) }
+        overwriteTab(id, "BodyWeights", listOf("Date", "WeightKg", "Source", "UpdatedAt"), rows)
+    }
+
+    fun overwriteGoals(rawSpreadsheetId: String, goals: List<ExerciseGoal>) {
+        val id = extractSheetId(rawSpreadsheetId)
+        val rows = goals.map { listOf<Any>(it.id, it.exerciseName, gson.toJson(it), it.updatedAt) }
+        overwriteTab(id, "Goals", listOf("Id", "ExerciseName", "PayloadJson", "UpdatedAt"), rows)
+    }
+
+    fun overwritePrograms(rawSpreadsheetId: String, programs: List<WorkoutProgram>, activeProgramId: String?) {
+        val id = extractSheetId(rawSpreadsheetId)
+        val rows = programs.map {
+            listOf<Any>(it.id, it.safeProgramName, it.id == activeProgramId, gson.toJson(it), it.updatedAt)
+        }
+        overwriteTab(id, "Programs", listOf("Id", "ProgramName", "IsActive", "PayloadJson", "UpdatedAt"), rows)
     }
 
     private fun appendRows(spreadsheetId: String, tab: String, rows: List<List<Any>>) {
