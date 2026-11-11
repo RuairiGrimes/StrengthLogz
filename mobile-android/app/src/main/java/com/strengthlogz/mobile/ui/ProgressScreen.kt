@@ -59,8 +59,24 @@ import kotlin.math.roundToInt
 
 enum class ChartMetricMode(val label: String) {
     E1RM("Est. 1RM"),
-    SET_REPS("Top Weight")
+    SET_REPS("Top Weight"),
+    RELATIVE("Rel. ×BW")
 }
+
+internal fun SessionProgressPoint.metricValue(mode: ChartMetricMode): Double = when (mode) {
+    ChartMetricMode.E1RM -> e1rm
+    ChartMetricMode.SET_REPS -> topWeight
+    ChartMetricMode.RELATIVE -> relativeStrength
+}
+
+internal fun SessionProgressPoint.isPrFor(mode: ChartMetricMode): Boolean = when (mode) {
+    ChartMetricMode.E1RM -> isE1rmPr
+    ChartMetricMode.SET_REPS -> isWeightPr
+    ChartMetricMode.RELATIVE -> false
+}
+
+internal fun ChartMetricMode.formatValue(v: Double): String =
+    if (this == ChartMetricMode.RELATIVE) "${"%.2f".format(v)}×" else "${formatWeightValue(v)}kg"
 
 private enum class ProgressDetailTab(val label: String) {
     OVERVIEW("Overview"),
@@ -128,7 +144,7 @@ fun buildSessionPoints(
         val displayDate = DateUtils.toDdMonYyyy(rawDate)
         val isoDate = DateUtils.toSortableIso(rawDate)
         val title = workout?.title ?: ""
-        val bwKg = if (isBodyweight) BodyWeightUtils.weightOn(rawDate) else 0.0
+        val bwKg = if (isBodyweight || BodyWeightUtils.hasEntries()) BodyWeightUtils.weightOn(rawDate) else 0.0
 
         var bestWeightSet: WorkoutSet? = null
         var bestE1rmSet: WorkoutSet? = null
@@ -196,7 +212,7 @@ fun buildSessionPoints(
             totalVolume = roundTenth(volume),
             totalReps = totalReps,
             bodyWeightKg = bwKg,
-            relativeStrength = if (isBodyweight) roundHundredth(BodyWeightUtils.relativeStrength(maxE1rm, bwKg)) else 0.0
+            relativeStrength = if (bwKg > 0.0) roundHundredth(BodyWeightUtils.relativeStrength(maxE1rm, bwKg)) else 0.0
         )
     }.sortedWith(compareBy<SessionProgressPoint> { it.isoDate }.thenBy { it.workoutId })
 
@@ -236,6 +252,7 @@ fun ProgressScreen(
     getSetsForExercise: (String) -> List<WorkoutSet>,
     goals: List<ExerciseGoal> = emptyList(),
     onNavigateGoals: (String?) -> Unit = {},
+    onNavigateBodyWeight: () -> Unit = {},
     initialExercise: String? = null,
     onConsumeInitialExercise: () -> Unit = {}
 ) {
@@ -266,6 +283,7 @@ fun ProgressScreen(
             getSetsForExercise = getSetsForExercise,
             goalByExerciseLower = goalByExerciseLower,
             onNavigateGoals = { onNavigateGoals(null) },
+            onNavigateBodyWeight = onNavigateBodyWeight,
             onSelectExercise = { exName -> activeExercise = exName }
         )
     } else {
@@ -290,6 +308,7 @@ private fun ProgressDirectoryView(
     getSetsForExercise: (String) -> List<WorkoutSet>,
     goalByExerciseLower: Map<String, ExerciseGoal> = emptyMap(),
     onNavigateGoals: () -> Unit = {},
+    onNavigateBodyWeight: () -> Unit = {},
     onSelectExercise: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -335,6 +354,21 @@ private fun ProgressDirectoryView(
             subtitle = "Select a movement to inspect charts, PRs & session history",
             badgeText = "${distinctExercises.size} lifts",
             action = {
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(11.dp),
+                    color = SurfaceCard,
+                    border = BorderStroke(1.dp, AccentOrange),
+                    modifier = Modifier.clickable { onNavigateBodyWeight() }
+                ) {
+                    Text(
+                        text = "⚖ BW",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = AccentOrange,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
                 Surface(
                     shape = RoundedCornerShape(11.dp),
                     color = AccentOrange,
@@ -359,6 +393,7 @@ private fun ProgressDirectoryView(
                         )
                     }
                 }
+              }
             }
         )
 
@@ -532,6 +567,7 @@ private fun ExerciseProgressDetailView(
     val prevSession = if (sessions.size >= 2) sessions[sessions.size - 2] else null
     val firstSession = sessions.firstOrNull()
     val reversedSessions = remember(sessions) { sessions.reversed() }
+    val hasRelData = remember(sessions) { sessions.any { it.relativeStrength > 0.0 } }
     val prSessions = remember(reversedSessions) {
         reversedSessions.filter { it.isE1rmPr || it.isWeightPr }
     }
@@ -702,20 +738,25 @@ private fun ExerciseProgressDetailView(
                         } ?: "–"
 
                         val latestValStr = latestSession?.let {
-                            if (metricMode == ChartMetricMode.E1RM) "${formatWeightValue(it.e1rm)} kg"
-                            else "${formatWeightValue(it.topWeight)}kg × ${it.topWeightReps}"
+                            when (metricMode) {
+                                ChartMetricMode.E1RM -> "${formatWeightValue(it.e1rm)} kg"
+                                ChartMetricMode.RELATIVE -> metricMode.formatValue(it.relativeStrength)
+                                ChartMetricMode.SET_REPS -> "${formatWeightValue(it.topWeight)}kg × ${it.topWeightReps}"
+                            }
                         } ?: "–"
 
                         val prevDeltaStr = if (latestSession != null && prevSession != null) {
-                            val curr = if (metricMode == ChartMetricMode.E1RM) latestSession.e1rm else latestSession.topWeight
-                            val prev = if (metricMode == ChartMetricMode.E1RM) prevSession.e1rm else prevSession.topWeight
-                            val d = roundTenth(curr - prev)
+                            val curr = latestSession.metricValue(metricMode)
+                            val prev = prevSession.metricValue(metricMode)
+                            val d = if (metricMode == ChartMetricMode.RELATIVE) roundHundredth(curr - prev) else roundTenth(curr - prev)
                             val sign = if (d > 0) "+" else ""
-                            "$sign${formatWeightValue(d)}kg vs prev"
+                            if (metricMode == ChartMetricMode.RELATIVE) "$sign${"%.2f".format(d)}× vs prev"
+                            else "$sign${formatWeightValue(d)}kg vs prev"
                         } else "Latest session"
 
-                        val firstVal = firstSession?.let { if (metricMode == ChartMetricMode.E1RM) it.e1rm else it.topWeight } ?: 0.0
-                        val latestVal = latestSession?.let { if (metricMode == ChartMetricMode.E1RM) it.e1rm else it.topWeight } ?: 0.0
+                        val gainMode = if (metricMode == ChartMetricMode.RELATIVE) ChartMetricMode.E1RM else metricMode
+                        val firstVal = firstSession?.metricValue(gainMode) ?: 0.0
+                        val latestVal = latestSession?.metricValue(gainMode) ?: 0.0
                         val totalGain = roundTenth(latestVal - firstVal)
                         val gainSign = if (totalGain >= 0) "+" else ""
                         val bestRel = sessions.maxOfOrNull { it.relativeStrength } ?: 0.0
@@ -774,7 +815,7 @@ private fun ExerciseProgressDetailView(
                                             .padding(2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
-                                        ChartMetricMode.entries.forEach { mode ->
+                                        ChartMetricMode.entries.filter { it != ChartMetricMode.RELATIVE || hasRelData }.forEach { mode ->
                                             val active = metricMode == mode
                                             Box(
                                                 modifier = Modifier
@@ -808,6 +849,8 @@ private fun ExerciseProgressDetailView(
                                         onJumpPr = {
                                             val prIdx = if (metricMode == ChartMetricMode.E1RM) {
                                                 sessions.indices.maxByOrNull { sessions[it].e1rm } ?: safeIdx
+                                            } else if (metricMode == ChartMetricMode.RELATIVE) {
+                                                sessions.indices.maxByOrNull { sessions[it].relativeStrength } ?: safeIdx
                                             } else {
                                                 sessions.indices.maxWithOrNull(
                                                     compareBy<Int> { sessions[it].topWeight }.thenBy { sessions[it].topWeightReps }
@@ -914,7 +957,7 @@ private fun ExerciseProgressDetailView(
 }
 
 @Composable
-private fun CompactKpiCard(
+internal fun CompactKpiCard(
     label: String,
     value: String,
     caption: String,
@@ -964,7 +1007,7 @@ private fun InspectedPointBanner(
     onNext: () -> Unit,
     onJumpPr: () -> Unit
 ) {
-    val isPr = if (metricMode == ChartMetricMode.E1RM) point.isE1rmPr else point.isWeightPr
+    val isPr = point.isPrFor(metricMode)
 
     Column(
         modifier = Modifier
@@ -1052,16 +1095,11 @@ fun InteractiveProgressChart(
     chartHeight: Dp = 230.dp
 ) {
     val values = remember(sessions, metricMode) {
-        sessions.map {
-            if (metricMode == ChartMetricMode.E1RM) it.e1rm.toFloat()
-            else it.topWeight.toFloat()
-        }
+        sessions.map { it.metricValue(metricMode).toFloat() }
     }
 
     val prFlags = remember(sessions, metricMode) {
-        sessions.map {
-            if (metricMode == ChartMetricMode.E1RM) it.isE1rmPr else it.isWeightPr
-        }
+        sessions.map { it.isPrFor(metricMode) }
     }
 
     val maxVal = (values.maxOrNull() ?: 1f).coerceAtLeast(1f)
@@ -1142,7 +1180,7 @@ fun InteractiveProgressChart(
             )
 
             drawContext.canvas.nativeCanvas.drawText(
-                "${formatWeightValue(roundHalf(labelVal.toDouble()))}kg",
+                if (metricMode == ChartMetricMode.RELATIVE) "${"%.2f".format(labelVal)}×" else "${formatWeightValue(roundHalf(labelVal.toDouble()))}kg",
                 6f,
                 y + 8f,
                 textPaint
@@ -1269,7 +1307,9 @@ fun InteractiveProgressChart(
 
             if (isSelected) {
                 val sess = sessions[idx]
-                val callout = if (metricMode == ChartMetricMode.E1RM) {
+                val callout = if (metricMode == ChartMetricMode.RELATIVE) {
+                    metricMode.formatValue(sess.relativeStrength)
+                } else if (metricMode == ChartMetricMode.E1RM) {
                     "${formatWeightValue(sess.e1rm)}kg"
                 } else {
                     "${formatWeightValue(sess.topWeight)}kg × ${sess.topWeightReps}"
@@ -1291,9 +1331,11 @@ private fun SessionHistoryRowCard(
     isHighlighted: Boolean,
     onClick: () -> Unit
 ) {
-    val currVal = if (metricMode == ChartMetricMode.E1RM) session.e1rm else session.topWeight
-    val prevVal = olderSession?.let { if (metricMode == ChartMetricMode.E1RM) it.e1rm else it.topWeight }
-    val delta = if (prevVal != null && prevVal > 0) roundTenth(currVal - prevVal) else null
+    val currVal = session.metricValue(metricMode)
+    val prevVal = olderSession?.metricValue(metricMode)
+    val delta = if (prevVal != null && prevVal > 0) {
+        if (metricMode == ChartMetricMode.RELATIVE) roundHundredth(currVal - prevVal) else roundTenth(currVal - prevVal)
+    } else null
 
     val setNotes = remember(session) {
         session.sets.mapNotNull { it.notes.takeIf { n -> n.isNotBlank() } }.distinct().joinToString("; ")
@@ -1343,7 +1385,7 @@ private fun SessionHistoryRowCard(
                     if (delta != null && delta != 0.0) {
                         val sign = if (delta > 0) "+" else ""
                         Text(
-                            text = "$sign${formatWeightValue(delta)}kg",
+                            text = if (metricMode == ChartMetricMode.RELATIVE) "$sign${"%.2f".format(delta)}×" else "$sign${formatWeightValue(delta)}kg",
                             color = if (delta > 0) IncreaseGreen else DecreaseRed,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -1399,9 +1441,7 @@ private fun FullScreenChartInspectorDialog(
 
     val displayedSessions = remember(allSessions, prOnlyFilter, metricMode) {
         if (!prOnlyFilter) allSessions
-        else allSessions.filter {
-            if (metricMode == ChartMetricMode.E1RM) it.isE1rmPr else it.isWeightPr
-        }.ifEmpty { allSessions }
+        else allSessions.filter { it.isPrFor(metricMode) }.ifEmpty { allSessions }
     }
 
     var selectedIdx by remember(displayedSessions) {
@@ -1462,7 +1502,8 @@ private fun FullScreenChartInspectorDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ChartMetricMode.entries.forEach { mode ->
+                    val dialogHasRel = allSessions.any { it.relativeStrength > 0.0 }
+                    ChartMetricMode.entries.filter { it != ChartMetricMode.RELATIVE || dialogHasRel }.forEach { mode ->
                         val active = metricMode == mode
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -1519,6 +1560,8 @@ private fun FullScreenChartInspectorDialog(
                     onJumpPr = {
                         val prIdx = if (metricMode == ChartMetricMode.E1RM) {
                             displayedSessions.indices.maxByOrNull { displayedSessions[it].e1rm } ?: safeIdx
+                        } else if (metricMode == ChartMetricMode.RELATIVE) {
+                            displayedSessions.indices.maxByOrNull { displayedSessions[it].relativeStrength } ?: safeIdx
                         } else {
                             displayedSessions.indices.maxWithOrNull(
                                 compareBy<Int> { displayedSessions[it].topWeight }.thenBy { displayedSessions[it].topWeightReps }

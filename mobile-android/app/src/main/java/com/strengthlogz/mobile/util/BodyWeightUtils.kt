@@ -100,4 +100,6 @@ object BodyWeightUtils {
 
     fun weightOn(date: String?): Double = weightOnPublished(date)
     fun latestKg(): Double = weightOnPublished(DateUtils.todayDdMonYyyy())
+    /** True when at least one real body weight reading has been published. */
+    fun hasEntries(): Boolean = sortedPublishedEntries.isNotEmpty()
 }

@@ -19,6 +19,7 @@ class LocalStore {
         programs: [],
         activeProgramId: null,
         draft: null,
+        sync: {},
       });
     } else {
       const data = this._read();
@@ -51,6 +52,7 @@ class LocalStore {
         programs: Array.isArray(parsed.programs) ? parsed.programs : [],
         activeProgramId: parsed.activeProgramId || null,
         draft: parsed.draft || null,
+        sync: parsed.sync && typeof parsed.sync === 'object' ? parsed.sync : {},
       };
     } catch {
       return {
@@ -62,6 +64,7 @@ class LocalStore {
         programs: [],
         activeProgramId: null,
         draft: null,
+        sync: {},
       };
     }
   }
@@ -120,6 +123,7 @@ class LocalStore {
     for (const g of data.goals) {
       if (g.exerciseName && g.exerciseName.trim().toLowerCase() === cleanOld) {
         g.exerciseName = cleanNew;
+        g.updatedAt = Date.now();
       }
     }
 
@@ -131,6 +135,7 @@ class LocalStore {
             for (const item of d.exercises) {
               if (item.exerciseName && item.exerciseName.trim().toLowerCase() === cleanOld) {
                 item.exerciseName = cleanNew;
+                p.updatedAt = Date.now();
                 if (updated.category) item.category = updated.category;
               }
             }
@@ -161,6 +166,33 @@ class LocalStore {
     this._write(data);
   }
 
+  /** Cloud-sync bookkeeping: pending deletions and keys present at the last successful sync. */
+  async saveSync(sync) {
+    const data = this._read();
+    data.sync = sync;
+    this._write(data);
+  }
+
+  async addPendingDelete(kind, key) {
+    const data = this._read();
+    const sync = data.sync || {};
+    const k = 'pending' + kind;
+    sync[k] = [...new Set([...(sync[k] || []), key])];
+    data.sync = sync;
+    this._write(data);
+  }
+
+  async removePendingDelete(kind, key) {
+    const data = this._read();
+    const sync = data.sync || {};
+    const k = 'pending' + kind;
+    if (Array.isArray(sync[k]) && sync[k].includes(key)) {
+      sync[k] = sync[k].filter((x) => x !== key);
+      data.sync = sync;
+      this._write(data);
+    }
+  }
+
   async saveDraft(draft) {
     const data = this._read();
     data.draft = draft;
@@ -184,6 +216,7 @@ class LocalStore {
       programs: current.programs,
       activeProgramId: current.activeProgramId,
       draft: null,
+      sync: current.sync,
     });
   }
 }

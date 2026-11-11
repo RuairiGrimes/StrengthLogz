@@ -65,7 +65,8 @@ fun SettingsScreen(
     healthConnectAvailable: Boolean = false,
     onSyncHealthConnect: suspend () -> Result<String> = { Result.failure(Exception("Health Connect unavailable")) },
     onAddManualWeight: (String, Double) -> Unit = { _, _ -> },
-    onNavigateExercises: () -> Unit = {}
+    onNavigateExercises: () -> Unit = {},
+    onOpenBodyWeightDashboard: () -> Unit = {}
 ) {
     var sheetId by remember(currentSpreadsheetId) { mutableStateOf(currentSpreadsheetId) }
     var serviceJson by remember(currentServiceAccountJson) { mutableStateOf(currentServiceAccountJson) }
@@ -555,7 +556,7 @@ fun SettingsScreen(
                                 InstructionStepRow(
                                     stepNum = "4",
                                     title = "Paste Details Above & Tap Sync",
-                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, and Exercises tabs!"
+                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, and Programs tabs!"
                                 )
                                 Surface(
                                     color = SurfaceCard,
@@ -582,7 +583,8 @@ fun SettingsScreen(
             bodyWeights = bodyWeights,
             healthConnectAvailable = healthConnectAvailable,
             onSyncHealthConnect = onSyncHealthConnect,
-            onAddManualWeight = onAddManualWeight
+            onAddManualWeight = onAddManualWeight,
+            onOpenDashboard = onOpenBodyWeightDashboard
         )
 
         // 3. Exercise Catalog Manager Link Card

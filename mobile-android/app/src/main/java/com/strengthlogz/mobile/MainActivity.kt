@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.strengthlogz.mobile.data.WorkoutRepository
 import com.strengthlogz.mobile.model.Workout
+import com.strengthlogz.mobile.ui.BodyWeightScreen
 import com.strengthlogz.mobile.ui.ExercisesScreen
 import com.strengthlogz.mobile.ui.GoalsScreen
 import com.strengthlogz.mobile.ui.HistoryScreen
@@ -65,7 +67,8 @@ enum class Screen(val title: String, val icon: ImageVector) {
     PROGRESS("Progress", Icons.Default.BarChart),
     GOALS("Goals", Icons.Default.EmojiEvents),
     EXERCISES("Exercises", Icons.Default.FitnessCenter),
-    SETTINGS("Settings", Icons.Default.Settings)
+    SETTINGS("Settings", Icons.Default.Settings),
+    BODY_WEIGHT("Body Weight", Icons.Default.MonitorWeight)
 }
 
 private val PRIMARY_TABS = listOf(Screen.LOG, Screen.PROGRAM, Screen.SUGGEST, Screen.HISTORY, Screen.PROGRESS)
@@ -110,6 +113,14 @@ class MainActivity : ComponentActivity() {
         return importHealthConnectWeights()
     }
 
+    override fun onStop() {
+        super.onStop()
+        // Push local edits (goals, programs, body weight) to Google Sheets when leaving the app.
+        if (::repository.isInitialized && repository.isCloudConfigured()) {
+            lifecycleScope.launch { repository.syncWithGoogleSheets() }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         repository = WorkoutRepository(applicationContext)
@@ -124,6 +135,9 @@ class MainActivity : ComponentActivity() {
                 var selectedWorkoutForDetail by remember { mutableStateOf<Workout?>(null) }
                 var selectedProgressExercise by remember { mutableStateOf<String?>(null) }
                 var selectedGoalExercise by remember { mutableStateOf<String?>(null) }
+                var bwReturnScreen by remember { mutableStateOf(Screen.SETTINGS) }
+                var dotsIsMale by remember { mutableStateOf(repository.getDotsIsMale()) }
+                var bwUseLbs by remember { mutableStateOf(repository.getBwUseLbs()) }
                 var postWorkoutUpdatedGoal by remember { mutableStateOf<com.strengthlogz.mobile.model.ExerciseGoal?>(null) }
 
                 BackHandler(enabled = selectedWorkoutForDetail == null && currentScreen !in PRIMARY_TABS) {
@@ -509,6 +523,10 @@ class MainActivity : ComponentActivity() {
                                                 lastPrimaryScreen = Screen.PROGRESS
                                                 currentScreen = Screen.GOALS
                                             },
+                                            onNavigateBodyWeight = {
+                                                bwReturnScreen = Screen.PROGRESS
+                                                currentScreen = Screen.BODY_WEIGHT
+                                            },
                                             initialExercise = selectedProgressExercise,
                                             onConsumeInitialExercise = { selectedProgressExercise = null }
                                         )
@@ -568,7 +586,45 @@ class MainActivity : ComponentActivity() {
                                                 repository.addManualBodyWeight(date, kg)
                                                 dataVersion++
                                             },
-                                            onNavigateExercises = { currentScreen = Screen.EXERCISES }
+                                            onNavigateExercises = { currentScreen = Screen.EXERCISES },
+                                            onOpenBodyWeightDashboard = {
+                                                bwReturnScreen = Screen.SETTINGS
+                                                currentScreen = Screen.BODY_WEIGHT
+                                            }
+                                        )
+                                        Screen.BODY_WEIGHT -> BodyWeightScreen(
+                                            bodyWeights = repository.getBodyWeights(),
+                                            workouts = repository.appData.workouts,
+                                            allSets = repository.appData.sets,
+                                            distinctExercises = repository.getDistinctExercisesByFrequency(),
+                                            getSetsForExercise = { exName -> repository.getSetsForExercise(exName) },
+                                            isMale = dotsIsMale,
+                                            onSetMale = {
+                                                dotsIsMale = it
+                                                repository.setDotsIsMale(it)
+                                            },
+                                            useLbs = bwUseLbs,
+                                            onSetUseLbs = {
+                                                bwUseLbs = it
+                                                repository.setBwUseLbs(it)
+                                            },
+                                            healthConnectAvailable = isHealthConnectAvailable,
+                                            onSyncHealthConnect = { syncHealthConnectWeights() },
+                                            onAddManualWeight = { date, kg ->
+                                                repository.addManualBodyWeight(date, kg)
+                                                dataVersion++
+                                            },
+                                            onDeleteWeight = { date ->
+                                                repository.deleteBodyWeight(date)
+                                                dataVersion++
+                                                lifecycleScope.launch {
+                                                    val res = repository.syncWithGoogleSheets()
+                                                    if (res.isSuccess) dataVersion++
+                                                }
+                                            },
+                                            onBack = {
+                                                currentScreen = bwReturnScreen
+                                            }
                                         )
                                     }
                                 }

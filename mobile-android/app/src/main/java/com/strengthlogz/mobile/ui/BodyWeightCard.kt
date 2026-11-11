@@ -29,7 +29,8 @@ fun BodyWeightCard(
     bodyWeights: List<BodyWeightEntry>,
     healthConnectAvailable: Boolean,
     onSyncHealthConnect: suspend () -> Result<String>,
-    onAddManualWeight: (date: String, kg: Double) -> Unit
+    onAddManualWeight: (date: String, kg: Double) -> Unit,
+    onOpenDashboard: (() -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf("") }
@@ -87,6 +88,16 @@ fun BodyWeightCard(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                     modifier = Modifier.weight(1f)
                 ) { Text("Add manually", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) }
+            }
+
+            if (onOpenDashboard != null) {
+                Button(
+                    onClick = onOpenDashboard,
+                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceCard, contentColor = AccentOrange),
+                    border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Weight trend & relative strength charts →", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) }
             }
 
             if (!healthConnectAvailable) {

@@ -2,13 +2,19 @@
 // Layout (tabs are created automatically):
 //   Workouts : Id | Date | Title | Notes
 //   Sets     : Id | WorkoutId | Date | Exercise | Set | Weight (kg) | Reps | Notes
-//   Exercises: Name | Category | Bodyweight
+//   Exercises: Name | Category | Bodyweight | Description
+//   BodyWeights: Date | WeightKg | Source | UpdatedAt
+//   Goals    : Id | ExerciseName | PayloadJson | UpdatedAt
+//   Programs : Id | ProgramName | IsActive | PayloadJson | UpdatedAt
 const { google } = require('googleapis');
 
 const TABS = {
   Workouts: ['Id', 'Date', 'Title', 'Notes'],
   Sets: ['Id', 'WorkoutId', 'Date', 'Exercise', 'Set', 'Weight (kg)', 'Reps', 'Notes'],
   Exercises: ['Name', 'Category', 'Bodyweight', 'Description'],
+  BodyWeights: ['Date', 'WeightKg', 'Source', 'UpdatedAt'],
+  Goals: ['Id', 'ExerciseName', 'PayloadJson', 'UpdatedAt'],
+  Programs: ['Id', 'ProgramName', 'IsActive', 'PayloadJson', 'UpdatedAt'],
 };
 
 const colLetter = (n) => String.fromCharCode(64 + n);
@@ -74,8 +80,23 @@ class SheetsStore {
       ranges: Object.keys(TABS).map((t) => `${t}!A2:${colLetter(TABS[t].length)}`),
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
-    const [w, s, e] = res.data.valueRanges.map((vr) => vr.values || []);
     const num = (v) => (v === '' || v === undefined || v === null ? null : Number(v));
+    const [w, s, e, bw, g, p] = res.data.valueRanges.map((vr) => vr.values || []);
+    const parseJson = (str) => { try { return JSON.parse(str); } catch { return null; } };
+    let activeProgramId = null;
+    const programs = p.filter((r) => r[0]).map((r) => {
+      const obj = parseJson(r[3]);
+      if (!obj) return null;
+      if (r[2] === true || String(r[2]).toUpperCase() === 'TRUE') activeProgramId = String(r[0]);
+      return { ...obj, id: String(r[0]), updatedAt: num(r[4]) ?? obj.updatedAt ?? 0 };
+    }).filter(Boolean);
+    const goals = g.filter((r) => r[0]).map((r) => {
+      const obj = parseJson(r[2]);
+      return obj ? { ...obj, id: String(r[0]), updatedAt: num(r[3]) ?? obj.updatedAt ?? 0 } : null;
+    }).filter(Boolean);
+    const bodyWeights = bw.filter((r) => r[0] && num(r[1]) !== null).map((r) => ({
+      date: String(r[0]), weightKg: num(r[1]), source: r[2] || 'manual', updatedAt: num(r[3]) || 0,
+    }));
     return {
       workouts: w.filter((r) => r[0]).map((r) => ({
         id: String(r[0]), date: String(r[1] || ''), title: r[2] || '', notes: r[3] || '',
@@ -88,7 +109,46 @@ class SheetsStore {
         name: r[0], category: r[1] || 'Other', bodyweight: r[2] === true || String(r[2]).toUpperCase() === 'TRUE',
         description: r[3] || '',
       })),
+      bodyWeights,
+      goals,
+      programs,
+      activeProgramId,
     };
+  }
+
+  /** Replaces data rows (row 2 down) of a tab, keeping the header row. */
+  async _overwriteTab(tab, rows) {
+    const header = TABS[tab];
+    const last = colLetter(header.length);
+    await this.api.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${tab}!A1:${last}1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [header] },
+    });
+    await this.api.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: `${tab}!A2:${last}` });
+    if (rows.length) {
+      await this.api.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `${tab}!A2:${last}`,
+        valueInputOption: 'RAW',
+        requestBody: { values: rows },
+      });
+    }
+  }
+
+  async overwriteBodyWeights(list) {
+    await this._overwriteTab('BodyWeights', list.map((b) => [b.date, b.weightKg, b.source || 'manual', b.updatedAt || 0]));
+  }
+
+  async overwriteGoals(list) {
+    await this._overwriteTab('Goals', list.map((g) => [g.id, g.exerciseName || '', JSON.stringify(g), g.updatedAt || 0]));
+  }
+
+  async overwritePrograms(list, activeProgramId) {
+    await this._overwriteTab('Programs', list.map((p) => [
+      p.id, p.programName || '', p.id === activeProgramId, JSON.stringify(p), p.updatedAt || 0,
+    ]));
   }
 
   async _append(tab, rows) {
@@ -136,6 +196,37 @@ class SheetsStore {
 
   async addExercises(exercises) {
     await this._append('Exercises', exercises.map((e) => [e.name, e.category || 'Other', !!e.bodyweight, e.description || '']));
+  }
+
+  async overwriteExercises(exercises) {
+    const sorted = [...exercises].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    await this._overwriteTab('Exercises', sorted.map((e) => [
+      e.name, e.category || 'Other', !!e.bodyweight, e.description || '',
+    ]));
+  }
+
+  async renameExerciseInSets(oldName, newName) {
+    const cleanOld = String(oldName || '').trim();
+    const cleanNew = String(newName || '').trim();
+    if (!cleanOld || !cleanNew || cleanOld.toLowerCase() === cleanNew.toLowerCase()) return;
+    const res = await this.api.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: 'Sets!D:D',
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    });
+    const values = res.data.values || [];
+    const data = [];
+    values.forEach((row, i) => {
+      if (i > 0 && row[0] && String(row[0]).trim().toLowerCase() === cleanOld.toLowerCase()) {
+        data.push({ range: `Sets!D${i + 1}`, values: [[cleanNew]] });
+      }
+    });
+    if (data.length) {
+      await this.api.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: { valueInputOption: 'RAW', data },
+      });
+    }
   }
 
   async clearAll() {

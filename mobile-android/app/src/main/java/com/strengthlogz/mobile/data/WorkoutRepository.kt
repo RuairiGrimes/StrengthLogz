@@ -16,6 +16,7 @@ import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.util.BodyWeightUtils
 import com.strengthlogz.mobile.util.DateUtils
 import com.strengthlogz.mobile.util.GoalEngine
+import com.strengthlogz.mobile.util.SyncMerge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -149,17 +150,23 @@ class WorkoutRepository(private val context: Context) {
     /** Call after the exercise catalog changes so bodyweight flags are current. */
     fun refreshBodyWeightExercises() = publishBodyWeights()
 
-    /** Insert/replace the entry for a date. */
+    /** Insert/replace the entry for a date. Unchanged readings keep their timestamp so they don't re-sync. */
     @Synchronized
     fun upsertBodyWeights(newEntries: List<BodyWeightEntry>) {
         val map = linkedMapOf<String, BodyWeightEntry>()
         getBodyWeights().forEach { map[DateUtils.toSortableIso(it.date)] = it }
+        val now = System.currentTimeMillis()
         newEntries.forEach { e ->
             val key = DateUtils.toSortableIso(e.date)
+            if (key.isBlank()) return@forEach
             val existing = map[key]
             // Manual entries are never overwritten by automatic sources
             if (existing == null || e.source == "manual" || existing.source != "manual") {
-                map[key] = e.copy(date = DateUtils.toDdMonYyyy(e.date))
+                val unchanged = existing != null && existing.weightKg == e.weightKg && existing.source == e.source
+                if (!unchanged) {
+                    map[key] = e.copy(date = DateUtils.toDdMonYyyy(e.date), updatedAt = if (e.updatedAt > 0L) e.updatedAt else now)
+                }
+                removePending(PENDING_BW, key)
             }
         }
         appData.bodyWeights = map.toSortedMap().values.toMutableList()
@@ -169,6 +176,39 @@ class WorkoutRepository(private val context: Context) {
 
     fun addManualBodyWeight(date: String, kg: Double) =
         upsertBodyWeights(listOf(BodyWeightEntry(DateUtils.toDdMonYyyy(date), kg, "manual")))
+
+    @Synchronized
+    fun deleteBodyWeight(date: String) {
+        val key = DateUtils.toSortableIso(date)
+        appData.bodyWeights = getBodyWeights().filter { DateUtils.toSortableIso(it.date) != key }.toMutableList()
+        addPending(PENDING_BW, key)
+        saveLocalDataAsync()
+        publishBodyWeights()
+    }
+
+    // ---------------- Sync bookkeeping (BodyWeights / Goals / Programs) ----------------
+
+    private fun getKeySet(name: String): MutableSet<String> =
+        (prefs.getStringSet(name, emptySet()) ?: emptySet()).toMutableSet()
+
+    private fun putKeySet(name: String, keys: Set<String>) {
+        prefs.edit().putStringSet(name, keys).apply()
+    }
+
+    private fun addPending(name: String, key: String) {
+        if (key.isBlank()) return
+        val s = getKeySet(name)
+        s.add(key)
+        putKeySet(name, s)
+    }
+
+    private fun removePending(name: String, key: String) {
+        if (key.isBlank()) return
+        val s = getKeySet(name)
+        if (s.remove(key)) {
+            putKeySet(name, s)
+        }
+    }
 
     private fun normalizeDates(data: AppData): AppData {
         @Suppress("UNCHECKED_CAST")
@@ -207,13 +247,21 @@ class WorkoutRepository(private val context: Context) {
             )
         }.toMutableList()
 
+        val bodyWeights = (data.bodyWeights ?: mutableListOf()).map { b ->
+            @Suppress("USELESS_ELVIS")
+            val src = (b.source as String?)?.ifBlank { "manual" } ?: "manual"
+            b.copy(date = DateUtils.toDdMonYyyy(b.date), source = src)
+        }.toMutableList()
+
         return AppData(
             workouts = workouts,
             sets = sets,
             exercises = exercises,
-            bodyWeights = data.bodyWeights ?: mutableListOf(),
+            bodyWeights = bodyWeights,
             goals = goals,
-            program = data.program
+            program = data.program,
+            programs = data.programs ?: mutableListOf(),
+            activeProgramId = data.activeProgramId
         )
     }
 
@@ -264,7 +312,7 @@ class WorkoutRepository(private val context: Context) {
             try {
                 val json = file.readText(Charsets.UTF_8)
                 val loaded = gson.fromJson(json, AppData::class.java)
-                if (loaded != null && (loaded.workouts.isNotEmpty() || loaded.exercises.isNotEmpty() || loaded.program != null)) {
+                if (loaded != null && (loaded.workouts.isNotEmpty() || loaded.exercises.isNotEmpty() || loaded.program != null || !loaded.programs.isNullOrEmpty())) {
                     appData = normalizeDates(loaded)
                     return
                 }
@@ -304,7 +352,9 @@ class WorkoutRepository(private val context: Context) {
             exercises = appData.exercises.toMutableList(),
             bodyWeights = appData.bodyWeights?.toMutableList() ?: mutableListOf(),
             goals = appData.goals?.toMutableList() ?: mutableListOf(),
-            program = appData.program
+            program = appData.program,
+            programs = appData.programs?.toMutableList() ?: mutableListOf(),
+            activeProgramId = appData.activeProgramId
         )
         ioExecutor.execute {
             try {
@@ -354,6 +404,11 @@ class WorkoutRepository(private val context: Context) {
             .apply()
         sheetsClient.invalidateToken()
     }
+
+    fun getDotsIsMale(): Boolean = prefs.getBoolean("dots_is_male", true)
+    fun setDotsIsMale(v: Boolean) { prefs.edit().putBoolean("dots_is_male", v).apply() }
+    fun getBwUseLbs(): Boolean = prefs.getBoolean("bw_use_lbs", false)
+    fun setBwUseLbs(v: Boolean) { prefs.edit().putBoolean("bw_use_lbs", v).apply() }
 
     fun getLastSyncTime(): String {
         return prefs.getString("last_sync_time", "Never") ?: "Never"
@@ -452,13 +507,15 @@ class WorkoutRepository(private val context: Context) {
         val cleanGoal = goal.copy(
             exerciseName = goal.exerciseName.trim(),
             goalType = goal.safeGoalType,
-            createdDate = goal.safeCreatedDate.ifBlank { DateUtils.todayDdMonYyyy() }
+            createdDate = goal.safeCreatedDate.ifBlank { DateUtils.todayDdMonYyyy() },
+            updatedAt = System.currentTimeMillis()
         )
         if (existingIdx >= 0) {
             list[existingIdx] = cleanGoal
         } else {
             list.add(0, cleanGoal)
         }
+        removePending(PENDING_GOALS, cleanGoal.id)
         appData.goals = list
         saveLocalDataAsync()
     }
@@ -468,6 +525,7 @@ class WorkoutRepository(private val context: Context) {
         val list = (appData.goals ?: mutableListOf()).toMutableList()
         list.removeAll { it.id == goalId }
         appData.goals = list
+        addPending(PENDING_GOALS, goalId)
         saveLocalDataAsync()
     }
 
@@ -477,7 +535,7 @@ class WorkoutRepository(private val context: Context) {
         val idx = list.indexOfFirst { it.id == goalId }
         if (idx >= 0) {
             val g = list[idx]
-            list[idx] = g.copy(enabled = !g.enabled)
+            list[idx] = g.copy(enabled = !g.enabled, updatedAt = System.currentTimeMillis())
             appData.goals = list
             saveLocalDataAsync()
         }
@@ -523,8 +581,8 @@ class WorkoutRepository(private val context: Context) {
                         exercisesCatalog = appData.exercises,
                         bodyWeights = getBodyWeights()
                     )
-                    goalsList[i] = updatedGoal
-                    updatedGoalsInSession.add(updatedGoal)
+                    goalsList[i] = updatedGoal.copy(updatedAt = System.currentTimeMillis())
+                    updatedGoalsInSession.add(goalsList[i])
                 }
             }
             appData.goals = goalsList
@@ -591,7 +649,7 @@ class WorkoutRepository(private val context: Context) {
                 for (i in 0 until goalsList.size) {
                     val g = goalsList[i]
                     if (g.exerciseName.equals(oldName, ignoreCase = true)) {
-                        goalsList[i] = g.copy(exerciseName = cleanNewName)
+                        goalsList[i] = g.copy(exerciseName = cleanNewName, updatedAt = System.currentTimeMillis())
                     }
                 }
             }
@@ -607,7 +665,7 @@ class WorkoutRepository(private val context: Context) {
                         }
                         d.copy(exercises = updatedExs)
                     }
-                    prog.copy(days = updatedDays)
+                    if (updatedDays != prog.safeDays) prog.copy(days = updatedDays, updatedAt = System.currentTimeMillis()) else prog
                 }.toMutableList()
                 appData.programs = updatedProgs
                 appData.program = updatedProgs.firstOrNull { it.id == appData.activeProgramId } ?: updatedProgs.firstOrNull()
@@ -670,18 +728,20 @@ class WorkoutRepository(private val context: Context) {
 
     @Synchronized
     fun saveProgram(program: WorkoutProgram) {
+        val stamped = program.copy(updatedAt = System.currentTimeMillis())
         val progs = (appData.programs ?: mutableListOf()).toMutableList()
-        val idx = progs.indexOfFirst { it.id == program.id }
+        val idx = progs.indexOfFirst { it.id == stamped.id }
         if (idx >= 0) {
-            progs[idx] = program
+            progs[idx] = stamped
         } else {
-            progs.add(program)
+            progs.add(stamped)
         }
         appData.programs = progs
-        if (appData.activeProgramId == null || appData.activeProgramId == program.id) {
-            appData.activeProgramId = program.id
+        if (appData.activeProgramId == null || appData.activeProgramId == stamped.id) {
+            appData.activeProgramId = stamped.id
         }
-        appData.program = program
+        removePending(PENDING_PROGRAMS, stamped.id)
+        appData.program = stamped
         saveLocalDataAsync()
     }
 
@@ -692,7 +752,8 @@ class WorkoutRepository(private val context: Context) {
             id = java.util.UUID.randomUUID().toString(),
             programName = cleanName,
             days = emptyList(),
-            createdAt = DateUtils.todayDdMonYyyy()
+            createdAt = DateUtils.todayDdMonYyyy(),
+            updatedAt = System.currentTimeMillis()
         )
         val progs = (appData.programs ?: mutableListOf()).toMutableList()
         progs.add(newProg)
@@ -710,7 +771,8 @@ class WorkoutRepository(private val context: Context) {
         val copy = orig.copy(
             id = java.util.UUID.randomUUID().toString(),
             programName = "${orig.safeProgramName} (Copy)",
-            createdAt = DateUtils.todayDdMonYyyy()
+            createdAt = DateUtils.todayDdMonYyyy(),
+            updatedAt = System.currentTimeMillis()
         )
         progs.add(copy)
         appData.programs = progs
@@ -729,10 +791,19 @@ class WorkoutRepository(private val context: Context) {
             appData.activeProgramId = progs.firstOrNull()?.id
         }
         appData.program = progs.firstOrNull()
+        addPending(PENDING_PROGRAMS, programId)
         saveLocalDataAsync()
     }
 
     companion object {
+        private const val PENDING_BW = "pending_deleted_bw_keys"
+        private const val PENDING_GOALS = "pending_deleted_goal_ids"
+        private const val PENDING_PROGRAMS = "pending_deleted_program_ids"
+        private const val SYNCED_BW = "synced_bw_keys"
+        private const val SYNCED_GOALS = "synced_goal_ids"
+        private const val SYNCED_PROGRAMS = "synced_program_ids"
+        private const val SYNCED_SHEET_ID = "synced_metadata_spreadsheet_id"
+
         fun buildDefaultProgram(daysPerWeek: Int): WorkoutProgram {
             val coerced = daysPerWeek.coerceIn(1, 7)
             val days = when (coerced) {
@@ -1008,6 +1079,84 @@ class WorkoutRepository(private val context: Context) {
         }
     }
 
+    private data class SyncedMeta(
+        val bodyWeights: List<BodyWeightEntry>,
+        val goals: List<ExerciseGoal>,
+        val programs: List<WorkoutProgram>,
+        val activeProgramId: String?
+    )
+
+    /**
+     * Merges local BodyWeights/Goals/Programs with the remote tabs. A tab is rewritten only when the
+     * merged result differs from what the sheet already holds. A failure in one tab never blocks the
+     * core workout sync, so that tab simply keeps its local data until the next successful sync.
+     */
+    private fun syncMetadata(spreadsheetId: String, remote: AppData): SyncedMeta {
+        val localBw = getBodyWeights()
+        val localGoals = getGoals()
+        val localPrograms = getPrograms()
+        var activeId = appData.activeProgramId
+
+        val prevSyncedSheet = prefs.getString(SYNCED_SHEET_ID, null)
+        val sameSheet = prevSyncedSheet.isNullOrEmpty() || prevSyncedSheet == spreadsheetId
+        fun lastSyncedFor(key: String): Set<String> = if (sameSheet) getKeySet(key) else emptySet()
+
+        var bw = localBw
+        try {
+            val remoteBw = remote.bodyWeights ?: emptyList()
+            val merged = SyncMerge.mergeBodyWeights(
+                localBw, remoteBw, getKeySet(PENDING_BW), lastSyncedFor(SYNCED_BW)
+            )
+            if (merged != remoteBw.sortedBy { SyncMerge.bodyWeightKey(it) }) {
+                sheetsClient.overwriteBodyWeights(spreadsheetId, merged)
+            }
+            putKeySet(PENDING_BW, emptySet())
+            putKeySet(SYNCED_BW, merged.map { SyncMerge.bodyWeightKey(it) }.toSet())
+            bw = merged
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        var goals = localGoals
+        try {
+            val remoteGoals = remote.goals ?: emptyList()
+            val merged = SyncMerge.mergeGoals(
+                localGoals, remoteGoals, getKeySet(PENDING_GOALS), lastSyncedFor(SYNCED_GOALS)
+            )
+            if (merged.toSet() != remoteGoals.toSet()) {
+                sheetsClient.overwriteGoals(spreadsheetId, merged)
+            }
+            putKeySet(PENDING_GOALS, emptySet())
+            putKeySet(SYNCED_GOALS, merged.map { it.id }.toSet())
+            goals = merged
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        var programs = localPrograms
+        try {
+            val remotePrograms = remote.programs ?: emptyList()
+            val merged = SyncMerge.mergePrograms(
+                localPrograms, remotePrograms, getKeySet(PENDING_PROGRAMS), lastSyncedFor(SYNCED_PROGRAMS)
+            )
+            val resolvedActive = merged.firstOrNull { it.id == activeId }?.id
+                ?: merged.firstOrNull { it.id == remote.activeProgramId }?.id
+                ?: merged.firstOrNull()?.id
+            if (merged.toSet() != remotePrograms.toSet() || (merged.isNotEmpty() && resolvedActive != remote.activeProgramId)) {
+                sheetsClient.overwritePrograms(spreadsheetId, merged, resolvedActive)
+            }
+            putKeySet(PENDING_PROGRAMS, emptySet())
+            putKeySet(SYNCED_PROGRAMS, merged.map { it.id }.toSet())
+            programs = merged
+            activeId = resolvedActive
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        prefs.edit().putString(SYNCED_SHEET_ID, spreadsheetId).apply()
+        return SyncedMeta(bw, goals, programs, activeId)
+    }
+
     suspend fun syncWithGoogleSheets(): Result<String> = withContext(Dispatchers.IO) {
         val spreadsheetId = getSpreadsheetId()
         if (spreadsheetId.isBlank()) {
@@ -1081,14 +1230,20 @@ class WorkoutRepository(private val context: Context) {
                 exErr.printStackTrace()
             }
 
+            // 5. Sync body weights, goals and programs (merge by key, push only when something changed)
+            val syncedExtra = syncMetadata(spreadsheetId, remoteData)
+
             synchronized(this@WorkoutRepository) {
                 appData = AppData(
                     workouts = mergedWorkouts,
                     sets = mergedSets,
                     exercises = mergedExercises,
-                    bodyWeights = appData.bodyWeights,
-                    goals = appData.goals,
-                    program = appData.program
+                    bodyWeights = syncedExtra.bodyWeights.toMutableList(),
+                    goals = syncedExtra.goals.toMutableList(),
+                    program = syncedExtra.programs.firstOrNull { it.id == syncedExtra.activeProgramId }
+                        ?: syncedExtra.programs.firstOrNull(),
+                    programs = syncedExtra.programs.toMutableList(),
+                    activeProgramId = syncedExtra.activeProgramId
                 )
                 rebuildIndexes()
                 saveLocalDataAsync()

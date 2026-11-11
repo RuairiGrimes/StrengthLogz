@@ -9,6 +9,7 @@ const call = async (channel, arg) => {
 contextBridge.exposeInMainWorld('api', {
   state: () => call('state'),
   reload: () => call('reload'),
+  syncNow: () => call('syncNow'),
   saveWorkout: (payload) => call('saveWorkout', payload),
   deleteWorkout: (id) => call('deleteWorkout', id),
   addExercise: (ex) => call('addExercise', ex),

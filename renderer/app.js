@@ -205,11 +205,17 @@ function sessionsFor(name, excludeWorkoutId = null) {
       }
     }
     const w = idx.workouts.find((x) => x.id === sess.workoutId);
+    const hasBwData = bw || (S.bodyWeights || []).length > 0;
+    const bwKg = hasBwData ? BodyWeightUtils.weightOn(sess.date) : null;
+    const e1rmVal = e1rm === null ? null : round(e1rm);
+    const rel = (e1rmVal !== null && bwKg > 0) ? Math.round((e1rmVal / bwKg) * 100) / 100 : null;
     return {
       ...sess,
       t: toDate(sess.date).getTime(),
       title: w ? w.title : '',
-      e1rm: e1rm === null ? null : round(e1rm),
+      e1rm: e1rmVal,
+      bwKg,
+      rel,
       best,
       top,
       volume: bw ? (totalReps || null) : (volume || null),
@@ -222,9 +228,11 @@ function sessionsFor(name, excludeWorkoutId = null) {
 
 function metricsFor(name) {
   const bw = isBW(name);
+  const hasRel = bw || (S.bodyWeights || []).length > 0;
   return {
     e1rm: { label: bw ? 'Est. Total 1RM' : 'Est. 1RM', unit: 'kg', get: (s) => s.e1rm },
     top: { label: bw ? 'Top added weight' : 'Top weight', unit: 'kg', get: (s) => s.top },
+    ...(hasRel ? { rel: { label: 'Rel. (× BW)', unit: '× BW', get: (s) => s.rel } } : {}),
     volume: { label: bw ? 'Total reps' : 'Volume', unit: bw ? 'reps' : 'kg', get: (s) => s.volume },
     reps: { label: 'Max reps', unit: 'reps', get: (s) => s.maxReps },
   };
@@ -369,6 +377,8 @@ function showView(name, arg = null) {
     renderGoals();
   } else if (name === 'exercises') {
     renderExercisesCatalog();
+  } else if (name === 'bodyweight') {
+    renderBodyWeightDashboard();
   } else if (name === 'settings') {
     renderSettings();
   }
@@ -1707,6 +1717,13 @@ async function openGoalModal(existingGoal = null) {
     const targetReps = Number(res.querySelector('#m-goal-reps').value) || 8;
     const targetWeightKg = Number(res.querySelector('#m-goal-weight').value) || 0;
 
+    const targetChanged = existingGoal && (
+      existingGoal.goalType !== mode
+      || (mode === 'E1RM'
+        ? Number(existingGoal.targetE1rmKg) !== targetE1rmKg
+        : (Number(existingGoal.targetSets) !== targetSets || Number(existingGoal.targetReps) !== targetReps || Number(existingGoal.targetWeightKg) !== targetWeightKg))
+    );
+
     const goalObj = {
       ...(existingGoal || {}),
       exerciseName: exName,
@@ -1718,8 +1735,9 @@ async function openGoalModal(existingGoal = null) {
       baselineWeightKg,
       baselineReps,
       baselineE1rmKg,
+      enabled: existingGoal ? existingGoal.enabled !== false : true,
       createdDate: existingGoal?.createdDate || fmtDdMonYyyy(today()),
-      achievedDate: null,
+      achievedDate: targetChanged ? null : (existingGoal?.achievedDate || null),
       notes,
     };
 
@@ -1961,12 +1979,13 @@ function renderSettings() {
   const cfg = S.storage || {};
   const statusEl = $('#sheets-status');
   if (cfg.kind === 'sheets') {
-    statusEl.innerHTML = `<span class="ok">Connected to Google Sheets</span> • <code>${esc(cfg.title || cfg.spreadsheetId)}</code>`;
+    statusEl.innerHTML = `<span class="ok">Connected to Google Sheets</span> • <code>${esc(cfg.title || cfg.spreadsheetId)}</code>${cfg.error ? ` <span class="err">(${esc(cfg.error)})</span>` : ''}`;
   } else {
-    statusEl.innerHTML = `<span class="warn">Using offline local storage</span>`;
+    statusEl.innerHTML = `<span class="warn">Using offline local storage</span>${cfg.error ? ` • <span class="err">${esc(cfg.error)}</span>` : ''}`;
   }
   $('#cfg-sheet').value = cfg.spreadsheetId || '';
   $('#cfg-key').value = cfg.keyFile || '';
+  if ($('#cfg-sync-now')) $('#cfg-sync-now').disabled = cfg.kind !== 'sheets';
 
   const emailEl = $('#cfg-email');
   if (cfg.serviceEmail) {
@@ -1979,7 +1998,7 @@ function renderSettings() {
   // Body weight tracker
   const bwList = S.bodyWeights || [];
   const latestBw = BodyWeightUtils.latestWeight();
-  $('#bw-current-value').textContent = latestBw !== null ? `${latestBw} kg` : '-- kg';
+  $('#bw-current-value').textContent = latestBw !== null ? `${f1(latestBw)} kg` : '-- kg';
   $('#bw-input-date').value = today();
 
   const sortedBw = [...bwList].sort((a, b) => toSortableIso(b.date).localeCompare(toSortableIso(a.date)));
@@ -1994,14 +2013,16 @@ function renderSettings() {
 
   bwHost.querySelectorAll('.del-bw-btn').forEach((btn) => {
     btn.onclick = async () => {
-      const state = await window.api.deleteBodyWeight(btn.dataset.date);
-      setState(state);
-      renderSettings();
+      await busy(async () => {
+        const state = await window.api.deleteBodyWeight(btn.dataset.date);
+        setState(state);
+        renderSettings();
+      });
     };
   });
 
   // Data summary
-  $('#data-summary').textContent = `${S.workouts.length} workouts • ${S.sets.length} sets • ${S.exercises.length} exercises`;
+  $('#data-summary').textContent = `${S.workouts.length} workouts • ${S.sets.length} sets • ${S.exercises.length} exercises • ${(S.bodyWeights || []).length} weights • ${(S.goals || []).length} goals • ${(S.programs || []).length} programs`;
 }
 
 function initSettingsModule() {
@@ -2010,15 +2031,17 @@ function initSettingsModule() {
     const dVal = $('#bw-input-date').value;
     const kgVal = $('#bw-input-kg').value;
     if (!dVal || !kgVal) return;
-    const state = await window.api.addBodyWeight({
-      date: fmtDdMonYyyy(dVal),
-      weightKg: Number(kgVal),
-      source: 'manual',
+    await busy(async () => {
+      const state = await window.api.addBodyWeight({
+        date: fmtDdMonYyyy(dVal),
+        weightKg: Number(kgVal),
+        source: 'manual',
+      });
+      setState(state);
+      $('#bw-input-kg').value = '';
+      renderSettings();
+      toast(`Body weight logged: ${kgVal} kg`, 'success');
     });
-    setState(state);
-    $('#bw-input-kg').value = '';
-    renderSettings();
-    toast(`Body weight logged: ${kgVal} kg`, 'success');
   });
 
   $('#cfg-browse').addEventListener('click', async () => {
@@ -2033,6 +2056,19 @@ function initSettingsModule() {
       const state = await window.api.connect({ spreadsheetId, keyFile });
       setState(state);
       toast('Connected to Google Sheets!', 'success');
+    });
+  });
+
+  $('#cfg-sync-now').addEventListener('click', async () => {
+    if (S.storage.kind !== 'sheets') return toast('Connect Google Sheets first', 'error');
+    await busy(async () => {
+      const state = await window.api.syncNow();
+      setState(state);
+      if (state.storage?.error) {
+        toast(state.storage.error, 'error');
+      } else {
+        toast('Synced with Google Sheets!', 'success');
+      }
     });
   });
 
@@ -2608,8 +2644,10 @@ function renderWorkoutDetail(workoutId) {
 
 // ---------------------------------------------------------------- PROGRESS & CHARTING
 let progressChartInstance = null;
+const progressState = { exercise: null, metric: null, range: 0 };
 
 function renderProgressOverview() {
+  progressState.exercise = null;
   $('#progress-heading').textContent = 'Progress';
   $('#progress-sub').textContent = 'Track strength curves and estimated 1RMs over time.';
   $('#progress-back').classList.add('hidden');
@@ -2651,6 +2689,10 @@ function renderProgressDetail(exerciseName) {
   $('#progress-back').onclick = renderProgressOverview;
 
   const ex = exInfo(exerciseName);
+  if (progressState.exercise !== ex.name) {
+    progressState.exercise = ex.name;
+    progressState.metric = null;
+  }
   $('#progress-heading').textContent = ex.name;
   $('#progress-sub').textContent = `${ex.category} • ${ex.bodyweight ? 'Bodyweight (Total Load Calculated)' : 'Barbell / Dumbbell Lift'}`;
 
@@ -2663,48 +2705,108 @@ function renderProgressDetail(exerciseName) {
     <div class="stat"><div class="lbl">Best Est. 1RM</div><div class="val" style="color:var(--pr);">${bestE1rm ? `${bestE1rm} kg` : '–'}</div></div>
     <div class="stat"><div class="lbl">Top Weight</div><div class="val">${bestW ? `${bestW} kg` : '–'}</div></div>
     <div class="stat"><div class="lbl">Total Sessions</div><div class="val">${sess.length}</div></div>
-    <div class="stat"><div class="lbl">Total Volume</div><div class="val">${Math.round(totalVol)} kg</div></div>
+    <div class="stat"><div class="lbl">${ex.bodyweight ? 'Total Reps' : 'Total Volume'}</div><div class="val">${Math.round(totalVol)} ${ex.bodyweight ? 'reps' : 'kg'}</div></div>
   `;
 
-  renderProgressChart(ex.name, sess);
+  const mMap = metricsFor(ex.name);
+  const availKeys = Object.keys(mMap).filter((k) => sess.some((s) => mMap[k].get(s) !== null));
+  const metricKeys = availKeys.length ? availKeys : Object.keys(mMap);
+  if (!progressState.metric || !metricKeys.includes(progressState.metric)) {
+    const def = defaultMetric(ex.name, sess);
+    progressState.metric = metricKeys.includes(def) ? def : metricKeys[0];
+  }
 
-  // Sessions table
+  const metricSeg = $('#metric-seg');
+  metricSeg.innerHTML = metricKeys.map((k) => `
+    <button data-metric="${k}" class="${progressState.metric === k ? 'active' : ''}">${esc(mMap[k].label)}</button>
+  `).join('');
+  metricSeg.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => {
+      progressState.metric = b.dataset.metric;
+      renderProgressDetail(ex.name);
+    };
+  });
+
+  $$('#range-seg button').forEach((b) => {
+    b.classList.toggle('active', Number(b.dataset.range) === progressState.range);
+    b.onclick = () => {
+      progressState.range = Number(b.dataset.range);
+      renderProgressDetail(ex.name);
+    };
+  });
+
+  const todayDay = epochDay(today());
+  const chartSessions = progressState.range === 0
+    ? sess
+    : sess.filter((s) => todayDay - epochDay(s.date) <= progressState.range);
+
+  renderProgressChart(ex.name, chartSessions, progressState.metric, sess);
+
+  const showRelCol = sess.some((s) => s.rel !== null);
   const tableRows = [...sess].reverse().map((s) => `
     <tr>
       <td>${shortDate(s.date)}</td>
       <td>${summarize(ex.name, s.sets)}</td>
       <td>${s.e1rm ? `${s.e1rm} kg` : '–'}</td>
       <td>${s.top !== null ? `${s.top} kg` : '–'}</td>
-      <td>${s.volume ? `${Math.round(s.volume)} kg` : '–'}</td>
+      ${showRelCol ? `<td>${s.rel !== null ? `${s.rel.toFixed(2)}×` : '–'}</td>` : ''}
+      <td>${s.volume ? `${Math.round(s.volume)} ${ex.bodyweight ? 'reps' : 'kg'}` : '–'}</td>
     </tr>
   `).join('');
 
   $('#progress-table').innerHTML = `
-    <thead><tr><th>Date</th><th>Sets Summary</th><th>Est 1RM</th><th>Top W</th><th>Volume</th></tr></thead>
-    <tbody>${tableRows || '<tr><td colspan="5" class="muted">No sessions recorded yet.</td></tr>'}</tbody>
+    <thead><tr><th>Date</th><th>Sets Summary</th><th>Est 1RM</th><th>Top W</th>${showRelCol ? '<th>Rel. ×BW</th>' : ''}<th>${ex.bodyweight ? 'Reps' : 'Volume'}</th></tr></thead>
+    <tbody>${tableRows || `<tr><td colspan="${showRelCol ? 6 : 5}" class="muted">No sessions recorded yet.</td></tr>`}</tbody>
   `;
 }
 
-function renderProgressChart(exerciseName, sessions) {
+function renderProgressChart(exerciseName, sessions, metricKey = 'e1rm', allSessions = sessions) {
   const canvas = $('#progress-chart');
   if (!canvas) return;
-  if (progressChartInstance) progressChartInstance.destroy();
+  if (progressChartInstance) { progressChartInstance.destroy(); progressChartInstance = null; }
 
-  const labels = sessions.map((s) => shortDate(s.date));
-  const dataPoints = sessions.map((s) => s.e1rm || s.top || 0);
+  const mMap = metricsFor(exerciseName);
+  const mDef = mMap[metricKey] || mMap.e1rm;
+
+  // Determine all-time PR session IDs for this metric across full history
+  const prIds = new Set();
+  let runningMax = -Infinity;
+  for (const s of allSessions) {
+    const v = mDef.get(s);
+    if (v !== null && v > runningMax) {
+      runningMax = v;
+      prIds.add(s.workoutId);
+    }
+  }
+
+  const pts = sessions.filter((s) => mDef.get(s) !== null);
+  const labels = pts.map((s) => shortDate(s.date));
+  const dataPoints = pts.map((s) => mDef.get(s));
+  const pointColors = pts.map((s, i) => {
+    if (prIds.has(s.workoutId)) return COLORS.pr;
+    if (i > 0) {
+      const prev = dataPoints[i - 1];
+      if (dataPoints[i] > prev) return COLORS.up;
+      if (dataPoints[i] < prev) return COLORS.down;
+    }
+    return COLORS.accent;
+  });
+
+  const isRel = metricKey === 'rel';
 
   progressChartInstance = new Chart(canvas, {
     type: 'line',
     data: {
       labels,
       datasets: [{
-        label: 'Est. 1RM (kg)',
+        label: `${mDef.label} (${mDef.unit})`,
         data: dataPoints,
         borderColor: COLORS.accent,
         backgroundColor: 'rgba(255, 122, 69, 0.1)',
         borderWidth: 2.5,
-        pointBackgroundColor: COLORS.accent,
-        pointRadius: 4,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointRadius: pts.length > 60 ? 2.5 : 4,
         tension: 0.25,
         fill: true,
       }],
@@ -2721,7 +2823,13 @@ function renderProgressChart(exerciseName, sessions) {
           titleColor: '#e8eaf0',
           bodyColor: '#ffd166',
           callbacks: {
-            label: (ctx) => `Est. 1RM: ${ctx.parsed.y} kg`,
+            label: (ctx) => {
+              const p = pts[ctx.dataIndex];
+              if (isRel && p) {
+                return `Rel. Strength: ${p.rel.toFixed(2)}× BW (E1RM ${p.e1rm} kg ÷ BW ${f1(p.bwKg)} kg)`;
+              }
+              return `${mDef.label}: ${ctx.parsed.y} ${mDef.unit}`;
+            },
           },
         },
       },
@@ -2732,10 +2840,316 @@ function renderProgressChart(exerciseName, sessions) {
         },
         y: {
           grid: { color: 'rgba(42, 47, 58, 0.4)' },
-          ticks: { color: '#8b93a7' },
+          ticks: {
+            color: '#8b93a7',
+            callback: (v) => (isRel ? `${Number(v).toFixed(2)}×` : v),
+          },
         },
       },
     },
+  });
+}
+
+// ---------------------------------------------------------------- BODY WEIGHT & STRENGTH DASHBOARD
+const LB_PER_KG = 2.20462;
+const BWD = {
+  range: 90,
+  unit: (typeof localStorage !== 'undefined' && localStorage.getItem('bwd-unit')) || 'kg',
+  avg: true,
+  mode: 'lift',
+  lift: null,
+  sex: (typeof localStorage !== 'undefined' && localStorage.getItem('bwd-sex')) || 'male',
+  returnView: 'settings',
+};
+const bwdCharts = { weight: null, strength: null };
+
+const f1 = (n) => (Math.round(n * 10) / 10).toFixed(1);
+const f2 = (n) => (Math.round(n * 100) / 100).toFixed(2);
+const bwdDisp = (kg) => (BWD.unit === 'lb' ? kg * LB_PER_KG : kg);
+
+function epochDay(d) {
+  const iso = toSortableIso(d);
+  if (!iso) return 0;
+  const [y, m, dd] = iso.split('-').map(Number);
+  return Math.floor(Date.UTC(y, m - 1, dd) / 86400000);
+}
+
+/** Chronological readings (one per date) with a trailing 7-calendar-day moving average. */
+function bwdSeries() {
+  const byIso = new Map();
+  for (const b of S.bodyWeights || []) {
+    const iso = toSortableIso(b.date);
+    if (iso && Number(b.weightKg) > 0) byIso.set(iso, b);
+  }
+  const sorted = [...byIso.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, b]) => b);
+  const days = sorted.map((b) => epochDay(b.date));
+  return sorted.map((b, i) => {
+    let sum = 0;
+    let n = 0;
+    for (let j = i; j >= 0 && days[i] - days[j] <= 6; j--) { sum += Number(sorted[j].weightKg); n++; }
+    return { date: b.date, iso: toSortableIso(b.date), day: days[i], kg: Number(b.weightKg), avg7: n ? sum / n : Number(b.weightKg), source: b.source || 'manual' };
+  });
+}
+
+const SQUAT_NAMES = new Set(['squat', 'back squat', 'low bar squat', 'high bar squat', 'barbell squat', 'barbell back squat']);
+const BENCH_NAMES = new Set(['bench press', 'flat bench press', 'barbell bench press', 'flat barbell bench press']);
+const DEADLIFT_NAMES = new Set(['deadlift', 'conventional deadlift', 'sumo deadlift', 'barbell deadlift']);
+
+function classifyLift(name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (SQUAT_NAMES.has(n)) return 'squat';
+  if (BENCH_NAMES.has(n)) return 'bench';
+  if (DEADLIFT_NAMES.has(n)) return 'deadlift';
+  return null;
+}
+
+const DOTS_MALE = [-307.75076, 24.0900756, -0.1918759221, 0.0007391293, -0.000001093];
+const DOTS_FEMALE = [-57.96288, 13.6175032, -0.1126655495, 0.0005158568, -0.0000010706];
+
+function computeDots(totalKg, bwKg, male) {
+  if (!(totalKg > 0) || !(bwKg > 0)) return 0;
+  const bw = Math.min(210, Math.max(40, bwKg));
+  const c = male ? DOTS_MALE : DOTS_FEMALE;
+  const denom = c[0] + c[1] * bw + c[2] * bw ** 2 + c[3] * bw ** 3 + c[4] * bw ** 4;
+  return denom > 0 ? (totalKg * 500) / denom : 0;
+}
+
+/** DOTS timeline: best E1RM per big lift over the trailing 90 days, paired with body weight on that date. */
+function buildDotsTimeline(male) {
+  if (!(S.bodyWeights || []).length) return [];
+  const wById = new Map(S.workouts.map((w) => [w.id, w]));
+  const obs = [];
+  for (const s of S.sets) {
+    const lift = classifyLift(s.exercise);
+    if (!lift || !s.reps || s.reps <= 0 || !s.weight || s.weight <= 0) continue;
+    const date = (wById.get(s.workoutId) || {}).date || s.date;
+    const iso = toSortableIso(date);
+    if (!iso) continue;
+    obs.push({ iso, day: epochDay(date), lift, e: epley(s.weight, s.reps) });
+  }
+  const dates = [...new Map(obs.map((o) => [o.iso, o.day])).entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const out = [];
+  for (const [iso, day] of dates) {
+    const best = { squat: 0, bench: 0, deadlift: 0 };
+    for (const o of obs) if (o.day <= day && day - o.day <= 90 && o.e > best[o.lift]) best[o.lift] = o.e;
+    if (!best.squat || !best.bench || !best.deadlift) continue;
+    const bw = BodyWeightUtils.weightOn(iso);
+    const total = best.squat + best.bench + best.deadlift;
+    out.push({ iso, day, ...best, total, bw, dots: computeDots(total, bw, male) });
+  }
+  return out;
+}
+
+/** Relative strength (E1RM / body weight on session date) for any exercise. */
+function relativeSeries(name) {
+  if (!(S.bodyWeights || []).length) return [];
+  return sessionsFor(name)
+    .filter((s) => s.e1rm)
+    .map((s) => {
+      const bw = BodyWeightUtils.weightOn(s.date);
+      return { date: s.date, day: epochDay(s.date), e1rm: s.e1rm, bw, rel: bw > 0 ? s.e1rm / bw : 0 };
+    })
+    .filter((p) => p.rel > 0);
+}
+
+function bwdLineChart(canvas, labels, datasets, yFmt, tooltipLabel) {
+  return new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: datasets.length > 1, labels: { color: '#8b93a7' } },
+        tooltip: {
+          backgroundColor: '#171a21', borderColor: '#2a2f3a', borderWidth: 1, titleColor: '#e8eaf0', bodyColor: '#ffd166',
+          callbacks: { label: tooltipLabel },
+        },
+      },
+      scales: {
+        x: { grid: { color: 'rgba(42, 47, 58, 0.4)' }, ticks: { color: '#8b93a7', maxTicksLimit: 8 } },
+        y: { grid: { color: 'rgba(42, 47, 58, 0.4)' }, ticks: { color: '#8b93a7', callback: yFmt } },
+      },
+    },
+  });
+}
+
+function renderBodyWeightDashboard() {
+  const series = bwdSeries();
+  const todayDay = epochDay(today());
+  const inRange = (day) => BWD.range === 0 || todayDay - day <= BWD.range;
+  const visible = series.filter((p) => inRange(p.day));
+  const unit = BWD.unit;
+
+  // controls state
+  $$('#bwd-unit-seg button').forEach((b) => b.classList.toggle('active', b.dataset.unit === BWD.unit));
+  $$('#bwd-range-seg button').forEach((b) => b.classList.toggle('active', Number(b.dataset.range) === BWD.range));
+  $$('#bwd-mode-seg button').forEach((b) => b.classList.toggle('active', b.dataset.mode === BWD.mode));
+  $$('#bwd-sex-seg button').forEach((b) => b.classList.toggle('active', b.dataset.sex === BWD.sex));
+  $('#bwd-avg').checked = BWD.avg;
+  $('#bwd-lift-controls').classList.toggle('hidden', BWD.mode !== 'lift');
+  $('#bwd-dots-controls').classList.toggle('hidden', BWD.mode !== 'dots');
+  if (!$('#bwd-input-date').value) $('#bwd-input-date').value = today();
+  const kgInp = $('#bwd-input-kg');
+  if (kgInp) {
+    kgInp.previousSibling.textContent = `Weight (${unit})`;
+    kgInp.min = unit === 'lb' ? '66' : '30';
+    kgInp.max = unit === 'lb' ? '660' : '300';
+    kgInp.placeholder = unit === 'lb' ? 'e.g. 182.0' : 'e.g. 82.5';
+  }
+
+  const dots = buildDotsTimeline(BWD.sex === 'male');
+  const peakDots = dots.reduce((m, d) => (!m || d.dots > m.dots ? d : m), null);
+
+  // KPIs
+  const last = series[series.length - 1];
+  const first = visible[0];
+  const lastVis = visible[visible.length - 1];
+  const delta = first && lastVis && visible.length >= 2 ? lastVis.kg - first.kg : null;
+  const spanDays = first && lastVis ? lastVis.day - first.day : 0;
+  const rate = delta !== null && spanDays >= 7 ? delta / (spanDays / 7) : null;
+  const sign = (n) => (n > 0 ? '+' : '');
+  $('#bwd-kpis').innerHTML = `
+    <div class="stat"><div class="lbl">Current</div><div class="val" style="color:var(--accent);">${last ? `${f1(bwdDisp(last.kg))} ${unit}` : '–'}</div><div class="sub">${last ? `7-day avg ${f1(bwdDisp(last.avg7))} ${unit}` : 'No readings yet'}</div></div>
+    <div class="stat"><div class="lbl">Change</div><div class="val">${delta !== null ? `${sign(delta)}${f1(bwdDisp(delta))} ${unit}` : '–'}</div><div class="sub">${rate !== null ? `${sign(rate)}${f2(bwdDisp(rate))} ${unit}/week` : 'Needs 7+ days of data'}</div></div>
+    <div class="stat"><div class="lbl">${peakDots ? 'Peak DOTS' : 'DOTS'}</div><div class="val" style="color:var(--pr);">${peakDots ? f1(peakDots.dots) : '–'}</div><div class="sub">${peakDots ? `Total ${f1(bwdDisp(peakDots.total))} ${unit}` : 'Needs squat + bench + deadlift'}</div></div>
+  `;
+
+  // Body weight chart
+  if (bwdCharts.weight) { bwdCharts.weight.destroy(); bwdCharts.weight = null; }
+  const readout = $('#bwd-weight-readout');
+  if (!visible.length) {
+    readout.textContent = series.length ? 'No readings in this range.' : 'No body weight readings yet. Log one below.';
+  } else {
+    readout.textContent = `${visible.length} reading${visible.length === 1 ? '' : 's'} • ${shortDate(visible[0].date)} → ${shortDate(lastVis.date)}`;
+    const datasets = [{
+      label: `Weight (${unit})`,
+      data: visible.map((p) => +bwdDisp(p.kg).toFixed(2)),
+      borderColor: COLORS.accent, backgroundColor: 'rgba(255, 122, 69, 0.1)',
+      borderWidth: 2, pointRadius: visible.length > 60 ? 0 : 3, pointBackgroundColor: COLORS.accent, tension: 0.2, fill: true,
+    }];
+    if (BWD.avg) {
+      datasets.push({
+        label: '7-day average', data: visible.map((p) => +bwdDisp(p.avg7).toFixed(2)),
+        borderColor: COLORS.pr, borderWidth: 3, pointRadius: 0, tension: 0.3, fill: false,
+      });
+    }
+    bwdCharts.weight = bwdLineChart($('#bwd-weight-chart'), visible.map((p) => shortDate(p.date)), datasets,
+      (v) => `${f1(v)}`, (ctx) => `${ctx.dataset.label}: ${f1(ctx.parsed.y)}`);
+  }
+
+  // Strength chart
+  if (bwdCharts.strength) { bwdCharts.strength.destroy(); bwdCharts.strength = null; }
+  const sRead = $('#bwd-strength-readout');
+  if (BWD.mode === 'lift') {
+    const names = S.exercises.map((e) => e.name);
+    const withData = names.filter((n) => (idx.byE.get(n.toLowerCase()) || []).length);
+    const preferred = withData.find((n) => classifyLift(n) === 'bench') || withData.find((n) => classifyLift(n)) || withData[0] || null;
+    const name = BWD.lift || preferred;
+    const liftInp = $('#bwd-lift-input');
+    if (liftInp && document.activeElement !== liftInp) liftInp.value = name || '';
+    if (!(S.bodyWeights || []).length) {
+      sRead.textContent = 'Log your body weight to see strength relative to body weight.';
+    } else if (!name) {
+      sRead.textContent = 'Log some workouts to see relative strength.';
+    } else {
+      const pts = relativeSeries(name).filter((p) => inRange(p.day));
+      if (!pts.length) {
+        sRead.textContent = `No sessions for ${name} in this range.`;
+      } else {
+        const lp = pts[pts.length - 1];
+        sRead.textContent = `${name} • latest ${shortDate(lp.date)}: E1RM ${f1(bwdDisp(lp.e1rm))} ${unit} ÷ BW ${f1(bwdDisp(lp.bw))} ${unit} = ${f2(lp.rel)}× BW`;
+        bwdCharts.strength = bwdLineChart($('#bwd-strength-chart'), pts.map((p) => shortDate(p.date)), [{
+          label: '× Body weight', data: pts.map((p) => +p.rel.toFixed(3)),
+          borderColor: COLORS.accent, backgroundColor: 'rgba(255, 122, 69, 0.1)', borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: COLORS.accent, tension: 0.25, fill: true,
+        }], (v) => `${f2(v)}×`, (ctx) => {
+          const p = pts[ctx.dataIndex];
+          return `${f2(p.rel)}× BW (E1RM ${f1(bwdDisp(p.e1rm))} ${unit} @ ${f1(bwdDisp(p.bw))} ${unit})`;
+        });
+      }
+    }
+  } else {
+    const pts = dots.filter((p) => inRange(p.day));
+    if (!(S.bodyWeights || []).length) {
+      sRead.textContent = 'Log your body weight to calculate DOTS.';
+    } else if (!pts.length) {
+      sRead.textContent = 'Log Squat, Bench Press and Deadlift (within 90 days of each other) to calculate DOTS.';
+    } else {
+      const lp = pts[pts.length - 1];
+      sRead.textContent = `${shortDate(lp.iso)} • DOTS ${f1(lp.dots)} • Squat ${f1(bwdDisp(lp.squat))} + Bench ${f1(bwdDisp(lp.bench))} + Deadlift ${f1(bwdDisp(lp.deadlift))} = ${f1(bwdDisp(lp.total))} ${unit} @ BW ${f1(bwdDisp(lp.bw))} ${unit} (est. 1RMs, best of last 90 days)`;
+      bwdCharts.strength = bwdLineChart($('#bwd-strength-chart'), pts.map((p) => shortDate(p.iso)), [{
+        label: 'DOTS', data: pts.map((p) => +p.dots.toFixed(2)),
+        borderColor: COLORS.pr, backgroundColor: 'rgba(255, 209, 102, 0.1)', borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: COLORS.pr, tension: 0.25, fill: true,
+      }], (v) => f1(v), (ctx) => {
+        const p = pts[ctx.dataIndex];
+        return `DOTS ${f1(p.dots)} (total ${f1(bwdDisp(p.total))} ${unit} @ ${f1(bwdDisp(p.bw))} ${unit})`;
+      });
+    }
+  }
+
+  // History
+  const host = $('#bwd-history');
+  host.innerHTML = [...series].reverse().map((p) => `
+    <div class="bw-entry-row">
+      <span class="bw-entry-date">${shortDate(p.date)}</span>
+      <span class="bw-entry-weight">${f1(bwdDisp(p.kg))} ${unit} <span class="muted small">${esc(p.source)}</span></span>
+      <button class="icon del-bwd-btn" data-date="${esc(p.date)}" title="Delete reading">✕</button>
+    </div>
+  `).join('') || '<div class="muted small">No body weight readings logged yet.</div>';
+  host.querySelectorAll('.del-bwd-btn').forEach((btn) => {
+    btn.onclick = async () => {
+      if (!confirm('Delete this reading (also removed from Google Sheets)?')) return;
+      await busy(async () => {
+        setState(await window.api.deleteBodyWeight(btn.dataset.date));
+        toast('Reading deleted');
+      });
+    };
+  });
+}
+
+function initBodyWeightModule() {
+  const open = (from) => { BWD.returnView = from; showView('bodyweight'); };
+  $('#bw-open-dashboard').addEventListener('click', () => open('settings'));
+  $('#progress-open-bw').addEventListener('click', () => open('progress'));
+  $('#bwd-back').addEventListener('click', () => showView(BWD.returnView || 'settings'));
+
+  $$('#bwd-unit-seg button').forEach((b) => b.addEventListener('click', () => {
+    BWD.unit = b.dataset.unit;
+    try { localStorage.setItem('bwd-unit', BWD.unit); } catch { /* ignore */ }
+    renderBodyWeightDashboard();
+  }));
+  $$('#bwd-range-seg button').forEach((b) => b.addEventListener('click', () => { BWD.range = Number(b.dataset.range); renderBodyWeightDashboard(); }));
+  $$('#bwd-mode-seg button').forEach((b) => b.addEventListener('click', () => { BWD.mode = b.dataset.mode; renderBodyWeightDashboard(); }));
+  $$('#bwd-sex-seg button').forEach((b) => b.addEventListener('click', () => {
+    BWD.sex = b.dataset.sex;
+    try { localStorage.setItem('bwd-sex', BWD.sex); } catch { /* ignore */ }
+    renderBodyWeightDashboard();
+  }));
+  $('#bwd-avg').addEventListener('change', (e) => { BWD.avg = e.target.checked; renderBodyWeightDashboard(); });
+
+  const onLiftPick = (e) => {
+    const val = e.target.value.trim();
+    const match = S.exercises.find((x) => x.name.toLowerCase() === val.toLowerCase());
+    if (match) {
+      BWD.lift = match.name;
+      renderBodyWeightDashboard();
+    }
+  };
+  $('#bwd-lift-input').addEventListener('input', onLiftPick);
+  $('#bwd-lift-input').addEventListener('change', onLiftPick);
+
+  $('#bwd-log-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const dVal = $('#bwd-input-date').value;
+    const kgVal = $('#bwd-input-kg').value;
+    if (!dVal || !kgVal) return;
+    const kg = BWD.unit === 'lb' ? Number(kgVal) / LB_PER_KG : Number(kgVal);
+    await busy(async () => {
+      setState(await window.api.addBodyWeight({ date: fmtDdMonYyyy(dVal), weightKg: Math.round(kg * 10) / 10, source: 'manual' }));
+      $('#bwd-input-kg').value = '';
+      toast('Body weight logged', 'success');
+    });
   });
 }
 
@@ -2768,8 +3182,12 @@ function renderAll() {
     if (vName === 'history') renderHistory();
     else if (vName === 'program') renderProgramView();
     else if (vName === 'suggest') renderSuggest();
-    else if (vName === 'goals') renderGoals();
+    else if (vName === 'progress') {
+      if (progressState.exercise) renderProgressDetail(progressState.exercise);
+      else renderProgressOverview();
+    } else if (vName === 'goals') renderGoals();
     else if (vName === 'exercises') renderExercisesCatalog();
+    else if (vName === 'bodyweight') renderBodyWeightDashboard();
     else if (vName === 'settings') renderSettings();
   }
 }
@@ -2814,6 +3232,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initProgramModule();
   initGoalsModule();
   initExercisesModule();
+  initBodyWeightModule();
   initSettingsModule();
 
   // Load initial backend state
