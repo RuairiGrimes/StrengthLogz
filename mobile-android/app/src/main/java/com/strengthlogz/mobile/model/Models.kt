@@ -158,7 +158,8 @@ data class DraftSetInput(
 data class DraftExerciseLog(
     @SerializedName("exerciseName") val exerciseName: String,
     @SerializedName("category") val category: String = "Other",
-    @SerializedName("sets") val sets: List<DraftSetInput> = emptyList()
+    @SerializedName("sets") val sets: List<DraftSetInput> = emptyList(),
+    @SerializedName("notes") val notes: String = ""
 )
 
 @Immutable

@@ -797,10 +797,9 @@ private fun ExerciseProgressDetailView(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Row(
+                                Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
                                         text = "Progression Curve",
@@ -811,6 +810,7 @@ private fun ExerciseProgressDetailView(
 
                                     Row(
                                         modifier = Modifier
+                                            .fillMaxWidth()
                                             .background(BgDark, RoundedCornerShape(9.dp))
                                             .padding(2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -819,16 +819,20 @@ private fun ExerciseProgressDetailView(
                                             val active = metricMode == mode
                                             Box(
                                                 modifier = Modifier
+                                                    .weight(1f)
                                                     .clip(RoundedCornerShape(7.dp))
                                                     .background(if (active) AccentOrange else Color.Transparent)
                                                     .clickable { metricMode = mode }
-                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = mode.label,
                                                     fontSize = 11.5.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (active) Color(0xFF140D07) else TextSecondary
+                                                    color = if (active) Color(0xFF140D07) else TextSecondary,
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
                                         }

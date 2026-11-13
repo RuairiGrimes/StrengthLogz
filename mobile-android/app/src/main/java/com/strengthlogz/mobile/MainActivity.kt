@@ -145,9 +145,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // Check if active draft exists to display draft badge
-                val activeDraft = remember(dataVersion) { repository.getActiveDraft() }
+                var activeDraft by remember(dataVersion) { mutableStateOf(repository.getActiveDraft()) }
+                val programSelectedDayById = remember { mutableStateMapOf<String, Int>() }
                 val hasActiveDraft = remember(activeDraft) {
-                    activeDraft != null && (activeDraft.exercises.isNotEmpty() || activeDraft.title.isNotBlank())
+                    activeDraft?.let { it.exercises.isNotEmpty() || it.title.isNotBlank() } == true
                 }
                 val isHealthConnectAvailable = remember {
                     HealthConnectWeightSource.isAvailable(applicationContext)
@@ -418,9 +419,11 @@ class MainActivity : ComponentActivity() {
                                             initialDraft = activeDraft,
                                             onDraftChanged = { draft ->
                                                 repository.saveActiveDraft(draft)
+                                                activeDraft = draft
                                             },
                                             onDiscardDraft = {
                                                 repository.clearActiveDraft()
+                                                activeDraft = null
                                                 dataVersion++
                                             }
                                         )
@@ -461,6 +464,10 @@ class MainActivity : ComponentActivity() {
                                                 pendingSuggestedPlan = plan
                                                 currentScreen = Screen.LOG
                                                 lastPrimaryScreen = Screen.LOG
+                                            },
+                                            persistedSelectedDayIdx = repository.getActiveProgram()?.id?.let { programSelectedDayById[it] },
+                                            onSelectedDayChanged = { progId, idx ->
+                                                programSelectedDayById[progId] = idx
                                             }
                                         )
                                         Screen.SUGGEST -> SuggestWorkoutScreen(
