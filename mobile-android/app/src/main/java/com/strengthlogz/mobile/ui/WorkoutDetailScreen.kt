@@ -31,7 +31,7 @@ import com.strengthlogz.mobile.util.DateUtils
 import com.strengthlogz.mobile.util.SetUtils
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun WorkoutDetailScreen(
     workout: Workout,
@@ -225,8 +225,8 @@ fun WorkoutDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
+                                FlowRow(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
@@ -285,6 +285,24 @@ fun WorkoutDetailScreen(
 
                         if (isExpanded) {
                             HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+
+                            val exNote = exSets.firstOrNull { it.notes.isNotBlank() }?.notes?.trim().orEmpty()
+                            if (exNote.isNotBlank()) {
+                                Surface(
+                                    color = BgDark,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(0.8.dp, BorderDark),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "Note: $exNote",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary,
+                                        fontStyle = FontStyle.Italic,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                                    )
+                                }
+                            }
 
                             if (prevSess != null) {
                                 Text(

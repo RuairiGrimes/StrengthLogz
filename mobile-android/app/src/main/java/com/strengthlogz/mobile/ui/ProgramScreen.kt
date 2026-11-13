@@ -69,7 +69,9 @@ fun ProgramScreen(
     onSelectProgram: (String) -> Unit,
     onDuplicateProgram: (String) -> Unit,
     onAddCustomExercise: (Exercise) -> Unit,
-    onLoadProgramDayToLogger: (SuggestedWorkoutPlan) -> Unit
+    onLoadProgramDayToLogger: (SuggestedWorkoutPlan) -> Unit,
+    persistedSelectedDayIdx: Int? = null,
+    onSelectedDayChanged: (String, Int) -> Unit = { _, _ -> }
 ) {
     var showProgramSwitcher by remember { mutableStateOf(false) }
     var showCreateProgramDialog by remember { mutableStateOf(false) }
@@ -86,9 +88,18 @@ fun ProgramScreen(
 
     val activeDays = activeProgram?.safeDays ?: emptyList()
     var selectedDayIdx by remember(activeProgram?.id, activeDays.size) {
-        val lastIdx = activeProgram?.lastLoadedDayIndex ?: -1
-        val initial = if (lastIdx in 0 until activeDays.size) (lastIdx + 1) % activeDays.size else 0
+        val initial = if (persistedSelectedDayIdx != null && persistedSelectedDayIdx in 0 until activeDays.size) {
+            persistedSelectedDayIdx
+        } else {
+            val lastIdx = activeProgram?.lastLoadedDayIndex ?: -1
+            if (lastIdx in 0 until activeDays.size) (lastIdx + 1) % activeDays.size else 0
+        }
         mutableIntStateOf(initial.coerceIn(0, (activeDays.size - 1).coerceAtLeast(0)))
+    }
+
+    fun selectDay(idx: Int) {
+        selectedDayIdx = idx
+        activeProgram?.id?.let { onSelectedDayChanged(it, idx) }
     }
 
     // Ensure selectedDayIdx is valid
@@ -433,7 +444,7 @@ fun ProgramScreen(
                                             1.dp,
                                             if (isSelected) AccentOrange else BorderDark
                                         ),
-                                        modifier = Modifier.clickable { selectedDayIdx = idx }
+                                        modifier = Modifier.clickable { selectDay(idx) }
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -845,7 +856,7 @@ fun ProgramScreen(
                 )
                 val updatedDays = activeDays + newDay
                 onSaveProgram(activeProgram.copy(days = updatedDays))
-                selectedDayIdx = updatedDays.size - 1
+                selectDay(updatedDays.size - 1)
                 showAddDayDialog = false
             },
             onDelete = {},
@@ -871,7 +882,7 @@ fun ProgramScreen(
                 val updatedDays = activeDays.filter { it.dayIndex != day.dayIndex }
                     .mapIndexed { idx, d -> d.copy(dayIndex = idx) }
                 onSaveProgram(activeProgram!!.copy(days = updatedDays))
-                selectedDayIdx = (safeDayIdx - 1).coerceAtLeast(0)
+                selectDay((safeDayIdx - 1).coerceAtLeast(0))
                 dayToEdit = null
             },
             onDismiss = { dayToEdit = null }

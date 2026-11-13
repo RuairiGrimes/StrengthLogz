@@ -342,30 +342,46 @@ fun PlateCalculatorDialog(
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val centerY = size.height / 2f
-                            val barThickness = 12f
+                            val shaftThickness = 8f
+                            val sleeveThickness = 13f
+                            val collarX = 36f
+                            val collarW = 10f
+                            val platesStartX = collarX + collarW + 4f
+                            val plateW = 14f
+                            val plateGap = 3f
+                            val totalPlatesCount = plateStack.sumOf { it.count }
+                            val platesEndX = platesStartX + totalPlatesCount * (plateW + plateGap)
+                            val sleeveEndX = (platesEndX + 24f).coerceAtMost(size.width)
 
-                            // Draw Barbell sleeve base
+                            // Draw inner barbell shaft on the left
                             drawRect(
-                                color = Color(0xFF475569),
-                                topLeft = Offset(0f, centerY - barThickness / 2f),
-                                size = Size(size.width, barThickness)
+                                color = Color(0xFF64748B),
+                                topLeft = Offset(0f, centerY - shaftThickness / 2f),
+                                size = Size(collarX, shaftThickness)
                             )
 
-                            // Draw Collar stopper
+                            // Draw loading sleeve from collar to capped end on the right
+                            drawRoundRect(
+                                color = Color(0xFF475569),
+                                topLeft = Offset(collarX + collarW, centerY - sleeveThickness / 2f),
+                                size = Size((sleeveEndX - (collarX + collarW)).coerceAtLeast(16f), sleeveThickness),
+                                cornerRadius = CornerRadius(4f, 4f)
+                            )
+
+                            // Draw Collar stopper separating shaft and sleeve
                             drawRoundRect(
                                 color = Color(0xFF94A3B8),
-                                topLeft = Offset(10f, centerY - 24f),
-                                size = Size(10f, 48f),
+                                topLeft = Offset(collarX, centerY - 24f),
+                                size = Size(collarW, 48f),
                                 cornerRadius = CornerRadius(3f, 3f)
                             )
 
-                            // Draw plates stacked from collar outwards
-                            var currentX = 26f
+                            // Draw plates stacked from collar outwards (heaviest inside, lightest outside)
+                            var currentX = platesStartX
                             val maxH = size.height - 10f
 
                             plateStack.forEach { pc ->
                                 repeat(pc.count) {
-                                    val plateW = 14f
                                     val plateH = maxH * pc.heightFraction
                                     drawRoundRect(
                                         color = pc.color,
@@ -381,7 +397,7 @@ fun PlateCalculatorDialog(
                                         cornerRadius = CornerRadius(2.5f, 2.5f),
                                         style = androidx.compose.ui.graphics.drawscope.Stroke(1.5f)
                                     )
-                                    currentX += plateW + 3f
+                                    currentX += plateW + plateGap
                                 }
                             }
                         }

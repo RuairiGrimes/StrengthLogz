@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import com.strengthlogz.mobile.ui.theme.*
 import com.strengthlogz.mobile.util.SetUtils.formatWeightValue
 import kotlin.math.abs
@@ -156,7 +157,15 @@ fun SetValuePickerDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            // Keep the current wheel/text selection if closed via system Back
+            if (keyboardMode) {
+                onConfirm(weightText.trim(), repsText.trim())
+            } else {
+                onConfirm(formatWeightValue(weightValues[weightIdx]), repValues[repsIdx].toString())
+            }
+        },
+        properties = DialogProperties(dismissOnClickOutside = false),
         containerColor = SurfaceDark,
         title = {
             Row(
@@ -253,8 +262,12 @@ fun SetValuePickerDialog(
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                shape = RoundedCornerShape(10.dp)
-            ) { Text("OK", fontWeight = FontWeight.Bold) }
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .height(48.dp)
+                    .defaultMinSize(minWidth = 112.dp)
+            ) { Text("OK", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }

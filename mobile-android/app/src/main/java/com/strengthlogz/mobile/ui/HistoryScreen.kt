@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,7 +94,7 @@ fun HistoryScreen(
             val volume = sets.filter { (it.reps ?: 0) > 0 }.sumOf { (it.weight ?: 0.0) * (it.reps ?: 0) }
             val workingCount = sets.count { (it.reps ?: 0) > 0 }
             val topLines = grouped.entries.take(4).map { (exName, exSets) ->
-                exName to SetUtils.formatSetsSummary(exSets)
+                exName to SetUtils.formatSetsSummary(exSets.sortedBy { it.setNo })
             }
             HistoryCardModel(
                 workout = w,
@@ -270,7 +271,7 @@ fun HistoryScreen(
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.Top
                             ) {
                                 Text(
                                     text = exerciseName,
@@ -279,15 +280,18 @@ fun HistoryScreen(
                                     color = TextPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.weight(0.42f)
                                 )
                                 Text(
                                     text = setsSummary,
                                     fontSize = 12.sp,
                                     color = TextSecondary,
-                                    maxLines = 1,
+                                    textAlign = TextAlign.End,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(start = 10.dp)
+                                    modifier = Modifier
+                                        .weight(0.58f)
+                                        .padding(start = 10.dp)
                                 )
                             }
                         }

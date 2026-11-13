@@ -26,9 +26,11 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -91,12 +93,17 @@ class ExerciseLogState(
     val previousSets: List<WorkoutSet> = emptyList(),
     val allTimeSets: List<WorkoutSet> = emptyList(),
     initialSets: List<SetInputState> = listOf(SetInputState()),
+    initialNotes: String = "",
     /** Bodyweight-flagged lifts log ADDED load; E1RM uses body weight + added load. */
     val isBodyweight: Boolean = BodyWeightUtils.isBodyweightExercise(exerciseName)
 ) {
     val sets = mutableStateListOf<SetInputState>().apply {
         addAll(initialSets)
     }
+
+    var notes by mutableStateOf(initialNotes)
+    var showNotesEditor by mutableStateOf(initialNotes.isNotBlank())
+    var noteSaved by mutableStateOf(false)
 
     val previousSummary: String by lazy {
         if (previousSets.isNotEmpty()) SetUtils.formatSetsSummary(previousSets) else ""
@@ -177,7 +184,8 @@ fun LogWorkoutScreen(
                             category = cat,
                             previousSets = prevSets,
                             allTimeSets = allSets,
-                            initialSets = restoredSets
+                            initialSets = restoredSets,
+                            initialNotes = draftEx.notes
                         )
                     )
                 }
@@ -202,7 +210,8 @@ fun LogWorkoutScreen(
                         notes = s.notes,
                         isCompleted = s.isCompleted
                     )
-                }
+                },
+                notes = exLog.notes
             )
         }
         return ActiveWorkoutDraft(
@@ -218,9 +227,11 @@ fun LogWorkoutScreen(
     LaunchedEffect(Unit) {
         snapshotFlow {
             val exData = loggedExercises.map { ex ->
-                ex.exerciseName to ex.sets.map { s ->
-                    listOf(s.weight, s.reps, s.notes, s.isCompleted)
-                }
+                Triple(
+                    ex.exerciseName,
+                    ex.notes,
+                    ex.sets.map { s -> listOf(s.weight, s.reps, s.notes, s.isCompleted) }
+                )
             }
             Triple(workoutDate, workoutTitle to workoutNotes, exData)
         }
@@ -232,6 +243,16 @@ fun LogWorkoutScreen(
                     onDraftChanged(draft)
                 }
             }
+    }
+
+    // Flush active draft immediately when leaving LogWorkoutScreen so edits within 300ms are never lost
+    DisposableEffect(Unit) {
+        onDispose {
+            val draft = buildCurrentDraft()
+            if (draft.title.isNotBlank() || draft.notes.isNotBlank() || draft.exercises.isNotEmpty()) {
+                onDraftChanged(draft)
+            }
+        }
     }
 
     // Date Switcher Dialog
@@ -386,20 +407,22 @@ fun LogWorkoutScreen(
                                 var globalIdx = 0
                                 loggedExercises.forEach { exLog ->
                                     var setNum = 1
+                                    val exNote = exLog.notes.trim()
                                     exLog.sets.forEach { s ->
                                         val w = s.weight.trim().toDoubleOrNull()
                                         val r = s.reps.trim().toIntOrNull()
-                                        if (w != null || r != null || s.notes.isNotBlank()) {
+                                        if (w != null || r != null || s.notes.isNotBlank() || (setNum == 1 && exNote.isNotBlank())) {
+                                            val currentSetNo = setNum++
                                             setList.add(
                                                 WorkoutSet(
                                                     id = "s-${nowMs.toString(36)}-${globalIdx++}",
                                                     workoutId = workoutId,
                                                     date = newWorkout.date,
                                                     exercise = exLog.exerciseName,
-                                                    setNo = setNum++,
+                                                    setNo = currentSetNo,
                                                     weight = w,
                                                     reps = r,
-                                                    notes = s.notes.trim()
+                                                    notes = if (currentSetNo == 1 && exNote.isNotBlank()) exNote else s.notes.trim()
                                                 )
                                             )
                                         }
@@ -1383,45 +1406,83 @@ fun LogWorkoutScreen(
 
                         Spacer(Modifier.height(8.dp))
 
-                        // ERGONOMIC BUTTONS: ADD SET & TACTILE STEPPERS
+                        // ERGONOMIC BUTTONS: ADD SET, NOTES & TACTILE STEPPERS
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // "+ Add Set" pill button
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = BgDark,
-                                border = BorderStroke(1.dp, AccentPeach.copy(alpha = 0.5f)),
-                                modifier = Modifier
-                                    .clickable {
-                                        val lastSet = exLog.sets.lastOrNull()
-                                        exLog.sets.add(
-                                            SetInputState(
-                                                initialWeight = lastSet?.weight ?: "",
-                                                initialReps = lastSet?.reps ?: ""
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // "+ Add Set" pill button
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = BgDark,
+                                    border = BorderStroke(1.dp, AccentPeach.copy(alpha = 0.5f)),
+                                    modifier = Modifier
+                                        .clickable {
+                                            val lastSet = exLog.sets.lastOrNull()
+                                            exLog.sets.add(
+                                                SetInputState(
+                                                    initialWeight = lastSet?.weight ?: "",
+                                                    initialReps = lastSet?.reps ?: ""
+                                                )
                                             )
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = AccentPeach,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Add Set",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AccentPeach
                                         )
                                     }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                }
+
+                                // "Notes" toggle button
+                                val hasNotes = exLog.notes.isNotBlank()
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (exLog.showNotesEditor || hasNotes) AccentOrange.copy(alpha = 0.14f) else BgDark,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (exLog.showNotesEditor || hasNotes) AccentOrange.copy(alpha = 0.6f) else BorderDark
+                                    ),
+                                    modifier = Modifier.clickable {
+                                        exLog.showNotesEditor = !exLog.showNotesEditor
+                                    }
                                 ) {
-                                    Icon(
-                                        Icons.Default.Add,
-                                        contentDescription = null,
-                                        tint = AccentPeach,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "Add Set",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AccentPeach
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.EditNote,
+                                            contentDescription = "Exercise Notes",
+                                            tint = if (exLog.showNotesEditor || hasNotes) AccentOrange else TextSecondary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Notes",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (exLog.showNotesEditor || hasNotes) AccentOrange else TextSecondary
+                                        )
+                                    }
                                 }
                             }
 
@@ -1462,6 +1523,64 @@ fun LogWorkoutScreen(
                                         color = TextSecondary,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)
                                     )
+                                }
+                            }
+                        }
+
+                        // Expandable Exercise Notes Textbox + Save Button
+                        AnimatedVisibility(visible = exLog.showNotesEditor) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = exLog.notes,
+                                    onValueChange = {
+                                        exLog.notes = it
+                                        exLog.noteSaved = false
+                                    },
+                                    placeholder = {
+                                        Text(
+                                            "Add notes for ${exLog.exerciseName}...",
+                                            fontSize = 12.sp,
+                                            color = TextMuted
+                                        )
+                                    },
+                                    singleLine = false,
+                                    maxLines = 3,
+                                    textStyle = TextStyle(fontSize = 12.5.sp, color = TextPrimary),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = AccentOrange,
+                                        unfocusedBorderColor = BorderDark,
+                                        focusedContainerColor = BgDark,
+                                        unfocusedContainerColor = BgDark
+                                    ),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (exLog.noteSaved) IncreaseGreen.copy(alpha = 0.2f) else AccentOrange,
+                                    border = if (exLog.noteSaved) BorderStroke(1.dp, IncreaseGreen) else null,
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clickable {
+                                            exLog.notes = exLog.notes.trim()
+                                            exLog.noteSaved = true
+                                            onDraftChanged(buildCurrentDraft())
+                                        }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (exLog.noteSaved) Icons.Default.Check else Icons.Default.Save,
+                                            contentDescription = "Save Note",
+                                            tint = if (exLog.noteSaved) IncreaseGreen else Color(0xFF140D07),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
