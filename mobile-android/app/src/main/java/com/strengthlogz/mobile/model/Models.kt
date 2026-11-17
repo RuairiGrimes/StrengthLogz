@@ -135,6 +135,83 @@ data class WorkoutProgram(
     val daysCount: Int get() = safeDays.size
 }
 
+@Immutable
+data class SavedSummaryLiftItem(
+    @SerializedName("exerciseName") val exerciseName: String = "",
+    @SerializedName("category") val category: String = "Other",
+    @SerializedName("isBodyweight") val isBodyweight: Boolean = false,
+    @SerializedName("sessionsIn14d") val sessionsIn14d: Int = 0,
+    @SerializedName("workingSets14d") val workingSets14d: Int = 0,
+    @SerializedName("volumeKg14d") val volumeKg14d: Double = 0.0,
+    @SerializedName("bestSet14d") val bestSet14d: String = "",
+    @SerializedName("bestE1rm14dKg") val bestE1rm14dKg: Double = 0.0,
+    @SerializedName("priorBestE1rmKg") val priorBestE1rmKg: Double? = null,
+    @SerializedName("e1rmDeltaKg") val e1rmDeltaKg: Double? = null,
+    @SerializedName("e1rmDeltaPct") val e1rmDeltaPct: Double? = null,
+    @SerializedName("withinPeriodE1rmDeltaKg") val withinPeriodE1rmDeltaKg: Double? = null,
+    @SerializedName("relativeStrengthBw") val relativeStrengthBw: Double? = null,
+    @SerializedName("isAllTimePr") val isAllTimePr: Boolean = false
+)
+
+@Immutable
+data class SavedSummaryMuscleItem(
+    @SerializedName("category") val category: String = "",
+    @SerializedName("workingSets14d") val workingSets14d: Int = 0,
+    @SerializedName("prior14dWorkingSets") val prior14dWorkingSets: Int = 0,
+    @SerializedName("volumeKg14d") val volumeKg14d: Double = 0.0,
+    @SerializedName("target14dSets") val target14dSets: Int = 0
+)
+
+@Immutable
+data class SavedSummaryEntry(
+    @SerializedName("id") val id: String = java.util.UUID.randomUUID().toString(),
+    @SerializedName("title") val title: String = "",
+    @SerializedName("notes") val notes: String = "",
+    @SerializedName("savedAt") val savedAt: String = "",
+    @SerializedName("savedEpochMs") val savedEpochMs: Long = System.currentTimeMillis(),
+    @SerializedName("startDate") val startDate: String = "",
+    @SerializedName("endDate") val endDate: String = "",
+    @SerializedName("overallScore") val overallScore: Int = 0,
+    @SerializedName("tierLabel") val tierLabel: String = "",
+    @SerializedName("volumeScore") val volumeScore: Int = 0,
+    @SerializedName("strengthScore") val strengthScore: Int = 0,
+    @SerializedName("consistencyScore") val consistencyScore: Int = 0,
+    @SerializedName("balanceScore") val balanceScore: Int = 0,
+    @SerializedName("workoutsCount") val workoutsCount: Int = 0,
+    @SerializedName("priorWorkoutsCount") val priorWorkoutsCount: Int = 0,
+    @SerializedName("workingSetsCount") val workingSetsCount: Int = 0,
+    @SerializedName("priorWorkingSetsCount") val priorWorkingSetsCount: Int = 0,
+    @SerializedName("totalReps") val totalReps: Int = 0,
+    @SerializedName("failedSetsCount") val failedSetsCount: Int = 0,
+    @SerializedName("totalVolumeKg") val totalVolumeKg: Double = 0.0,
+    @SerializedName("priorVolumeKg") val priorVolumeKg: Double = 0.0,
+    @SerializedName("volumeDeltaPct") val volumeDeltaPct: Double? = null,
+    @SerializedName("startBodyWeightKg") val startBodyWeightKg: Double? = null,
+    @SerializedName("endBodyWeightKg") val endBodyWeightKg: Double? = null,
+    @SerializedName("bodyWeightDeltaKg") val bodyWeightDeltaKg: Double? = null,
+    @SerializedName("avg7BodyWeightKg") val avg7BodyWeightKg: Double? = null,
+    @SerializedName("dotsScore") val dotsScore: Double? = null,
+    @SerializedName("prsCount") val prsCount: Int = 0,
+    @SerializedName("progressingCount") val progressingCount: Int = 0,
+    @SerializedName("holdingCount") val holdingCount: Int = 0,
+    @SerializedName("regressingCount") val regressingCount: Int = 0,
+    @SerializedName("pushToPullRatio") val pushToPullRatio: Double? = null,
+    @SerializedName("upperSharePct") val upperSharePct: Int = 0,
+    @SerializedName("heavySets") val heavySets: Int = 0,
+    @SerializedName("strengthHypSets") val strengthHypSets: Int = 0,
+    @SerializedName("hypertrophySets") val hypertrophySets: Int = 0,
+    @SerializedName("enduranceSets") val enduranceSets: Int = 0,
+    @SerializedName("muscleItems") val muscleItems: List<SavedSummaryMuscleItem>? = emptyList(),
+    @SerializedName("topLifts") val topLifts: List<SavedSummaryLiftItem>? = emptyList(),
+    @SerializedName("highlights") val highlights: List<String>? = emptyList(),
+    @SerializedName("recommendations") val recommendations: List<String>? = emptyList()
+) {
+    val safeMuscleItems: List<SavedSummaryMuscleItem> get() = muscleItems ?: emptyList()
+    val safeTopLifts: List<SavedSummaryLiftItem> get() = topLifts ?: emptyList()
+    val safeHighlights: List<String> get() = highlights ?: emptyList()
+    val safeRecommendations: List<String> get() = recommendations ?: emptyList()
+}
+
 data class AppData(
     @SerializedName("workouts") val workouts: MutableList<Workout> = mutableListOf(),
     @SerializedName("sets") val sets: MutableList<WorkoutSet> = mutableListOf(),
@@ -143,7 +220,8 @@ data class AppData(
     @SerializedName("goals") var goals: MutableList<ExerciseGoal>? = mutableListOf(),
     @SerializedName("program") var program: WorkoutProgram? = null,
     @SerializedName("programs") var programs: MutableList<WorkoutProgram>? = mutableListOf(),
-    @SerializedName("activeProgramId") var activeProgramId: String? = null
+    @SerializedName("activeProgramId") var activeProgramId: String? = null,
+    @SerializedName("savedSummaries") var savedSummaries: MutableList<SavedSummaryEntry>? = mutableListOf()
 )
 
 @Immutable

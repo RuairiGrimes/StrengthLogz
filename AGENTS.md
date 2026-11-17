@@ -47,6 +47,7 @@ c:\MyProjects\StrengthLogz\
 ├── data/
 │   └── exercises.json        # Standardized default exercise catalog
 ├── src/
+│   ├── summary-engine.js     # Deterministic in-engine 14-day summary & scoring calculator
 │   ├── data-service.js       # Core business logic, cache state, Google Sheets coordinator
 │   └── stores/
 │       ├── local-store.js    # Local JSON storage fallback (userData/local-data.json)
@@ -67,6 +68,7 @@ c:\MyProjects\StrengthLogz\
                 ├── MainActivity.kt               # Root Activity, Tab navigation, global state flow
                 ├── model/Models.kt               # Relational data models (Workout, WorkoutSet, Exercise, ExerciseGoal)
                 ├── util/
+                │   ├── SummaryEngine.kt          # Deterministic in-engine 14-day summary & scoring calculator
                 │   ├── DateUtils.kt              # Strict DD-MON-YYYY <-> ISO parsing & formatting
                 │   ├── BodyWeightUtils.kt        # Carry-forward bodyweight & total-load E1RM helpers
                 │   └── GoalEngine.kt             # Exercise goal calculations, periodized programming & reports
@@ -75,6 +77,7 @@ c:\MyProjects\StrengthLogz\
                 │   └── WorkoutRepository.kt      # Local cache, sync dispatch, sample data loader
                 └── ui/
                     ├── theme/Color.kt            # Obsidian (#0F1115), Orange (#FF7A45), PR Gold (#FFD166)
+                    ├── FourteenDaySummaryDialog.kt # In-engine 14-day summary & persistent saved log modal
                     ├── LogWorkoutScreen.kt       # Workout logging, set add/delete, live Epley E1RM & Goal Progress
                     ├── ProgramScreen.kt          # Weekly workout split builder (1-7 days), day editor & 1-tap logger loader
                     ├── HistoryScreen.kt          # Chronological session list, set inspection, delete/repeat
@@ -137,6 +140,12 @@ $$\text{Score} = \text{Sessions} \times 0.8 + \text{PlateauBonus} + \text{Recenc
   - Weight jump of $+2.5\text{kg}$ (or $+1.25\text{kg}$ for arms/raises) when previous top set $\ge 8\text{ reps}$ for strength slots or $\ge 12\text{ reps}$.
   - Rep progression ($+1\text{ rep}$) when working weight is maintained.
 - **Benefit Annotation**: Exercises contain descriptive kinetic benefits (e.g., *"Unilateral quad/glute strength, eliminates leg imbalances, and spares lower spine"* for Bulgarian Split Squats).
+
+### 3.4 In-Engine 14-Day Summary & Saved Summary Log
+Both clients provide an offline, deterministic **14-Day Training Summary** (`SummaryEngine.kt` on Android, `src/summary-engine.js` on Desktop) accessible from the top bar (`14d`) / Progress (`14d`) on Android and from Progress / History (`14-Day Summary`) on Desktop:
+- **Comprehensive 14-Day Metrics**: Evaluates cadence & active `WorkoutProgram` adherence, external tonnage ($\Delta\%$ vs prior 14 days), bodyweight-adjusted workload, failed (`reps <= 0`) set exclusion, rep-zone distribution (`1-5`, `6-8`, `9-12`, `13+`), muscle-group working sets vs 14-day targets, Push:Pull & Upper:Lower balance, body weight delta / 7-day average / SBD DOTS trajectory, per-exercise E1RM & relative strength ($\times\text{BW}$) progressions, all-time PR detection, and active goal alignment.
+- **Deterministic Score**: Produces a 0–100 composite score across `Volume`, `Strength`, `Cadence`, and `Balance` plus factual findings and next-block focus items.
+- **Persistent Saved Log**: Users can save any 14-day summary snapshot (with custom label and note) into `savedSummaries` (`AppData.savedSummaries` on Android; `local-data.json` on Desktop) and compare block-over-block trends in the **Saved Log** tab.
 
 ---
 

@@ -40,5 +40,10 @@ contextBridge.exposeInMainWorld('api', {
   // Draft
   saveDraft: (draft) => call('saveDraft', draft),
   clearDraft: () => call('clearDraft'),
+
+  // 14-Day Summary & Saved Log
+  get14DaySummary: (opts) => call('get14DaySummary', opts),
+  saveSummaryEntry: (opts) => call('saveSummaryEntry', opts),
+  deleteSummaryEntry: (id) => call('deleteSummaryEntry', id),
 });
 

@@ -45,6 +45,7 @@ import com.strengthlogz.mobile.data.WorkoutRepository
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.ui.BodyWeightScreen
 import com.strengthlogz.mobile.ui.ExercisesScreen
+import com.strengthlogz.mobile.ui.FourteenDaySummaryDialog
 import com.strengthlogz.mobile.ui.GoalsScreen
 import com.strengthlogz.mobile.ui.HistoryScreen
 import com.strengthlogz.mobile.data.HealthConnectWeightSource
@@ -139,6 +140,7 @@ class MainActivity : ComponentActivity() {
                 var dotsIsMale by remember { mutableStateOf(repository.getDotsIsMale()) }
                 var bwUseLbs by remember { mutableStateOf(repository.getBwUseLbs()) }
                 var postWorkoutUpdatedGoal by remember { mutableStateOf<com.strengthlogz.mobile.model.ExerciseGoal?>(null) }
+                var showSummaryDialog by remember { mutableStateOf(false) }
 
                 BackHandler(enabled = selectedWorkoutForDetail == null && currentScreen !in PRIMARY_TABS) {
                     currentScreen = lastPrimaryScreen
@@ -223,6 +225,34 @@ class MainActivity : ComponentActivity() {
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        Surface(
+                                            color = SurfaceDark,
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, BorderDark.copy(alpha = 0.7f)),
+                                            modifier = Modifier.clickable {
+                                                showSummaryDialog = true
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Filled.TrendingUp,
+                                                    contentDescription = "14-Day Summary",
+                                                    tint = AccentOrange,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Text(
+                                                    "14d",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = TextPrimary
+                                                )
+                                            }
+                                        }
+
                                         val isExercises = currentScreen == Screen.EXERCISES
                                         Surface(
                                             color = if (isExercises) AccentOrange.copy(alpha = 0.18f) else SurfaceDark,
@@ -534,6 +564,9 @@ class MainActivity : ComponentActivity() {
                                                 bwReturnScreen = Screen.PROGRESS
                                                 currentScreen = Screen.BODY_WEIGHT
                                             },
+                                            onOpenFourteenDaySummary = {
+                                                showSummaryDialog = true
+                                            },
                                             initialExercise = selectedProgressExercise,
                                             onConsumeInitialExercise = { selectedProgressExercise = null }
                                         )
@@ -653,6 +686,28 @@ class MainActivity : ComponentActivity() {
                             com.strengthlogz.mobile.ui.ExerciseGoalReportDialog(
                                 report = report,
                                 onDismiss = { postWorkoutUpdatedGoal = null }
+                            )
+                        }
+
+                        if (showSummaryDialog) {
+                            FourteenDaySummaryDialog(
+                                workouts = repository.appData.workouts,
+                                sets = repository.appData.sets,
+                                exercises = repository.appData.exercises,
+                                bodyWeights = repository.getBodyWeights(),
+                                goals = repository.getGoals(),
+                                activeProgram = repository.getActiveProgram(),
+                                isMale = dotsIsMale,
+                                savedSummaries = repository.getSavedSummaries(),
+                                onSaveSummary = { entry ->
+                                    repository.saveSummaryEntry(entry)
+                                    dataVersion++
+                                },
+                                onDeleteSummary = { id ->
+                                    repository.deleteSummaryEntry(id)
+                                    dataVersion++
+                                },
+                                onDismiss = { showSummaryDialog = false }
                             )
                         }
                     }

@@ -10,6 +10,7 @@ import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ExerciseGoal
 import com.strengthlogz.mobile.model.ProgramDay
 import com.strengthlogz.mobile.model.ProgramExerciseItem
+import com.strengthlogz.mobile.model.SavedSummaryEntry
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutProgram
 import com.strengthlogz.mobile.model.WorkoutSet
@@ -261,7 +262,8 @@ class WorkoutRepository(private val context: Context) {
             goals = goals,
             program = data.program,
             programs = data.programs ?: mutableListOf(),
-            activeProgramId = data.activeProgramId
+            activeProgramId = data.activeProgramId,
+            savedSummaries = data.savedSummaries ?: mutableListOf()
         )
     }
 
@@ -312,7 +314,7 @@ class WorkoutRepository(private val context: Context) {
             try {
                 val json = file.readText(Charsets.UTF_8)
                 val loaded = gson.fromJson(json, AppData::class.java)
-                if (loaded != null && (loaded.workouts.isNotEmpty() || loaded.exercises.isNotEmpty() || loaded.program != null || !loaded.programs.isNullOrEmpty())) {
+                if (loaded != null && (loaded.workouts.isNotEmpty() || loaded.exercises.isNotEmpty() || loaded.program != null || !loaded.programs.isNullOrEmpty() || !loaded.savedSummaries.isNullOrEmpty())) {
                     appData = normalizeDates(loaded)
                     return
                 }
@@ -330,7 +332,8 @@ class WorkoutRepository(private val context: Context) {
             goals = mutableListOf(),
             program = null,
             programs = mutableListOf(),
-            activeProgramId = null
+            activeProgramId = null,
+            savedSummaries = mutableListOf()
         )
         saveLocalDataAsync()
     }
@@ -354,7 +357,8 @@ class WorkoutRepository(private val context: Context) {
             goals = appData.goals?.toMutableList() ?: mutableListOf(),
             program = appData.program,
             programs = appData.programs?.toMutableList() ?: mutableListOf(),
-            activeProgramId = appData.activeProgramId
+            activeProgramId = appData.activeProgramId,
+            savedSummaries = appData.savedSummaries?.toMutableList() ?: mutableListOf()
         )
         ioExecutor.execute {
             try {
@@ -409,6 +413,30 @@ class WorkoutRepository(private val context: Context) {
     fun setDotsIsMale(v: Boolean) { prefs.edit().putBoolean("dots_is_male", v).apply() }
     fun getBwUseLbs(): Boolean = prefs.getBoolean("bw_use_lbs", false)
     fun setBwUseLbs(v: Boolean) { prefs.edit().putBoolean("bw_use_lbs", v).apply() }
+
+    // ---------------- Saved 14-Day Summaries ----------------
+
+    fun getSavedSummaries(): List<SavedSummaryEntry> {
+        return (appData.savedSummaries ?: emptyList())
+            .sortedByDescending { it.savedEpochMs }
+    }
+
+    @Synchronized
+    fun saveSummaryEntry(entry: SavedSummaryEntry) {
+        val list = (appData.savedSummaries ?: mutableListOf()).toMutableList()
+        list.removeAll { it.id == entry.id }
+        list.add(0, entry)
+        appData.savedSummaries = list
+        saveLocalDataAsync()
+    }
+
+    @Synchronized
+    fun deleteSummaryEntry(id: String) {
+        val list = (appData.savedSummaries ?: mutableListOf()).toMutableList()
+        list.removeAll { it.id == id }
+        appData.savedSummaries = list
+        saveLocalDataAsync()
+    }
 
     fun getLastSyncTime(): String {
         return prefs.getString("last_sync_time", "Never") ?: "Never"
@@ -1243,7 +1271,8 @@ class WorkoutRepository(private val context: Context) {
                     program = syncedExtra.programs.firstOrNull { it.id == syncedExtra.activeProgramId }
                         ?: syncedExtra.programs.firstOrNull(),
                     programs = syncedExtra.programs.toMutableList(),
-                    activeProgramId = syncedExtra.activeProgramId
+                    activeProgramId = syncedExtra.activeProgramId,
+                    savedSummaries = (appData.savedSummaries ?: mutableListOf()).toMutableList()
                 )
                 rebuildIndexes()
                 saveLocalDataAsync()

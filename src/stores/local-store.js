@@ -18,6 +18,7 @@ class LocalStore {
         goals: [],
         programs: [],
         activeProgramId: null,
+        savedSummaries: [],
         draft: null,
         sync: {},
       });
@@ -36,6 +37,10 @@ class LocalStore {
         data.programs = [];
         changed = true;
       }
+      if (!Array.isArray(data.savedSummaries)) {
+        data.savedSummaries = [];
+        changed = true;
+      }
       if (changed) this._write(data);
     }
   }
@@ -51,6 +56,7 @@ class LocalStore {
         goals: Array.isArray(parsed.goals) ? parsed.goals : [],
         programs: Array.isArray(parsed.programs) ? parsed.programs : [],
         activeProgramId: parsed.activeProgramId || null,
+        savedSummaries: Array.isArray(parsed.savedSummaries) ? parsed.savedSummaries : [],
         draft: parsed.draft || null,
         sync: parsed.sync && typeof parsed.sync === 'object' ? parsed.sync : {},
       };
@@ -63,6 +69,7 @@ class LocalStore {
         goals: [],
         programs: [],
         activeProgramId: null,
+        savedSummaries: [],
         draft: null,
         sync: {},
       };
@@ -166,6 +173,12 @@ class LocalStore {
     this._write(data);
   }
 
+  async saveSummaries(savedSummaries) {
+    const data = this._read();
+    data.savedSummaries = savedSummaries;
+    this._write(data);
+  }
+
   /** Cloud-sync bookkeeping: pending deletions and keys present at the last successful sync. */
   async saveSync(sync) {
     const data = this._read();
@@ -215,6 +228,7 @@ class LocalStore {
       goals: current.goals,
       programs: current.programs,
       activeProgramId: current.activeProgramId,
+      savedSummaries: current.savedSummaries || [],
       draft: null,
       sync: current.sync,
     });

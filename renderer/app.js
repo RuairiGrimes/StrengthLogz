@@ -61,6 +61,7 @@ let S = {
   goals: [],
   programs: [],
   activeProgramId: null,
+  savedSummaries: [],
   draft: null,
   storage: {},
 };
@@ -78,6 +79,7 @@ function setState(st) {
     bodyWeights: st.bodyWeights || [],
     goals: st.goals || [],
     programs: st.programs || [],
+    savedSummaries: st.savedSummaries || [],
     activeProgramId: st.activeProgramId || (st.programs && st.programs[0] ? st.programs[0].id : null),
   };
   buildIndex();
@@ -2022,7 +2024,7 @@ function renderSettings() {
   });
 
   // Data summary
-  $('#data-summary').textContent = `${S.workouts.length} workouts • ${S.sets.length} sets • ${S.exercises.length} exercises • ${(S.bodyWeights || []).length} weights • ${(S.goals || []).length} goals • ${(S.programs || []).length} programs`;
+  $('#data-summary').textContent = `${S.workouts.length} workouts • ${S.sets.length} sets • ${S.exercises.length} exercises • ${(S.bodyWeights || []).length} weights • ${(S.goals || []).length} goals • ${(S.programs || []).length} programs • ${(S.savedSummaries || []).length} summaries`;
 }
 
 function initSettingsModule() {
@@ -3192,6 +3194,343 @@ function renderAll() {
   }
 }
 
+// ---------------------------------------------------------------- IN-ENGINE 14-DAY SUMMARY & SAVED LOG
+function summaryScoreColor(score) {
+  if (score >= 80) return 'var(--up)';
+  if (score >= 60) return 'var(--pr)';
+  if (score >= 40) return 'var(--accent)';
+  return 'var(--down)';
+}
+
+function fmtTonnage(kg) {
+  const n = Number(kg || 0);
+  return Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}t` : `${fmt(n)} kg`;
+}
+
+async function open14DaySummaryModal(initialTab = 'live') {
+  let activeTab = initialTab;
+  let expandedSavedId = null;
+  let summary = await window.api.get14DaySummary({ isMale: BWD.sex === 'male' });
+
+  const { body } = openCustomModal({
+    title: '14-Day Training Summary',
+    large: true,
+    cancelText: 'Close',
+    html: `
+      <div class="summary-tabs" id="m-sum-tabs">
+        <button type="button" class="summary-tab-btn" data-tab="live">Live Summary</button>
+        <button type="button" class="summary-tab-btn" data-tab="log">Saved Log (<span id="m-sum-count">${(S.savedSummaries || []).length}</span>)</button>
+      </div>
+      <div id="m-sum-body"></div>
+    `,
+  });
+
+  const tabsEl = body.querySelector('#m-sum-tabs');
+  const countEl = body.querySelector('#m-sum-count');
+  const contentEl = body.querySelector('#m-sum-body');
+
+  const syncTabs = () => {
+    countEl.textContent = String((S.savedSummaries || []).length);
+    tabsEl.querySelectorAll('.summary-tab-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.tab === activeTab);
+    });
+  };
+
+  function renderLiveTab() {
+    const color = summaryScoreColor(summary.overallScore);
+    const volStr = fmtTonnage(summary.totalVolumeKg);
+    const volSub = summary.volumeDeltaPct !== null && summary.volumeDeltaPct !== undefined
+      ? `${summary.volumeDeltaPct > 0 ? '+' : ''}${summary.volumeDeltaPct}% vs prior 14d`
+      : (summary.priorVolumeKg > 0 ? `Prior: ${fmtTonnage(summary.priorVolumeKg)}` : 'Baseline block');
+
+    const sessSub = summary.programAdherencePct !== null && summary.programAdherencePct !== undefined
+      ? `${summary.programAdherencePct}% of ${summary.programName || 'program'}`
+      : `${summary.sessionsPerWeek}/wk • ${summary.activeDaysCount} active days`;
+
+    const setsSub = summary.failedSetsCount > 0
+      ? `${summary.avgSetsPerWorkout}/sess • ${summary.failedSetsCount} failed excl.`
+      : `${summary.avgSetsPerWorkout}/sess • ${summary.avgRepsPerSet} reps/set`;
+
+    const bwVal = summary.hasBodyWeightData && summary.endBodyWeightKg !== null
+      ? `${summary.endBodyWeightKg} kg`
+      : '—';
+    const bwParts = [];
+    if (summary.bodyWeightDeltaKg !== null && summary.bodyWeightDeltaKg !== undefined) {
+      bwParts.push(`${summary.bodyWeightDeltaKg > 0 ? '+' : ''}${summary.bodyWeightDeltaKg} kg`);
+    } else {
+      bwParts.push(summary.hasBodyWeightData ? 'Steady' : 'No readings');
+    }
+    if (summary.dotsScore !== null && summary.dotsScore !== undefined) {
+      bwParts.push(`DOTS ${summary.dotsScore}`);
+    }
+
+    const subScoresHtml = [
+      ['Volume', summary.volumeScore],
+      ['Strength', summary.strengthScore],
+      ['Cadence', summary.consistencyScore],
+      ['Balance', summary.balanceScore],
+    ].map(([lbl, val]) => {
+      const c = summaryScoreColor(val);
+      return `
+        <div class="summary-subscore-card">
+          <div class="summary-subscore-row"><span class="muted small">${lbl}</span><b style="color:${c};font-size:12.5px;">${val}</b></div>
+          <div class="summary-bar-track"><div class="summary-bar-fill" style="width:${val}%;background:${c};"></div></div>
+        </div>
+      `;
+    }).join('');
+
+    const musclesHtml = (summary.muscleItems || []).map((m) => {
+      const pct = Math.min(100, Math.round((m.workingSets14d / Math.max(1, m.target14dSets)) * 100));
+      const barCol = m.workingSets14d >= m.target14dSets * 0.85
+        ? 'var(--up)'
+        : (m.workingSets14d >= m.target14dSets * 0.45 ? 'var(--accent)' : 'var(--muted)');
+      return `
+        <div class="summary-muscle-row">
+          <div class="summary-muscle-head">
+            <span>${esc(m.category)}</span>
+            <span class="muted">${m.workingSets14d}/${m.target14dSets} sets (${fmtTonnage(m.volumeKg14d)})</span>
+          </div>
+          <div class="summary-bar-track"><div class="summary-bar-fill" style="width:${pct}%;background:${barCol};"></div></div>
+        </div>
+      `;
+    }).join('');
+
+    const liftsRows = (summary.lifts || []).map((item) => {
+      const delta = item.e1rmDeltaKg !== null && item.e1rmDeltaKg !== undefined
+        ? item.e1rmDeltaKg
+        : item.withinPeriodE1rmDeltaKg;
+      let deltaText = `${item.workingSets14d} sets`;
+      let deltaCls = 'flat';
+      if (item.isAllTimePr) {
+        deltaText = delta !== null && delta > 0 ? `PR +${delta} kg` : 'All-time PR';
+        deltaCls = 'up';
+      } else if (delta !== null && delta !== undefined) {
+        deltaText = `${delta > 0 ? '+' : ''}${delta} kg`;
+        deltaCls = delta > 0.5 ? 'up' : (delta < -0.5 ? 'down' : 'flat');
+      }
+      return `
+        <tr>
+          <td><b>${esc(item.exerciseName)}</b></td>
+          <td>${esc(item.bestSet14d)}</td>
+          <td>${item.bestE1rm14dKg} kg</td>
+          <td>${item.relativeStrengthBw !== null && item.relativeStrengthBw !== undefined ? `${item.relativeStrengthBw.toFixed(2)}×` : '—'}</td>
+          <td><span class="delta ${deltaCls}" style="${item.isAllTimePr ? 'color:var(--pr);' : ''}">${esc(deltaText)}</span></td>
+        </tr>
+      `;
+    }).join('');
+
+    const goalsHtml = (summary.goalStatuses || []).length ? `
+      <div class="summary-section-card">
+        <h4>Goal Alignment</h4>
+        <table class="table">
+          <thead><tr><th>Lift</th><th>Target</th><th>Progress</th><th>14d Status</th></tr></thead>
+          <tbody>
+            ${summary.goalStatuses.map((g) => `
+              <tr>
+                <td><b>${esc(g.exerciseName)}</b></td>
+                <td>${esc(g.targetSummary)}</td>
+                <td>${g.progressPct}%</td>
+                <td><span class="delta ${g.achieved || g.trainedIn14d ? 'up' : 'flat'}">${g.achieved ? 'Achieved' : (g.trainedIn14d ? 'Active' : 'Untrained')}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : '';
+
+    contentEl.innerHTML = `
+      <div class="muted small" style="margin-bottom:10px;">Window: <b>${esc(summary.startDate)} – ${esc(summary.endDate)}</b></div>
+
+      <div class="summary-save-bar">
+        <input type="text" id="m-sum-title" placeholder="Label this 14-day block (e.g. Week 4 Accumulation)" style="flex:1;" />
+        <input type="text" id="m-sum-notes" placeholder="Note (optional)" style="flex:0.8;" />
+        <button type="button" id="m-sum-save" class="primary compact">Save Entry</button>
+      </div>
+
+      <div class="summary-score-card">
+        <div>
+          <div class="muted small">Training score</div>
+          <div style="margin-top:6px;"><span class="tag" style="color:${color};border-color:${color};font-weight:600;">${esc(summary.tierLabel)}</span></div>
+        </div>
+        <div class="summary-score-num" style="color:${color};">${summary.overallScore}<small>/100</small></div>
+      </div>
+
+      <div class="summary-subscores">${subScoresHtml}</div>
+
+      <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px;">
+        <div class="stat"><div class="lbl">Sessions</div><div class="val">${summary.workoutsCount}</div><div class="sub">${esc(sessSub)}</div></div>
+        <div class="stat"><div class="lbl">External Volume</div><div class="val">${esc(volStr)}</div><div class="sub">${esc(volSub)}</div></div>
+        <div class="stat"><div class="lbl">Working Sets</div><div class="val">${summary.workingSetsCount}</div><div class="sub">${esc(setsSub)}</div></div>
+        <div class="stat"><div class="lbl">Body Weight</div><div class="val">${esc(bwVal)}</div><div class="sub">${esc(bwParts.join(' • '))}</div></div>
+      </div>
+
+      <div class="summary-section-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h4 style="margin:0;">Muscle Volume (14d vs Target)</h4>
+          <span class="muted small">${summary.pushToPullRatio !== null ? `Push:Pull ${summary.pushToPullRatio}:1 • ` : ''}Upper/Lower ${summary.upperSharePct}%/${100 - summary.upperSharePct}%</span>
+        </div>
+        ${musclesHtml}
+        ${summary.workingSetsCount > 0 ? `<div class="muted small" style="margin-top:8px;">Rep zones: ${summary.heavySets} heavy (1-5) • ${summary.strengthHypSets} strength-hyp (6-8) • ${summary.hypertrophySets} hypertrophy (9-12) • ${summary.enduranceSets} endurance (13+)</div>` : ''}
+      </div>
+
+      ${liftsRows ? `
+        <div class="summary-section-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <h4 style="margin:0;">Strength Progression</h4>
+            <span class="muted small">${summary.prsCount} PR • ${summary.progressingCount} up • ${summary.holdingCount} steady • ${summary.regressingCount} down</span>
+          </div>
+          <table class="table">
+            <thead><tr><th>Exercise</th><th>Best Set</th><th>Est. 1RM</th><th>Rel BW</th><th>14d Change</th></tr></thead>
+            <tbody>${liftsRows}</tbody>
+          </table>
+        </div>
+      ` : ''}
+
+      ${goalsHtml}
+
+      <div class="summary-section-card">
+        <h4>Key Findings</h4>
+        <ul class="summary-list">${(summary.highlights || []).map((h) => `<li>${esc(h)}</li>`).join('')}</ul>
+      </div>
+
+      <div class="summary-section-card">
+        <h4>Next-Block Focus</h4>
+        <ul class="summary-list">${(summary.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+      </div>
+    `;
+
+    contentEl.querySelector('#m-sum-save').addEventListener('click', async () => {
+      const title = contentEl.querySelector('#m-sum-title').value;
+      const notes = contentEl.querySelector('#m-sum-notes').value;
+      const res = await window.api.saveSummaryEntry({ title, notes, isMale: BWD.sex === 'male' });
+      setState(res.state);
+      expandedSavedId = res.entry.id;
+      syncTabs();
+      toast('Saved 14-day summary entry', 'success');
+      activeTab = 'log';
+      syncTabs();
+      renderLogTab();
+    });
+  }
+
+  function renderLogTab() {
+    const entries = S.savedSummaries || [];
+    if (!entries.length) {
+      contentEl.innerHTML = `
+        <div class="empty">
+          No saved summaries yet. Save a 14-day snapshot from the Live Summary tab to track block-over-block progress.
+        </div>
+      `;
+      return;
+    }
+
+    let trendHtml = '';
+    if (entries.length >= 2) {
+      const newest = entries[0];
+      const oldest = entries[entries.length - 1];
+      const sDiff = newest.overallScore - oldest.overallScore;
+      const vDiff = newest.totalVolumeKg - oldest.totalVolumeKg;
+      const bwDiff = (newest.endBodyWeightKg !== null && oldest.endBodyWeightKg !== null)
+        ? round(newest.endBodyWeightKg - oldest.endBodyWeightKg, 0.1)
+        : null;
+      trendHtml = `
+        <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px;">
+          <div class="stat"><div class="lbl">Score Trend</div><div class="val" style="color:${sDiff >= 0 ? 'var(--up)' : 'var(--down)'};">${sDiff > 0 ? '+' : ''}${sDiff} pts</div><div class="sub">Across ${entries.length} saved blocks</div></div>
+          <div class="stat"><div class="lbl">Volume Trend</div><div class="val" style="color:${vDiff >= 0 ? 'var(--up)' : 'var(--down)'};">${vDiff > 0 ? '+' : ''}${fmtTonnage(vDiff)}</div><div class="sub">Latest vs earliest</div></div>
+          <div class="stat"><div class="lbl">Weight Trend</div><div class="val">${bwDiff !== null ? `${bwDiff > 0 ? '+' : ''}${bwDiff} kg` : '—'}</div><div class="sub">Latest vs earliest</div></div>
+        </div>
+      `;
+    }
+
+    const cardsHtml = entries.map((entry, idx) => {
+      const prev = entries[idx + 1];
+      const scoreDelta = prev ? entry.overallScore - prev.overallScore : 0;
+      const isExpanded = expandedSavedId === entry.id;
+      const color = summaryScoreColor(entry.overallScore);
+      return `
+        <div class="saved-summary-card" data-entry-id="${esc(entry.id)}">
+          <div class="saved-summary-head">
+            <div>
+              <div style="font-weight:600;font-size:14px;">${esc(entry.title || `${entry.startDate} – ${entry.endDate}`)}</div>
+              <div class="muted small">${esc(entry.startDate)} – ${esc(entry.endDate)} • Saved ${esc(entry.savedAt)}</div>
+              <div class="muted small" style="margin-top:4px;">${entry.workoutsCount} sessions • ${entry.workingSetsCount} sets • ${fmtTonnage(entry.totalVolumeKg)}${entry.endBodyWeightKg !== null ? ` • ${entry.endBodyWeightKg} kg BW` : ''}</div>
+              ${entry.notes ? `<div class="small" style="color:var(--accent-2);margin-top:4px;">${esc(entry.notes)}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:18px;font-weight:700;color:${color};font-variant-numeric:tabular-nums;">${entry.overallScore}/100</div>
+              ${prev && scoreDelta !== 0 ? `<div class="delta ${scoreDelta > 0 ? 'up' : 'down'}">${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs prev</div>` : `<div class="muted small">${esc(entry.tierLabel)}</div>`}
+            </div>
+          </div>
+          ${isExpanded ? `
+            <div class="saved-summary-body">
+              <div class="muted small" style="display:flex;gap:16px;margin-bottom:8px;">
+                <span>Vol: <b>${entry.volumeScore}</b></span>
+                <span>Str: <b>${entry.strengthScore}</b></span>
+                <span>Cad: <b>${entry.consistencyScore}</b></span>
+                <span>Bal: <b>${entry.balanceScore}</b></span>
+                <span>PRs: <b>${entry.prsCount}</b></span>
+              </div>
+              ${(entry.topLifts || []).length ? `
+                <table class="table" style="margin-bottom:8px;">
+                  <thead><tr><th>Exercise</th><th>Best Set</th><th>Est. 1RM</th></tr></thead>
+                  <tbody>
+                    ${entry.topLifts.slice(0, 6).map((l) => `<tr><td>${esc(l.exerciseName)}</td><td>${esc(l.bestSet14d)}</td><td>${l.bestE1rm14dKg} kg</td></tr>`).join('')}
+                  </tbody>
+                </table>
+              ` : ''}
+              ${(entry.highlights || []).length ? `<ul class="summary-list" style="margin-bottom:8px;">${entry.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
+              <div style="display:flex;justify-content:flex-end;">
+                <button type="button" class="ghost danger compact m-del-summary" data-id="${esc(entry.id)}">Delete Entry</button>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+
+    contentEl.innerHTML = `${trendHtml}${cardsHtml}`;
+
+    contentEl.querySelectorAll('.saved-summary-head').forEach((head) => {
+      head.addEventListener('click', () => {
+        const id = head.closest('.saved-summary-card').dataset.entryId;
+        expandedSavedId = expandedSavedId === id ? null : id;
+        renderLogTab();
+      });
+    });
+
+    contentEl.querySelectorAll('.m-del-summary').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const state = await window.api.deleteSummaryEntry(btn.dataset.id);
+        setState(state);
+        syncTabs();
+        renderLogTab();
+        toast('Saved summary deleted');
+      });
+    });
+  }
+
+  const renderTab = () => {
+    syncTabs();
+    if (activeTab === 'live') renderLiveTab();
+    else renderLogTab();
+  };
+
+  tabsEl.querySelectorAll('.summary-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab;
+      renderTab();
+    });
+  });
+
+  renderTab();
+}
+
+function initSummaryModule() {
+  $('#progress-summary-btn')?.addEventListener('click', () => open14DaySummaryModal('live'));
+  $('#history-summary-btn')?.addEventListener('click', () => open14DaySummaryModal('live'));
+}
+
 // ---------------------------------------------------------------- INITIALIZATION
 window.addEventListener('DOMContentLoaded', async () => {
   // Setup keyboard shortcuts
@@ -3234,6 +3573,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   initExercisesModule();
   initBodyWeightModule();
   initSettingsModule();
+  initSummaryModule();
 
   // Load initial backend state
   try {

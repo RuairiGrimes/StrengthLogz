@@ -253,6 +253,7 @@ fun ProgressScreen(
     goals: List<ExerciseGoal> = emptyList(),
     onNavigateGoals: (String?) -> Unit = {},
     onNavigateBodyWeight: () -> Unit = {},
+    onOpenFourteenDaySummary: () -> Unit = {},
     initialExercise: String? = null,
     onConsumeInitialExercise: () -> Unit = {}
 ) {
@@ -284,6 +285,7 @@ fun ProgressScreen(
             goalByExerciseLower = goalByExerciseLower,
             onNavigateGoals = { onNavigateGoals(null) },
             onNavigateBodyWeight = onNavigateBodyWeight,
+            onOpenFourteenDaySummary = onOpenFourteenDaySummary,
             onSelectExercise = { exName -> activeExercise = exName }
         )
     } else {
@@ -309,6 +311,7 @@ private fun ProgressDirectoryView(
     goalByExerciseLower: Map<String, ExerciseGoal> = emptyMap(),
     onNavigateGoals: () -> Unit = {},
     onNavigateBodyWeight: () -> Unit = {},
+    onOpenFourteenDaySummary: () -> Unit = {},
     onSelectExercise: (String) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -351,45 +354,65 @@ private fun ProgressDirectoryView(
 
         ModernScreenHeader(
             title = "Progress",
-            subtitle = "Select a movement to inspect charts, PRs & session history",
+            subtitle = "Charts, records & movement history",
             badgeText = "${distinctExercises.size} lifts",
             action = {
-              Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+              Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    shape = RoundedCornerShape(11.dp),
+                    shape = RoundedCornerShape(9.dp),
                     color = SurfaceCard,
-                    border = BorderStroke(1.dp, AccentOrange),
-                    modifier = Modifier.clickable { onNavigateBodyWeight() }
+                    border = BorderStroke(0.8.dp, BorderDark),
+                    modifier = Modifier.clickable { onOpenFourteenDaySummary() }
                 ) {
                     Text(
-                        text = "⚖ BW",
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        text = "14d",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = AccentOrange,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(11.dp),
+                    shape = RoundedCornerShape(9.dp),
+                    color = SurfaceCard,
+                    border = BorderStroke(0.8.dp, BorderDark),
+                    modifier = Modifier.clickable { onNavigateBodyWeight() }
+                ) {
+                    Text(
+                        text = "Weight",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
                     color = AccentOrange,
                     modifier = Modifier.clickable { onNavigateGoals() }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.EmojiEvents,
                             contentDescription = "Goals",
                             tint = Color(0xFF140D07),
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                         Text(
                             text = if (goalByExerciseLower.isNotEmpty()) "Goals (${goalByExerciseLower.size})" else "Goals",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF140D07)
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF140D07),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

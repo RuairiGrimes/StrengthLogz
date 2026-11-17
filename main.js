@@ -68,6 +68,11 @@ handle('deleteBodyWeight', (date) => data.deleteBodyWeight(date));
 handle('saveDraft', (draft) => data.saveDraft(draft));
 handle('clearDraft', () => data.clearDraft());
 
+// 14-Day Summary & Saved Log
+handle('get14DaySummary', (opts) => data.get14DaySummary(opts));
+handle('saveSummaryEntry', (opts) => data.saveSummaryEntry(opts));
+handle('deleteSummaryEntry', (id) => data.deleteSummaryEntry(id));
+
 handle('pickKeyFile', async () => {
   const res = await dialog.showOpenDialog(win, {
     title: 'Select Google service account key (JSON)',

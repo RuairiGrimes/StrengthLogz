@@ -10,9 +10,11 @@ import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.util.BigLift
 import com.strengthlogz.mobile.util.BodyWeightUtils
 import com.strengthlogz.mobile.util.StrengthAnalytics
+import com.strengthlogz.mobile.util.SummaryEngine
 import com.strengthlogz.mobile.util.SyncMerge
 import com.strengthlogz.mobile.ui.buildSessionPoints
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -162,5 +164,74 @@ class SyncAndAnalyticsTest {
 
         val rel = StrengthAnalytics.buildRelativeStrength(sets, emptyMap(), entries, false)
         assertEquals(1.25, rel[0].second, 0.001)
+    }
+
+    // ---------- In-Engine 14-Day Summary ----------
+
+    @Test
+    fun fourteenDaySummaryComputesMetricsRepZonesPrsAndSavedEntry() {
+        val exercises = listOf(
+            com.strengthlogz.mobile.model.Exercise("Bench Press", "Chest", false, ""),
+            com.strengthlogz.mobile.model.Exercise("Pull Ups", "Back", true, "")
+        )
+        val bw = listOf(
+            BodyWeightEntry("01-NOV-2026", 80.0, "manual"),
+            BodyWeightEntry("16-NOV-2026", 81.0, "manual")
+        )
+        val workouts = listOf(
+            Workout("w-old", "15-OCT-2026", "Old Push"),
+            Workout("w-p1", "01-NOV-2026", "Prior Push"),
+            Workout("w-c1", "06-NOV-2026", "Current Push"),
+            Workout("w-c2", "15-NOV-2026", "Current Upper")
+        )
+        val sets = listOf(
+            WorkoutSet("s0", "w-p1", "01-NOV-2026", "Bench Press", 1, 90.0, 5), // E1RM 105.0, vol 450
+            WorkoutSet("s1", "w-c1", "06-NOV-2026", "Bench Press", 1, 95.0, 5), // E1RM 111.0, vol 475
+            WorkoutSet("s2", "w-c2", "15-NOV-2026", "Bench Press", 1, 100.0, 5), // E1RM 116.5, vol 500
+            WorkoutSet("s3", "w-c2", "15-NOV-2026", "Bench Press", 2, 120.0, 0), // Failed -> excluded!
+            WorkoutSet("s4", "w-c2", "15-NOV-2026", "Pull Ups", 1, 10.0, 8) // BW on 15-NOV is 80 + 10 = 90 -> E1RM 114.0
+        )
+        val summary = SummaryEngine.build14DaySummary(
+            workouts = workouts,
+            sets = sets,
+            exercises = exercises,
+            bodyWeights = bw,
+            goals = emptyList(),
+            referenceDateDdMonYyyy = "17-NOV-2026"
+        )
+
+        assertEquals("04-NOV-2026", summary.startDate)
+        assertEquals("17-NOV-2026", summary.endDate)
+        assertEquals(2, summary.workoutsCount)
+        assertEquals(1, summary.priorWorkoutsCount)
+        assertEquals(3, summary.workingSetsCount)
+        assertEquals(1, summary.failedSetsCount)
+        assertEquals(1055.0, summary.totalVolumeKg, 0.1) // 475 + 500 + 80
+        assertEquals(450.0, summary.priorVolumeKg, 0.1)
+        assertEquals(2, summary.heavySets) // two 5-rep Bench sets
+        assertEquals(1, summary.strengthHypSets) // one 8-rep Pull Up set
+        assertEquals(80.0, summary.startBodyWeightKg!!, 0.01)
+        assertEquals(81.0, summary.endBodyWeightKg!!, 0.01)
+        assertEquals(1.0, summary.bodyWeightDeltaKg!!, 0.01)
+        assertEquals(1, summary.prsCount)
+        assertTrue(summary.overallScore in 1..100)
+
+        val bench = summary.lifts.first { it.exerciseName == "Bench Press" }
+        assertTrue(bench.isAllTimePr)
+        assertEquals(116.5, bench.bestE1rm14dKg, 0.5)
+        assertEquals(105.0, bench.priorBestE1rmKg!!, 0.5)
+        assertEquals(11.5, bench.e1rmDeltaKg!!, 0.5)
+        assertEquals(5.5, bench.withinPeriodE1rmDeltaKg!!, 0.5)
+
+        val pullUps = summary.lifts.first { it.exerciseName == "Pull Ups" }
+        assertTrue(pullUps.isBodyweight)
+        assertEquals(114.0, pullUps.bestE1rm14dKg, 0.5)
+
+        val saved = summary.toSavedEntry(customTitle = "Block 1 Review", customNotes = "Bench PR")
+        assertEquals("Block 1 Review", saved.title)
+        assertEquals("Bench PR", saved.notes)
+        assertEquals(summary.overallScore, saved.overallScore)
+        assertEquals(2, saved.safeTopLifts.size)
+        assertFalse(saved.safeHighlights.isEmpty())
     }
 }

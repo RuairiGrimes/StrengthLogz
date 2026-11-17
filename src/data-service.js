@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { LocalStore } = require('./stores/local-store');
 const { SheetsStore } = require('./stores/sheets-store');
 const SyncMerge = require('./sync-merge');
+const SummaryEngine = require('./summary-engine');
 const DEFAULT_EXERCISES = require('../data/exercises.json');
 
 class DataService {
@@ -21,6 +22,7 @@ class DataService {
       goals: [],
       programs: [],
       activeProgramId: null,
+      savedSummaries: [],
       draft: null,
     };
     this.lastError = null;
@@ -97,6 +99,7 @@ class DataService {
       goals: meta.goals,
       programs: meta.programs,
       activeProgramId: meta.activeProgramId || (meta.programs && meta.programs[0] ? meta.programs[0].id : null),
+      savedSummaries: localData.savedSummaries || [],
       draft: localData.draft || null,
     };
   }
@@ -180,8 +183,42 @@ class DataService {
       goals: this.cache.goals || [],
       programs: this.cache.programs || [],
       activeProgramId: this.cache.activeProgramId,
+      savedSummaries: [...(this.cache.savedSummaries || [])].sort((a, b) => (b.savedEpochMs || 0) - (a.savedEpochMs || 0)),
       draft: this.cache.draft,
     };
+  }
+
+  // ---------------- 14-Day Summary & Saved Log ----------------
+
+  get14DaySummary({ isMale = true, referenceDate = null } = {}) {
+    const programs = this.cache.programs || [];
+    const activeProgram = programs.find((p) => p.id === this.cache.activeProgramId) || programs[0] || null;
+    return SummaryEngine.build14DaySummary({
+      workouts: this.cache.workouts,
+      sets: this.cache.sets,
+      exercises: this.exercises(),
+      bodyWeights: this.cache.bodyWeights || [],
+      goals: this.cache.goals || [],
+      activeProgram,
+      isMale,
+      referenceDate,
+    });
+  }
+
+  async saveSummaryEntry({ title = '', notes = '', isMale = true, referenceDate = null } = {}) {
+    const summary = this.get14DaySummary({ isMale, referenceDate });
+    const entry = SummaryEngine.toSavedEntry(summary, title, notes);
+    const list = [entry, ...(this.cache.savedSummaries || []).filter((e) => e.id !== entry.id)];
+    this.cache.savedSummaries = list;
+    await this.local.saveSummaries(list);
+    return { entry, state: this.state() };
+  }
+
+  async deleteSummaryEntry(id) {
+    const list = (this.cache.savedSummaries || []).filter((e) => e.id !== id);
+    this.cache.savedSummaries = list;
+    await this.local.saveSummaries(list);
+    return this.state();
   }
 
   // ---------------- Workouts & Sets ----------------
@@ -505,14 +542,18 @@ class DataService {
     if (!spreadsheetId) throw new Error('Enter a spreadsheet ID or URL');
     if (!keyFile || !fs.existsSync(keyFile)) throw new Error('Select a valid service account key file');
     await this._connectSheets({ spreadsheetId, keyFile });
-    this.writeConfig({ spreadsheetId, keyFile });
+    const cfg = this.readConfig();
+    this.writeConfig({ ...cfg, spreadsheetId, keyFile });
     this.lastError = null;
     await this.reload({ strict: true });
     return this.state();
   }
 
   async disconnect() {
-    this.writeConfig({});
+    const cfg = this.readConfig();
+    delete cfg.spreadsheetId;
+    delete cfg.keyFile;
+    this.writeConfig(cfg);
     this.store = this.local;
     this.lastError = null;
     await this.reload();

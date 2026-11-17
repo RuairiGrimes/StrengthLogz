@@ -275,3 +275,62 @@ test('DataService saveGoal defaults enabled=true, updateExercise rejects duplica
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('DataService 14-day summary computes metrics deterministically and persists saved summary entries', async () => {
+  const dir = makeTempDir();
+  try {
+    const ds = new DataService(dir);
+    await ds.init();
+
+    await ds.addBodyWeight({ date: '01-NOV-2026', weightKg: 80.0, source: 'manual' });
+    await ds.addBodyWeight({ date: '16-NOV-2026', weightKg: 81.0, source: 'manual' });
+    await ds.saveWorkout({
+      workout: { date: '01-NOV-2026', title: 'Prior Push' },
+      sets: [{ exercise: 'Bench Press', setNo: 1, weight: 90, reps: 5 }],
+    });
+    await ds.saveWorkout({
+      workout: { date: '15-NOV-2026', title: 'Recent Upper' },
+      sets: [
+        { exercise: 'Bench Press', setNo: 1, weight: 100, reps: 5 },
+        { exercise: 'Bench Press', setNo: 2, weight: 120, reps: 0 }, // failed -> excluded
+        { exercise: 'Pull Ups', setNo: 1, weight: 10, reps: 8 }, // BW on 15-NOV is 80 + 10 = 90 -> E1RM 114.0
+      ],
+    });
+
+    const summary = ds.get14DaySummary({ referenceDate: '17-NOV-2026' });
+    assert.strictEqual(summary.startDate, '04-NOV-2026');
+    assert.strictEqual(summary.endDate, '17-NOV-2026');
+    assert.strictEqual(summary.workoutsCount, 1);
+    assert.strictEqual(summary.priorWorkoutsCount, 1);
+    assert.strictEqual(summary.workingSetsCount, 2);
+    assert.strictEqual(summary.failedSetsCount, 1);
+    assert.strictEqual(summary.totalVolumeKg, 580); // 100*5 + 10*8
+    assert.strictEqual(summary.priorVolumeKg, 450);
+    assert.strictEqual(summary.heavySets, 1);
+    assert.strictEqual(summary.strengthHypSets, 1);
+    assert.strictEqual(summary.bodyWeightDeltaKg, 1);
+    assert.strictEqual(summary.prsCount, 1); // Bench PR 105 -> 116.5
+    assert.ok(summary.overallScore > 0 && summary.overallScore <= 100);
+
+    // Save entry -> persisted in state & disk
+    const saved = await ds.saveSummaryEntry({
+      title: 'Block 1 Review',
+      notes: 'Good bench PR',
+      referenceDate: '17-NOV-2026',
+    });
+    assert.strictEqual(saved.entry.title, 'Block 1 Review');
+    assert.strictEqual(saved.state.savedSummaries.length, 1);
+
+    // Reload DataService from same dir -> entry still present
+    const ds2 = new DataService(dir);
+    await ds2.init();
+    assert.strictEqual(ds2.state().savedSummaries.length, 1);
+    assert.strictEqual(ds2.state().savedSummaries[0].title, 'Block 1 Review');
+
+    // Delete entry -> removed cleanly
+    const afterDel = await ds2.deleteSummaryEntry(saved.entry.id);
+    assert.strictEqual(afterDel.savedSummaries.length, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
