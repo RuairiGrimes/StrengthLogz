@@ -20,11 +20,11 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 enum class GoalStatus(val label: String) {
-    ACHIEVED("ACHIEVED 🏆"),
-    ON_TRACK("ON TRACK"),
-    PLATEAU_ALERT("PLATEAU ALERT"),
-    NEEDS_FREQUENCY("NEEDS FREQUENCY"),
-    BUILDING("BUILDING BASE")
+    ACHIEVED("Achieved"),
+    ON_TRACK("On track"),
+    PLATEAU_ALERT("Plateau alert"),
+    NEEDS_FREQUENCY("Needs frequency"),
+    BUILDING("Building base")
 }
 
 @Immutable
@@ -617,12 +617,12 @@ object GoalEngine {
                         weightKg = maintW,
                         reps = maintReps,
                         rpe = "RPE 8",
-                        notes = "Lock in mastery & set a new +2.5kg goal!"
+                        notes = "Lock in mastery and set a new +2.5kg goal."
                     )
                 }
                 Quadruple(
                     "Goal Consolidation & New Peak Block",
-                    "You have already achieved this target! Consolidate the neural adaptation with 2–3 clean sessions at your target load, or raise your goal by +2.5–5kg.",
+                    "You have already achieved this target. Consolidate the neural adaptation with 2–3 clean sessions at your target load, or raise your goal by +2.5–5kg.",
                     sets,
                     "Own every rep with controlled eccentric tempo before setting your next milestone."
                 )
@@ -711,7 +711,7 @@ object GoalEngine {
                 )
                 Quadruple(
                     "Strength Peaking & Realization Block",
-                    "You are within ${formatWeightValue(remainingKg)}kg (${formatWeightValue(100.0 - progressPct)}%) of your ${formatWeightValue(effectiveTargetE1rm)}kg 1RM goal! A 3-rep primer followed by an all-out 6-rep PR set is the safest, highest-yield way to cross the finish line.",
+                    "You are within ${formatWeightValue(remainingKg)}kg (${formatWeightValue(100.0 - progressPct)}%) of your ${formatWeightValue(effectiveTargetE1rm)}kg 1RM goal. A 3-rep primer followed by an all-out 6-rep PR set is the safest, highest-yield way to cross the finish line.",
                     sets,
                     "Take a full 3–4 minutes rest between Set 1 and Set 2 to maximize peak force output."
                 )
@@ -949,12 +949,12 @@ object GoalEngine {
         val hitSessionTarget = achievedToday || (bestE1rm >= prescribedTopE1rm - 0.5 && workingSetsCount >= min(3, evaluation.nextSessionSets.size))
 
         val sessionGrade = when {
-            achievedToday -> "S+ • GOAL ACHIEVED! 🏆"
-            bestE1rm > evaluation.currentBestE1rm + 0.1 -> "S • NEW ALL-TIME PR!"
-            hitSessionTarget -> "A+ • SESSION TARGET HIT"
-            workingSetsCount >= 2 && bestE1rm >= prescribedTopE1rm * 0.96 -> "A • ON TRACK"
-            workingSetsCount > 0 -> "B • IN PROGRESS"
-            else -> "READY TO START"
+            achievedToday -> "S+ • Goal achieved"
+            bestE1rm > evaluation.currentBestE1rm + 0.1 -> "S • New all-time PR"
+            hitSessionTarget -> "A+ • Session target hit"
+            workingSetsCount >= 2 && bestE1rm >= prescribedTopE1rm * 0.96 -> "A • On track"
+            workingSetsCount > 0 -> "B • In progress"
+            else -> "Ready to start"
         }
 
         val targetFirstSet = evaluation.nextSessionSets.firstOrNull()
@@ -962,30 +962,30 @@ object GoalEngine {
         val targetCurrentSet = evaluation.nextSessionSets.getOrNull(nextSetIdx - 1) ?: targetFirstSet
 
         val nextSetTargetText = if (achievedToday) {
-            "Goal crushed! Optional: finish with 1–2 controlled back-off sets at RPE 7–8."
+            "Goal reached. Optional: finish with 1–2 controlled back-off sets at RPE 7–8."
         } else if (targetCurrentSet != null) {
             val wStr = if (isBw) {
                 if (targetCurrentSet.weightKg <= 0.0) "BW" else "BW+${formatWeightValue(targetCurrentSet.weightKg)}kg"
             } else "${formatWeightValue(targetCurrentSet.weightKg)}kg"
             // Calculate how many reps at current weight would beat today's target or the goal
             val repsForGoalAtThisWeight = ((evaluation.effectiveTargetE1rm / BodyWeightUtils.totalLoad(isBw, targetCurrentSet.weightKg, bwKg).coerceAtLeast(1.0) - 1.0) * 30.0).let { ceil(it).toInt().coerceIn(1, 30) }
-            "Aim for Set $nextSetIdx (${targetCurrentSet.role}): $wStr × ${targetCurrentSet.reps} reps (${targetCurrentSet.rpe}). Note: $wStr × $repsForGoalAtThisWeight reps = 100% Goal E1RM!"
+            "Aim for Set $nextSetIdx (${targetCurrentSet.role}): $wStr × ${targetCurrentSet.reps} reps (${targetCurrentSet.rpe}). Note: $wStr × $repsForGoalAtThisWeight reps = 100% Goal E1RM."
         } else {
             "Complete 3–4 working sets pushing 1–2 reps shy of failure (RPE 8.5)."
         }
 
         val liveHeadline = when {
-            achievedToday -> "Incredible session — your logged sets today officially achieved your ${goal.exerciseName} goal!"
-            hitSessionTarget -> "Session target achieved! Today's best E1RM (${formatWeightValue(bestE1rm)}kg) keeps you right on pace for your goal."
+            achievedToday -> "Your logged sets today achieved your ${goal.exerciseName} goal."
+            hitSessionTarget -> "Session target achieved. Today's best E1RM (${formatWeightValue(bestE1rm)}kg) keeps you on pace for your goal."
             workingSetsCount > 0 -> {
                 val gapToday = roundHalf((prescribedTopE1rm - bestE1rm).coerceAtLeast(0.0))
                 if (gapToday > 0.0) {
-                    "Current session best: ${formatWeightValue(bestE1rm)}kg Est. 1RM ($workingSetsCount sets). Add +1 rep or +2.5kg on your next set to hit today's ${formatWeightValue(prescribedTopE1rm)}kg target!"
+                    "Current session best: ${formatWeightValue(bestE1rm)}kg Est. 1RM ($workingSetsCount sets). Add +1 rep or +2.5kg on your next set to hit today's ${formatWeightValue(prescribedTopE1rm)}kg target."
                 } else {
-                    "Top set pace met (${formatWeightValue(bestE1rm)}kg Est. 1RM)! Complete ${max(1, evaluation.nextSessionSets.size - workingSetsCount)} more working set(s) to lock in today's volume."
+                    "Top set pace met (${formatWeightValue(bestE1rm)}kg Est. 1RM). Complete ${max(1, evaluation.nextSessionSets.size - workingSetsCount)} more working set(s) to lock in today's volume."
                 }
             }
-            else -> "Today's Goal Prescription: ${evaluation.nextSessionSummary}. Hit this to drive your E1RM toward ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg!"
+            else -> "Today's goal prescription: ${evaluation.nextSessionSummary}. Hit this to drive your E1RM toward ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg."
         }
 
         val bullets = buildList {
@@ -1055,10 +1055,10 @@ object GoalEngine {
         }
 
         val executiveStatus = when {
-            eval.isAchieved -> "GOAL ACHIEVED 🏆 — Target of ${if (goal.isSetsRepsGoal) "${goal.targetSets}×${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg" else "${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM"} reached!"
-            eval.isPlateaued -> "PLATEAU DETECTED — Switch to ${eval.methodologyTitle} (${eval.nextSessionSummary}) to break stagnation."
-            eval.status == GoalStatus.NEEDS_FREQUENCY -> "FREQUENCY DEFICIT — Last trained ${eval.daysSinceLastSession}d ago (${eval.sessionsPerWeek}/wk vs ${eval.recommendedSessionsPerWeek}/wk target)."
-            else -> "ON TRACK — ${formatWeightValue(eval.progressPct)}% complete (${formatWeightValue(eval.remainingKg)}kg remaining • Est. ${eval.estimatedWeeksToGoal} wks to goal)."
+            eval.isAchieved -> "Goal achieved — Target of ${if (goal.isSetsRepsGoal) "${goal.targetSets}×${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg" else "${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM"} reached"
+            eval.isPlateaued -> "Plateau detected — Switch to ${eval.methodologyTitle} (${eval.nextSessionSummary}) to break stagnation."
+            eval.status == GoalStatus.NEEDS_FREQUENCY -> "Frequency deficit — Last trained ${eval.daysSinceLastSession}d ago (${eval.sessionsPerWeek}/wk vs ${eval.recommendedSessionsPerWeek}/wk target)."
+            else -> "On track — ${formatWeightValue(eval.progressPct)}% complete (${formatWeightValue(eval.remainingKg)}kg remaining • Est. ${eval.estimatedWeeksToGoal} wks to goal)."
         }
 
         val headlineSummary = if (goal.isSetsRepsGoal) {
@@ -1111,8 +1111,8 @@ object GoalEngine {
                 pt.e1rm >= eval.effectiveTargetE1rm - 0.05
             }
             val note = when {
-                hitGoalInSess -> "🏆 Goal Target Achieved!"
-                pt.isE1rmPr -> "★ New All-Time E1RM PR (${formatWeightValue(pt.e1rm)}kg)"
+                hitGoalInSess -> "Goal target achieved"
+                pt.isE1rmPr -> "All-time E1RM PR (${formatWeightValue(pt.e1rm)}kg)"
                 deltaE1rm > 0.0 -> "+${formatWeightValue(deltaE1rm)}kg E1RM vs prior session"
                 deltaE1rm < 0.0 -> "Volume / recovery session (${formatWeightValue(deltaE1rm)}kg vs prior)"
                 else -> "Maintained ${formatWeightValue(pt.e1rm)}kg E1RM"
@@ -1193,7 +1193,7 @@ object GoalEngine {
         val closestGoal = reports.filter { !it.evaluation.isAchieved }
             .maxByOrNull { it.evaluation.progressPct }?.let {
                 "${it.evaluation.goal.exerciseName} (${formatWeightValue(it.evaluation.progressPct)}% • ${formatWeightValue(it.evaluation.remainingKg)}kg left)"
-            } ?: if (achievedCount > 0) "All active goals achieved! 🏆" else "–"
+            } ?: if (achievedCount > 0) "All active goals achieved" else "–"
 
         val priorityGoal = reports.filter { !it.evaluation.isAchieved }
             .minByOrNull { it.adherenceScore - (if (it.evaluation.isPlateaued) 25 else 0) }?.let {
@@ -1298,7 +1298,7 @@ object GoalEngine {
         }
 
         val summaryNote = when {
-            achievedInThisSession -> "🏆 Goal Achieved! Logged ${SetUtils.formatSetsSummary(validSessionSets, isBw)} (${formatWeightValue(sessBestE1rm)}kg E1RM)."
+            achievedInThisSession -> "Goal achieved. Logged ${SetUtils.formatSetsSummary(validSessionSets, isBw)} (${formatWeightValue(sessBestE1rm)}kg E1RM)."
             deltaKg > 0.0 -> "Progress +${formatWeightValue(deltaKg)}kg E1RM vs last session (${SetUtils.formatSetsSummary(validSessionSets, isBw)}) • Now at ${formatWeightValue(eval.progressPct)}% of goal."
             else -> "Logged ${validSessionSets.size} working sets (${SetUtils.formatSetsSummary(validSessionSets, isBw)}) • Best E1RM ${formatWeightValue(sessBestE1rm)}kg (${formatWeightValue(eval.progressPct)}% of goal)."
         }

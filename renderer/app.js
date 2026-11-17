@@ -44,12 +44,12 @@ const epley = (w, r) => (!r || r <= 0 ? 0 : (r === 1 ? (w || 0) : (w || 0) * (1 
 
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLORS = {
-  up: css('--up') || '#3ddc97',
-  down: css('--down') || '#ff5d73',
+  up: css('--up') || '#4cc38a',
+  down: css('--down') || '#e5484d',
   pr: css('--pr') || '#ffd166',
   accent: css('--accent') || '#ff7a45',
-  muted: css('--muted') || '#8b93a7',
-  border: css('--border') || '#2a2f3a',
+  muted: css('--muted') || '#85858b',
+  border: css('--border') || 'rgba(237, 237, 237, 0.08)',
 };
 
 // ---------------------------------------------------------------- state
@@ -472,7 +472,7 @@ function addExerciseToLog(exerciseName, prefilledSets = null) {
 function renderLogExercises() {
   const host = $('#log-exercises');
   if (!logExercises.length) {
-    host.innerHTML = '<div class="empty">No exercises added yet. Pick one below to start logging!</div>';
+    host.innerHTML = '<div class="empty">No exercises added yet. Pick one below to start logging</div>';
     return;
   }
 
@@ -507,7 +507,7 @@ function renderLogExercises() {
           <span class="ex-name" data-jump-progress="${esc(ex.name)}">${esc(ex.name)}</span>
           <span class="tag">${esc(info.category || 'Other')}</span>
           ${bw ? '<span class="tag" style="color:var(--pr);border-color:rgba(255,209,102,0.4)">BW</span>' : ''}
-          ${activeGoal ? `<button class="primary compact goal-progress-btn" data-goal-ex="${esc(ex.name)}" style="margin-left:8px;font-size:11px;padding:3px 8px;">🎯 Goal Progress</button>` : ''}
+          ${activeGoal ? `<button class="primary compact goal-progress-btn" data-goal-ex="${esc(ex.name)}" style="margin-left:8px;font-size:12px;">Goal progress</button>` : ''}
           <div class="spacer"></div>
           <button class="ghost compact del-ex danger" title="Remove exercise">Remove</button>
         </div>
@@ -667,7 +667,7 @@ function loadPlanIntoLogger(plan) {
 
   renderLogExercises();
   persistDraft();
-  toast(`Loaded "${plan.title || 'Workout'}" into logger!`, 'success');
+  toast(`Loaded "${plan.title || 'Workout'}" into logger`, 'success');
 }
 
 async function saveWorkoutFromLog() {
@@ -712,12 +712,12 @@ async function saveWorkoutFromLog() {
     $('#log-date').value = today();
     renderLogExercises();
 
-    toast('Workout saved!', 'success');
+    toast('Workout saved', 'success');
 
     // If any goal was updated in this session, surface the Exercise Goal Report
     if (res.updatedGoals && res.updatedGoals.length > 0) {
       const topGoal = res.updatedGoals[0];
-      toast(`🎯 Goal progress logged for ${topGoal.exerciseName}!`, 'success');
+      toast(`Goal progress logged for ${topGoal.exerciseName}`, 'success');
       setTimeout(() => openExerciseGoalReportModal(topGoal.id), 400);
     } else {
       showView('history');
@@ -752,7 +752,7 @@ function renderProgramView() {
   const activeDay = days[selectedProgramDayIdx] || null;
 
   // Render days tabs
-  $('#program-days-label').textContent = `WORKOUT DAYS (${days.length})`;
+  $('#program-days-label').textContent = `Workout days (${days.length})`;
   const daysRow = $('#program-days-row');
   daysRow.innerHTML = days.map((d, idx) => {
     const isActive = idx === selectedProgramDayIdx;
@@ -773,11 +773,11 @@ function renderProgramView() {
 
   // Render active day card & exercises
   if (!activeDay) {
-    $('#program-day-name').textContent = 'No Days Created';
-    $('#program-day-focus').textContent = 'Click "+ Add Day" above to create your first training day.';
+    $('#program-day-name').textContent = 'No days created';
+    $('#program-day-focus').textContent = 'Click "+ Add day" above to create your first training day';
     $('#program-day-edit-btn').classList.add('hidden');
     $('#program-day-delete-btn').classList.add('hidden');
-    $('#program-exercises-list').innerHTML = '<div class="empty">No days in this program. Tap "+ Add Day" above!</div>';
+    $('#program-exercises-list').innerHTML = '<div class="empty">No days in this program. Select "+ Add day" above to add one</div>';
     $('#program-add-exercise-card').classList.add('hidden');
     $('#program-bottom-bar').classList.add('hidden');
     return;
@@ -793,7 +793,7 @@ function renderProgramView() {
   const totalSets = exList.reduce((sum, e) => sum + (e.targetSets || 3), 0);
 
   if (!exList.length) {
-    $('#program-exercises-list').innerHTML = '<div class="empty">No exercises added to this day yet. Click "+ Add Exercise to Day" below!</div>';
+    $('#program-exercises-list').innerHTML = '<div class="empty">No exercises added to this day yet. Select "+ Add exercise to day" below</div>';
     $('#program-bottom-bar').classList.add('hidden');
   } else {
     $('#program-exercises-list').innerHTML = exList.map((item, eIdx) => {
@@ -964,7 +964,7 @@ async function openCreateProgramDialog() {
         setState(state);
         selectedProgramDayIdx = 0;
         showView('program');
-        toast(`Program "${name}" created!`, 'success');
+        toast(`Program "${name}" created`, 'success');
       });
     }
   }
@@ -975,7 +975,7 @@ async function openManageProgramsDialog() {
   const rows = progs.map((p) => `
     <div class="bw-entry-row" style="padding:10px 12px;margin-bottom:8px;">
       <div>
-        <div style="font-weight:700;color:${p.id === S.activeProgramId ? 'var(--accent)' : 'var(--text)'};font-size:15px;">
+        <div style="font-weight:600;color:${p.id === S.activeProgramId ? 'var(--accent)' : 'var(--text)'};font-size:15px;">
           ${esc(p.programName || 'Program')} ${p.id === S.activeProgramId ? '✓' : ''}
         </div>
         <div class="muted small">${(p.days || []).length} workout days</div>
@@ -990,12 +990,12 @@ async function openManageProgramsDialog() {
   `).join('');
 
   const html = `
-    <div style="max-height:360px;overflow-y:auto;margin-bottom:12px;">${rows || '<div class="muted">No programs yet.</div>'}</div>
-    <button id="m-new-prog-sub" class="primary full-width">+ Create New Program</button>
+    <div style="max-height:360px;overflow-y:auto;margin-bottom:12px;">${rows || '<div class="muted">No programs yet</div>'}</div>
+    <button id="m-new-prog-sub" class="primary full-width">Create new program</button>
   `;
 
   const { m, close } = openCustomModal({
-    title: `Manage Programs (${progs.length})`,
+    title: `Manage programs (${progs.length})`,
     html,
     cancelText: 'Close',
     wide: true,
@@ -1022,7 +1022,7 @@ async function openManageProgramsDialog() {
       const state = await window.api.duplicateProgram(b.dataset.id);
       setState(state);
       renderProgramView();
-      toast('Program duplicated!', 'success');
+      toast('Program duplicated', 'success');
     };
   });
 
@@ -1158,14 +1158,14 @@ async function openAddExerciseToDayDialog() {
     });
 
     const catChips = categories.map((c) => `
-      <button class="chip ${c === chosenCategory ? 'active' : ''}" style="${c === chosenCategory ? 'background:var(--accent);color:#140d07;font-weight:700;' : ''}">${esc(c)}</button>
+      <button class="chip ${c === chosenCategory ? 'active' : ''}">${esc(c)}</button>
     `).join('');
 
     const rows = filtered.map((e) => `
-      <div class="bw-entry-row picker-item" data-name="${esc(e.name)}" style="padding:8px 12px;margin-bottom:6px;cursor:pointer;">
+      <div class="bw-entry-row picker-item" data-name="${esc(e.name)}" style="padding:8px 12px;margin-bottom:8px;cursor:pointer;">
         <div>
-          <span style="font-weight:700;color:var(--text);">${esc(e.name)}</span>
-          <span class="tag" style="margin-left:6px;">${esc(e.category || 'Other')}</span>
+          <span style="font-weight:500;color:var(--text);">${esc(e.name)}</span>
+          <span class="tag" style="margin-left:8px;">${esc(e.category || 'Other')}</span>
           ${e.bodyweight ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
         </div>
         <button class="primary compact">+ Add</button>
@@ -1177,10 +1177,10 @@ async function openAddExerciseToDayDialog() {
 
   const activeProgId = activeProg.id;
   const { m } = openCustomModal({
-    title: `Add Exercise to ${day.dayName}`,
+    title: `Add exercise to ${day.dayName}`,
     html: `
-      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;background:var(--bg);padding:8px 12px;border-radius:10px;">
-        <span class="muted small uppercase font-bold">PRESCRIBED TARGETS:</span>
+      <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;background:var(--bg);padding:8px 12px;border-radius:8px;border:1px solid var(--border);">
+        <span class="muted small font-bold">Prescribed targets</span>
         <div class="stepper-pill">
           <button class="stepper-btn" id="m-set-dec">−</button>
           <div class="stepper-value"><span class="val" id="m-sets-val">3</span><span class="lbl">Sets</span></div>
@@ -1192,7 +1192,7 @@ async function openAddExerciseToDayDialog() {
           <button class="stepper-btn" id="m-rep-inc">+</button>
         </div>
       </div>
-      <input type="search" id="m-ex-search" placeholder="Search exercises..." style="margin-bottom:10px;" />
+      <input type="search" id="m-ex-search" placeholder="Search exercises" style="margin-bottom:12px;" />
       <div id="m-cat-chips" class="chips" style="margin-bottom:12px;"></div>
       <div id="m-picker-list" style="max-height:300px;overflow-y:auto;"></div>
     `,
@@ -1245,7 +1245,7 @@ async function openAddExerciseToDayDialog() {
 async function openLoadProgramDayDialog() {
   const progs = S.programs || [];
   if (!progs.length) {
-    return toast('No programs created yet. Create one in the Program tab first!', 'error');
+    return toast('No programs created yet. Create one in the Program tab first', 'error');
   }
 
   const daysOptions = [];
@@ -1262,13 +1262,13 @@ async function openLoadProgramDayDialog() {
   }
 
   if (!daysOptions.length) {
-    return toast('No workout days exist in your programs yet.', 'error');
+    return toast('No workout days exist in your programs yet', 'error');
   }
 
   const rows = daysOptions.map((opt, i) => `
-    <div class="bw-entry-row load-prog-day-item" data-idx="${i}" style="padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+    <div class="bw-entry-row load-prog-day-item" data-idx="${i}" style="padding:12px;margin-bottom:8px;cursor:pointer;">
       <div>
-        <div style="font-weight:700;color:var(--text);font-size:14.5px;">${esc(opt.dayName)}</div>
+        <div style="font-weight:500;color:var(--text);font-size:14.5px;">${esc(opt.dayName)}</div>
         <div class="muted small">${esc(opt.progName)} • ${(opt.day.exercises || []).length} exercises ${opt.focus ? `(${esc(opt.focus)})` : ''}</div>
       </div>
       <button class="primary compact">Load</button>
@@ -1412,7 +1412,7 @@ function evaluateGoalDesktop(goal) {
     targetHeadline,
     progressPct,
     isAchieved,
-    statusLabel: isAchieved ? 'Achieved 🏆' : (progressPct >= 80 ? 'On Track' : 'Building'),
+    statusLabel: isAchieved ? 'Achieved' : (progressPct >= 80 ? 'On track' : 'Building'),
     nextSets,
     nextReps,
     nextWeight,
@@ -1442,7 +1442,7 @@ function renderGoals() {
   if (!filtered.length) {
     host.innerHTML = `
       <div class="empty">
-        ${allGoals.length ? 'No goals match this filter.' : 'No strength goals set yet! Click <b>+ New Goal</b> above to set a 1RM or Sets × Reps target.'}
+        ${allGoals.length ? 'No goals match this filter' : 'No strength goals set yet. Select <b>New goal</b> above to set a 1RM or sets × reps target'}
       </div>
     `;
     return;
@@ -1475,29 +1475,29 @@ function renderGoals() {
       </div>
 
       <div class="goal-card-foot">
-        <div class="goal-next-summary">${e.isAchieved ? 'Goal Reached! 🏆' : `Next: ${esc(e.nextSessionSummary)}`}</div>
+        <div class="goal-next-summary">${e.isAchieved ? 'Goal reached' : `Next: ${esc(e.nextSessionSummary)}`}</div>
         <div class="goal-actions-group">
-          ${!e.isAchieved ? `<button class="primary compact train-goal-btn" data-id="${e.goal.id}">▶ Train</button>` : ''}
+          ${!e.isAchieved ? `<button class="primary compact train-goal-btn" data-id="${e.goal.id}">Train</button>` : ''}
           <button class="ghost compact toggle-goal-expand">Details ▾</button>
         </div>
       </div>
 
       <div class="goal-expanded-body hidden">
-        <div class="small font-bold uppercase muted">Prescribed Working Sets</div>
-        <div style="font-size:13px;color:var(--text);">${e.nextSets} sets × ${e.nextReps} reps @ ${e.bw && e.nextWeight === 0 ? 'BW' : `${fmt(e.nextWeight)}kg`}</div>
+        <div class="small font-bold muted">Prescribed working sets</div>
+        <div style="font-size:13px;color:var(--text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;">${e.nextSets} sets × ${e.nextReps} reps @ ${e.bw && e.nextWeight === 0 ? 'BW' : `${fmt(e.nextWeight)}kg`}</div>
 
-        <div class="small font-bold uppercase muted" style="margin-top:6px;">Milestones</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:6px;">
+        <div class="small font-bold muted" style="margin-top:8px;">Milestones</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:8px;">
           ${e.phases.map((p) => `
-            <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:11.5px;">
-              <div style="font-weight:700;color:var(--text);">${esc(p.title)}</div>
-              <div style="color:var(--accent);">${esc(p.prescription)}</div>
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;">
+              <div style="font-weight:500;color:var(--text);">${esc(p.title)}</div>
+              <div style="color:var(--accent);font-family:var(--font-mono);font-variant-numeric:tabular-nums;">${esc(p.prescription)}</div>
             </div>
           `).join('')}
         </div>
 
-        <div class="btn-row" style="margin-top:10px;">
-          <button class="ghost compact inspect-report-btn" data-id="${e.goal.id}">📊 Full Report</button>
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="ghost compact inspect-report-btn" data-id="${e.goal.id}">Full report</button>
           <button class="ghost compact edit-goal-btn" data-id="${e.goal.id}">Edit</button>
           <button class="ghost compact toggle-goal-btn" data-id="${e.goal.id}">${e.goal.enabled === false ? 'Resume' : 'Pause'}</button>
           <button class="danger compact delete-goal-btn" data-id="${e.goal.id}">Delete</button>
@@ -1629,9 +1629,9 @@ async function openGoalModal(existingGoal = null) {
         </label>
       </div>
 
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <span class="small font-bold uppercase muted">Current Strength (Starting Point)</span>
+          <span class="small font-bold muted">Current strength (starting point)</span>
           <span id="m-goal-recent-hint" class="muted small"></span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 0.8fr 1fr;gap:10px;">
@@ -1746,7 +1746,7 @@ async function openGoalModal(existingGoal = null) {
     const state = await window.api.saveGoal(goalObj);
     setState(state);
     renderGoals();
-    toast('Goal saved!', 'success');
+    toast('Goal saved', 'success');
   }
 }
 
@@ -1763,33 +1763,33 @@ function openExerciseGoalReportModal(goalId) {
       <td>${r.sessionBestE1rm}kg</td>
       <td>${r.workingSetsCount}</td>
       <td>${r.progressPct}%</td>
-      <td>${r.achievedGoal ? '🏆 Hit!' : 'In progress'}</td>
+      <td>${r.achievedGoal ? 'Achieved' : 'In progress'}</td>
     </tr>
   `).join('');
 
   modal({
-    title: `📊 Goal Report: ${ev.name}`,
+    title: `Goal report: ${ev.name}`,
     wide: true,
     html: `
-      <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
+      <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
         <div class="stat"><div class="lbl">Target</div><div class="val" style="color:var(--accent);font-size:17px;">${esc(ev.targetHeadline)}</div></div>
-        <div class="stat"><div class="lbl">Current Best</div><div class="val">${ev.bestE1rm}kg</div></div>
+        <div class="stat"><div class="lbl">Current best</div><div class="val">${ev.bestE1rm}kg</div></div>
         <div class="stat"><div class="lbl">Progress</div><div class="val" style="color:${ev.isAchieved ? 'var(--pr)' : 'var(--up)'}">${ev.progressPct}%</div></div>
         <div class="stat"><div class="lbl">Status</div><div class="val" style="font-size:17px;">${esc(ev.statusLabel)}</div></div>
       </div>
 
-      <div class="card" style="margin-bottom:14px;">
-        <div class="small font-bold uppercase muted" style="margin-bottom:6px;">Next Session Prescription</div>
-        <div style="font-size:14px;font-weight:700;color:var(--text);">${esc(ev.nextSessionSummary)}</div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="small font-bold muted" style="margin-bottom:8px;">Next session prescription</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text);font-family:var(--font-mono);font-variant-numeric:tabular-nums;">${esc(ev.nextSessionSummary)}</div>
       </div>
 
       <div class="card">
-        <div class="small font-bold uppercase muted" style="margin-bottom:8px;">Logged Goal Sessions (${reports.length})</div>
+        <div class="small font-bold muted" style="margin-bottom:8px;">Logged goal sessions (${reports.length})</div>
         <table class="table">
           <thead>
             <tr><th>Date</th><th>Top Set</th><th>E1RM</th><th>Sets</th><th>Progress</th><th>Status</th></tr>
           </thead>
-          <tbody>${historyRows || '<tr><td colspan="6" class="muted">No goal sessions logged yet.</td></tr>'}</tbody>
+          <tbody>${historyRows || '<tr><td colspan="6" class="muted">No goal sessions logged yet</td></tr>'}</tbody>
         </table>
       </div>
     `,
@@ -1803,24 +1803,24 @@ function openAllGoalsMasterReportModal() {
   const evals = allGoals.map((g) => evaluateGoalDesktop(g));
 
   const rows = evals.map((e) => `
-    <div class="bw-entry-row" style="padding:10px 14px;margin-bottom:8px;">
+    <div class="bw-entry-row" style="padding:12px;margin-bottom:8px;">
       <div style="flex:1;">
-        <span style="font-weight:700;font-size:15px;color:var(--text);">${esc(e.name)}</span>
+        <span style="font-weight:500;font-size:15px;color:var(--text);">${esc(e.name)}</span>
         <span class="tag" style="margin-left:8px;">${esc(e.targetHeadline)}</span>
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
         <span class="goal-pill ${e.isAchieved ? 'achieved' : ''}">${esc(e.statusLabel)}</span>
-        <span style="font-weight:700;color:var(--accent);">${e.progressPct}%</span>
-        <button class="ghost compact m-view-single-report" data-id="${e.goal.id}">View Report</button>
+        <span style="font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums;">${e.progressPct}%</span>
+        <button class="ghost compact m-view-single-report" data-id="${e.goal.id}">View report</button>
       </div>
     </div>
   `).join('');
 
   const { m, close } = openCustomModal({
-    title: `📊 Master All-Goals Report (${evals.length})`,
+    title: `All goals report (${evals.length})`,
     html: `
       <div style="max-height:400px;overflow-y:auto;">
-        ${rows || '<div class="muted">No goals configured yet.</div>'}
+        ${rows || '<div class="muted">No goals configured yet</div>'}
       </div>
     `,
     cancelText: 'Close',
@@ -1844,7 +1844,7 @@ function renderExercisesCatalog() {
   const activeCat = chipsHost.dataset.cat || 'All';
 
   chipsHost.innerHTML = categories.map((c) => `
-    <button class="chip ${c === activeCat ? 'active' : ''}" style="${c === activeCat ? 'background:var(--accent);color:#140d07;font-weight:700;' : ''}">${esc(c)}</button>
+    <button class="chip ${c === activeCat ? 'active' : ''}">${esc(c)}</button>
   `).join('');
 
   chipsHost.querySelectorAll('.chip').forEach((chip) => {
@@ -1930,7 +1930,7 @@ async function openAddExerciseModal() {
       const state = await window.api.addExercise({ name, category, bodyweight, description });
       setState(state);
       renderExercisesCatalog();
-      toast(`Exercise "${name}" added!`, 'success');
+      toast(`Exercise "${name}" added`, 'success');
     }
   }
 }
@@ -1970,7 +1970,7 @@ async function openEditExerciseModal(exerciseName) {
       });
       setState(state);
       renderExercisesCatalog();
-      toast(`Exercise updated!`, 'success');
+      toast('Exercise updated', 'success');
     }
   }
 }
@@ -2057,7 +2057,7 @@ function initSettingsModule() {
     await busy(async () => {
       const state = await window.api.connect({ spreadsheetId, keyFile });
       setState(state);
-      toast('Connected to Google Sheets!', 'success');
+      toast('Connected to Google Sheets', 'success');
     });
   });
 
@@ -2069,7 +2069,7 @@ function initSettingsModule() {
       if (state.storage?.error) {
         toast(state.storage.error, 'error');
       } else {
-        toast('Synced with Google Sheets!', 'success');
+        toast('Synced with Google Sheets', 'success');
       }
     });
   });
@@ -2078,7 +2078,7 @@ function initSettingsModule() {
     await busy(async () => {
       const state = await window.api.disconnect();
       setState(state);
-      toast('Disconnected. Using local storage.', 'warn');
+      toast('Disconnected. Using local storage', 'warn');
     });
   });
 
@@ -2086,7 +2086,7 @@ function initSettingsModule() {
     await busy(async () => {
       const res = await window.api.copyLocalToSheets();
       setState(res.state);
-      toast(`Copied ${res.added} workouts to Google Sheets!`, 'success');
+      toast(`Copied ${res.added} workouts to Google Sheets`, 'success');
     });
   });
 
@@ -2249,7 +2249,7 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
       lastSummary: 'No prior sessions logged',
       lastDate: 'First Time',
       targetSummary: `${slot.defaultSets} × ${slot.defaultReps} reps`,
-      reasonTag: benefitText ? `✨ New Exercise Suggestion: ${benefitText}` : `🎯 New stimulus for ${cat} (${slot.defaultSets} × ${slot.defaultReps})`,
+      reasonTag: benefitText ? `New exercise: ${benefitText}` : `New stimulus for ${cat} (${slot.defaultSets} × ${slot.defaultReps})`,
       prescribedSets: Array.from({ length: slot.defaultSets }, () => ({ weight: bw ? 0 : '', reps: slot.defaultReps, notes: '' })),
     };
   }
@@ -2291,13 +2291,13 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
 
   let reasonTag;
   if (peakE1rm > 0 && currE1rm < peakE1rm * 0.94) {
-    reasonTag = `🔧 Needs Improvement: Current E1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
+    reasonTag = `Below peak: Current E1RM (${fmt(currE1rm)}kg) vs ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
   } else if (targetE1rm > peakE1rm && peakE1rm > 0) {
-    reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
+    reasonTag = `PR opportunity: ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} reaches ${fmt(round(targetE1rm))}kg E1RM${benefitSuffix}`;
   } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets / 2) {
-    reasonTag = `📊 Weekly Volume Gap: ${cat} has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
+    reasonTag = `Volume gap: ${cat} has ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
   } else {
-    reasonTag = `📈 Progressive Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+    reasonTag = `Progressive overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
   }
 
   const targetSummary = bw && targetWeight === 0
@@ -2376,7 +2376,7 @@ function renderSuggest() {
   const volHost = $('#suggest-volume');
   volHost.innerHTML = `
     <div class="suggest-vol-head">
-      <span class="muted small font-bold uppercase">7-Day Muscle Volume Targets</span>
+      <span class="muted small font-bold">7-day muscle volume targets</span>
       <span class="muted small">Working sets completed in last 7 days</span>
     </div>
     <div class="suggest-vol-grid">
@@ -2415,14 +2415,14 @@ function renderSuggest() {
     return item;
   });
 
-  $('#suggest-load').textContent = `▶ Start ${splitDef.title} Session (${generatedExercises.length} Lifts)`;
+  $('#suggest-load').textContent = `Start ${splitDef.title} session (${generatedExercises.length} lifts)`;
 
   const listHost = $('#suggest-list');
   listHost.innerHTML = generatedExercises.map((item, sIdx) => `
-    <div class="card suggest-ex-card" style="margin-bottom:10px;">
+    <div class="card suggest-ex-card" style="margin-bottom:12px;">
       <div class="suggest-ex-top">
         <div>
-          <span class="muted small uppercase font-bold">${sIdx + 1}. ${esc(item.slotTitle)}</span>
+          <span class="muted small font-bold">${sIdx + 1}. ${esc(item.slotTitle)}</span>
           <div class="suggest-ex-title">
             <span>${esc(item.exerciseName)}</span>
             <span class="tag">${esc(item.category)}</span>
@@ -2431,13 +2431,13 @@ function renderSuggest() {
         </div>
         <div class="suggest-ex-right">
           <div style="text-align:right;">
-            <div style="font-size:14px;font-weight:700;color:var(--accent);">Target: ${esc(item.targetSummary)}</div>
-            <div class="muted small">${item.lastDate === 'First Time' ? 'First time' : `Last (${esc(item.lastDate)}): ${esc(item.lastSummary)}`}</div>
+            <div style="font-size:14px;font-weight:500;color:var(--accent);font-family:var(--font-mono);font-variant-numeric:tabular-nums;">Target: ${esc(item.targetSummary)}</div>
+            <div class="muted small" style="font-variant-numeric:tabular-nums;">${item.lastDate === 'First Time' ? 'First time' : `Last (${esc(item.lastDate)}): ${esc(item.lastSummary)}`}</div>
           </div>
-          <button class="ghost compact suggest-swap-btn" data-slot="${sIdx}" title="Swap exercise alternative">↻ Swap</button>
+          <button class="ghost compact suggest-swap-btn" data-slot="${sIdx}" title="Swap exercise alternative">Swap</button>
         </div>
       </div>
-      <div class="desc muted small" style="margin-top:6px;">${esc(item.reasonTag)}</div>
+      <div class="desc muted small" style="margin-top:8px;">${esc(item.reasonTag)}</div>
     </div>
   `).join('');
 
@@ -2819,10 +2819,10 @@ function renderProgressChart(exerciseName, sessions, metricKey = 'e1rm', allSess
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#171a21',
-          borderColor: '#2a2f3a',
+          backgroundColor: '#19191b',
+          borderColor: 'rgba(237, 237, 237, 0.08)',
           borderWidth: 1,
-          titleColor: '#e8eaf0',
+          titleColor: '#ededed',
           bodyColor: '#ffd166',
           callbacks: {
             label: (ctx) => {
@@ -2837,13 +2837,13 @@ function renderProgressChart(exerciseName, sessions, metricKey = 'e1rm', allSess
       },
       scales: {
         x: {
-          grid: { color: 'rgba(42, 47, 58, 0.4)' },
-          ticks: { color: '#8b93a7', maxTicksLimit: 8 },
+          grid: { color: 'rgba(237, 237, 237, 0.06)' },
+          ticks: { color: '#85858b', maxTicksLimit: 8 },
         },
         y: {
-          grid: { color: 'rgba(42, 47, 58, 0.4)' },
+          grid: { color: 'rgba(237, 237, 237, 0.06)' },
           ticks: {
-            color: '#8b93a7',
+            color: '#85858b',
             callback: (v) => (isRel ? `${Number(v).toFixed(2)}×` : v),
           },
         },
@@ -2963,15 +2963,15 @@ function bwdLineChart(canvas, labels, datasets, yFmt, tooltipLabel) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { display: datasets.length > 1, labels: { color: '#8b93a7' } },
+        legend: { display: datasets.length > 1, labels: { color: '#a1a1a6' } },
         tooltip: {
-          backgroundColor: '#171a21', borderColor: '#2a2f3a', borderWidth: 1, titleColor: '#e8eaf0', bodyColor: '#ffd166',
+          backgroundColor: '#19191b', borderColor: 'rgba(237, 237, 237, 0.08)', borderWidth: 1, titleColor: '#ededed', bodyColor: '#ffd166',
           callbacks: { label: tooltipLabel },
         },
       },
       scales: {
-        x: { grid: { color: 'rgba(42, 47, 58, 0.4)' }, ticks: { color: '#8b93a7', maxTicksLimit: 8 } },
-        y: { grid: { color: 'rgba(42, 47, 58, 0.4)' }, ticks: { color: '#8b93a7', callback: yFmt } },
+        x: { grid: { color: 'rgba(237, 237, 237, 0.06)' }, ticks: { color: '#85858b', maxTicksLimit: 8 } },
+        y: { grid: { color: 'rgba(237, 237, 237, 0.06)' }, ticks: { color: '#85858b', callback: yFmt } },
       },
     },
   });
@@ -3457,7 +3457,7 @@ async function open14DaySummaryModal(initialTab = 'live') {
               ${entry.notes ? `<div class="small" style="color:var(--accent-2);margin-top:4px;">${esc(entry.notes)}</div>` : ''}
             </div>
             <div style="text-align:right;">
-              <div style="font-size:18px;font-weight:700;color:${color};font-variant-numeric:tabular-nums;">${entry.overallScore}/100</div>
+              <div style="font-size:18px;font-weight:600;color:${color};font-variant-numeric:tabular-nums;">${entry.overallScore}/100</div>
               ${prev && scoreDelta !== 0 ? `<div class="delta ${scoreDelta > 0 ? 'up' : 'down'}">${scoreDelta > 0 ? '+' : ''}${scoreDelta} vs prev</div>` : `<div class="muted small">${esc(entry.tierLabel)}</div>`}
             </div>
           </div>

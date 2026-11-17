@@ -25,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -44,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -73,7 +74,7 @@ import kotlin.math.roundToInt
 private enum class GoalFilterTab(val label: String) {
     ALL("All Goals"),
     ACTIVE("In Progress"),
-    ACHIEVED("Achieved 🏆")
+    ACHIEVED("Achieved")
 }
 
 @Composable
@@ -187,19 +188,19 @@ fun GoalsScreen(
                     Text(
                         text = "Strength Goals",
                         fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (goals.isNotEmpty()) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = SurfaceCard,
                             border = BorderStroke(1.dp, BorderDark),
                             modifier = Modifier
@@ -222,7 +223,7 @@ fun GoalsScreen(
                                 Text(
                                     text = "All Reports",
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.Medium,
                                     color = TextPrimary
                                 )
                             }
@@ -230,7 +231,7 @@ fun GoalsScreen(
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = AccentOrange,
                         modifier = Modifier
                             .weight(1f)
@@ -256,7 +257,7 @@ fun GoalsScreen(
                             Text(
                                 text = "New Goal",
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF140D07)
                             )
                         }
@@ -270,8 +271,9 @@ fun GoalsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(SurfaceCard, RoundedCornerShape(11.dp))
-                    .padding(3.dp),
+                    .background(SurfaceCard, RoundedCornerShape(8.dp))
+                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                    .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 GoalFilterTab.entries.forEach { tab ->
@@ -284,16 +286,17 @@ fun GoalsScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(if (selected) AccentOrange else Color.Transparent)
                             .clickable { filterTab = tab }
-                            .padding(vertical = 7.dp),
+                            .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = label,
-                            fontSize = 11.sp,
-                            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                            fontSize = 11.5.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = if (selected) Color(0xFF140D07) else TextSecondary,
                             maxLines = 1
                         )
@@ -306,7 +309,7 @@ fun GoalsScreen(
         if (filteredEvaluations.isEmpty()) {
             item(key = "goals_empty_card") {
                 StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -314,35 +317,37 @@ fun GoalsScreen(
                             .fillMaxWidth()
                             .padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Surface(
-                            shape = CircleShape,
-                            color = AccentOrange.copy(alpha = 0.16f),
-                            modifier = Modifier.size(52.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            color = SurfaceCardElevated,
+                            border = BorderStroke(1.dp, BorderDark),
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.EmojiEvents,
                                     contentDescription = null,
                                     tint = GoldPR,
-                                    modifier = Modifier.size(26.dp)
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
                         Text(
                             text = if (goals.isEmpty()) "Set Your First Strength Goal" else "No Goals in This Filter",
-                            fontSize = 17.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                         Text(
                             text = "Select any exercise and choose a 1RM target or a Sets × Reps target. StrengthLogz will analyze your current strength, body weight (${formatWeightValue(latestBwKg)}kg), and session history to build a custom progression roadmap.",
                             fontSize = 12.5.sp,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = TextSecondary,
                             textAlign = TextAlign.Center
                         )
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(4.dp))
                         Button(
                             onClick = {
                                 editingGoal = null
@@ -353,14 +358,14 @@ fun GoalsScreen(
                                 containerColor = AccentOrange,
                                 contentColor = Color(0xFF140D07)
                             ),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(46.dp)
+                                .height(44.dp)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Create Exercise Goal", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                            Text("Create Exercise Goal", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         }
                     }
                 }
@@ -368,11 +373,10 @@ fun GoalsScreen(
 
             item(key = "quick_start_header") {
                 Text(
-                    text = "QUICK-START GOALS FROM YOUR HISTORY",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    text = "Quick-start goals from your history",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
                     color = TextSecondary,
-                    letterSpacing = 0.8.sp,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
@@ -386,7 +390,7 @@ fun GoalsScreen(
                 val suggestedTarget = if (bestE1rm > 0.0) GoalEngine.roundToGymLoad(bestE1rm * 1.075, exName) else 100.0
 
                 StrengthCard(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     onClick = {
                         preselectedExerciseName = exName
                         editingGoal = null
@@ -562,31 +566,32 @@ private fun GoalSummaryMiniCard(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         color = SurfaceCard,
-        border = BorderStroke(0.8.dp, BorderDark.copy(alpha = 0.7f))
+        border = BorderStroke(1.dp, BorderDark)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = label,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
                 color = TextSecondary,
-                letterSpacing = 0.6.sp,
                 maxLines = 1
             )
             Text(
                 text = value,
                 fontSize = 15.5.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontWeight = FontWeight.SemiBold,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 color = valueColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = sub,
-                fontSize = 10.sp,
+                fontSize = 10.5.sp,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 color = TextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -612,8 +617,8 @@ private fun GoalProgrammingCard(
         GoalStatus.ACHIEVED -> GoldPR
         GoalStatus.ON_TRACK -> IncreaseGreen
         GoalStatus.PLATEAU_ALERT -> DecreaseRed
-        GoalStatus.NEEDS_FREQUENCY -> AccentPeach
-        GoalStatus.BUILDING -> BlueAccent
+        GoalStatus.NEEDS_FREQUENCY -> AccentOrange
+        GoalStatus.BUILDING -> TextSecondary
     }
 
     val targetHeadline = if (goal.isSetsRepsGoal) {
@@ -632,11 +637,11 @@ private fun GoalProgrammingCard(
     )
 
     StrengthCard(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(
-            width = if (evaluation.isAchieved) 1.2.dp else 1.dp,
+            width = 1.dp,
             color = if (evaluation.isAchieved) GoldPR.copy(alpha = 0.6f)
-            else if (!goal.enabled) BorderDark.copy(alpha = 0.4f)
+            else if (!goal.enabled) BorderDark.copy(alpha = 0.5f)
             else BorderDark
         ),
         modifier = Modifier
@@ -654,16 +659,17 @@ private fun GoalProgrammingCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.weight(1f, fill = false)
                 ) {
                     Text(
                         text = goal.exerciseName,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = if (goal.enabled) TextPrimary else TextSecondary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     CategoryPill(category = evaluation.category)
                 }
@@ -672,8 +678,10 @@ private fun GoalProgrammingCard(
 
                 Text(
                     text = targetHeadline,
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
                     color = if (evaluation.isAchieved) GoldPR else AccentOrange,
                     maxLines = 1
                 )
@@ -692,14 +700,14 @@ private fun GoalProgrammingCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(5.dp),
+                        shape = RoundedCornerShape(6.dp),
                         color = statusColor.copy(alpha = 0.14f),
-                        border = BorderStroke(0.7.dp, statusColor.copy(alpha = 0.45f))
+                        border = BorderStroke(1.dp, statusColor.copy(alpha = 0.45f))
                     ) {
                         Text(
                             text = evaluation.status.label,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
                             color = statusColor,
                             maxLines = 1,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -709,7 +717,7 @@ private fun GoalProgrammingCard(
                     if (!goal.enabled) {
                         Text(
                             text = "Paused",
-                            fontSize = 10.sp,
+                            fontSize = 10.5.sp,
                             color = TextMuted,
                             fontWeight = FontWeight.Medium
                         )
@@ -718,8 +726,9 @@ private fun GoalProgrammingCard(
 
                 Text(
                     text = "Best: ${formatWeightValue(evaluation.currentBestE1rm)}kg • ${formatWeightValue(evaluation.progressPct)}%",
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
                     color = TextSecondary
                 )
             }
@@ -728,18 +737,16 @@ private fun GoalProgrammingCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
                     .background(BgDark)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(animatedProgress)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            if (evaluation.isAchieved) GoldGradient else OrangeGradient
-                        )
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(if (evaluation.isAchieved) GoldPR else AccentOrange)
                 )
             }
 
@@ -756,9 +763,11 @@ private fun GoalProgrammingCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (evaluation.isAchieved) "Goal Reached! 🏆" else "Next: ${evaluation.nextSessionSummary}",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        text = if (evaluation.isAchieved) "Goal reached" else "Next: ${evaluation.nextSessionSummary}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.Monospace,
+                        style = TextStyle(fontFeatureSettings = "tnum"),
                         color = if (evaluation.isAchieved) GoldPR else TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -773,14 +782,14 @@ private fun GoalProgrammingCard(
                 ) {
                     if (!evaluation.isAchieved) {
                         Surface(
-                            shape = RoundedCornerShape(7.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = AccentOrange,
                             modifier = Modifier.clickable { onTrainGoalNow() }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
@@ -790,8 +799,8 @@ private fun GoalProgrammingCard(
                                 )
                                 Text(
                                     text = "Train",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF140D07)
                                 )
                             }
@@ -800,7 +809,7 @@ private fun GoalProgrammingCard(
 
                     IconButton(
                         onClick = onToggleExpand,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
                             imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -815,29 +824,28 @@ private fun GoalProgrammingCard(
             // EXPANDED CONTENT: Clean, concise & actionable (no clutter)
             AnimatedVisibility(visible = isExpanded) {
                 Column(
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    HorizontalDivider(color = BorderDark, thickness = 0.6.dp)
+                    HorizontalDivider(color = BorderDark, thickness = 1.dp)
 
                     // 1. Next Workout Prescribed Sets
                     if (evaluation.nextSessionSets.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "NEXT SESSION SETS",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
-                                letterSpacing = 0.5.sp
+                                text = "Next session sets",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary
                             )
                             evaluation.nextSessionSets.forEach { ps ->
                                 PrescribedSetRow(set = ps, isBodyweight = evaluation.isBodyweight, isWarmup = false)
                             }
                             if (evaluation.nextSessionFocusCue.isNotBlank()) {
                                 Text(
-                                    text = "💡 ${evaluation.nextSessionFocusCue}",
-                                    fontSize = 10.5.sp,
-                                    color = AccentPeach,
+                                    text = evaluation.nextSessionFocusCue,
+                                    fontSize = 11.5.sp,
+                                    color = TextSecondary,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
@@ -848,11 +856,10 @@ private fun GoalProgrammingCard(
                     if (evaluation.roadmapPhases.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "MILESTONES",
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
-                                letterSpacing = 0.5.sp
+                                text = "Milestones",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary
                             )
                             evaluation.roadmapPhases.forEach { phase ->
                                 Surface(
@@ -968,14 +975,15 @@ private fun ProgrammingMetricBadge(
         ) {
             Text(
                 text = title,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
                 color = TextSecondary
             )
             Text(
                 text = value,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 color = TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -995,14 +1003,14 @@ private fun PrescribedSetRow(
     } else "${formatWeightValue(set.weightKg)} kg"
 
     Surface(
-        shape = RoundedCornerShape(9.dp),
+        shape = RoundedCornerShape(8.dp),
         color = if (isWarmup) SurfaceDark.copy(alpha = 0.6f) else BgDark,
-        border = BorderStroke(0.7.dp, if (isWarmup) BorderDark.copy(alpha = 0.5f) else AccentOrange.copy(alpha = 0.35f))
+        border = BorderStroke(1.dp, if (isWarmup) BorderDark.copy(alpha = 0.5f) else AccentOrange.copy(alpha = 0.35f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 7.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1012,15 +1020,17 @@ private fun PrescribedSetRow(
                 modifier = Modifier.weight(1f)
             ) {
                 Surface(
-                    shape = CircleShape,
-                    color = if (isWarmup) BorderDark else AccentOrange.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isWarmup) BorderDark else SurfaceCardElevated,
+                    border = if (isWarmup) null else BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.size(22.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = if (isWarmup) "W" else "${set.setNo}",
                             fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.SemiBold,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = if (isWarmup) TextSecondary else AccentOrange
                         )
                     }
@@ -1028,14 +1038,14 @@ private fun PrescribedSetRow(
                 Column {
                     Text(
                         text = "${set.role} • ${set.rpe}",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
                         color = if (isWarmup) TextSecondary else TextPrimary
                     )
                     if (set.notes.isNotBlank()) {
                         Text(
                             text = set.notes,
-                            fontSize = 10.5.sp,
+                            fontSize = 11.sp,
                             color = TextSecondary
                         )
                     }
@@ -1044,8 +1054,10 @@ private fun PrescribedSetRow(
 
             Text(
                 text = "$wStr × ${set.reps}",
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 color = if (isWarmup) TextSecondary else GoldPR
             )
         }
@@ -1166,13 +1178,13 @@ fun CreateOrEditGoalDialog(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .heightIn(max = 680.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = SurfaceCard,
             border = BorderStroke(1.dp, BorderDark)
         ) {
             Column(
                 modifier = Modifier
-                    .padding(18.dp)
+                    .padding(16.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -1183,19 +1195,19 @@ fun CreateOrEditGoalDialog(
                 ) {
                     Text(
                         text = if (existingGoal == null) "Set Exercise Goal" else "Edit Exercise Goal",
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                     }
                 }
 
                 // 1. Exercise Selector
-                Text("1. SELECT MOVEMENT", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                Text("1. Select movement", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = BgDark,
                     border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.6f)),
                     modifier = Modifier
@@ -1203,24 +1215,26 @@ fun CreateOrEditGoalDialog(
                         .clickable { showExerciseSelector = !showExerciseSelector }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(selectedExercise, fontSize = 15.5.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(selectedExercise, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                             Text(
                                 text = if (latestSession != null)
                                     "Latest (${latestSession.displayDate}): ${formatWeightValue(recentTopWeight)}kg × $recentTopReps (${formatWeightValue(recentBestE1rm)}kg recent E1RM)"
                                 else "No prior sessions logged • Enter your starting weight below",
                                 fontSize = 11.5.sp,
-                                color = AccentPeach
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                                color = TextSecondary
                             )
                         }
+                        Spacer(Modifier.width(8.dp))
                         Text(
                             text = if (showExerciseSelector) "Close ▲" else "Change ▼",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.Medium,
                             color = AccentOrange
                         )
                     }
@@ -1228,7 +1242,7 @@ fun CreateOrEditGoalDialog(
 
                 if (showExerciseSelector) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = BgDark,
                         border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier
@@ -1239,9 +1253,9 @@ fun CreateOrEditGoalDialog(
                             ModernSearchBar(
                                 query = exerciseQuery,
                                 onQueryChange = { exerciseQuery = it },
-                                placeholder = "Search exercise..."
+                                placeholder = "Search exercise"
                             )
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(8.dp))
                             val filteredEx = remember(availableExercises, exerciseQuery) {
                                 val q = exerciseQuery.trim()
                                 availableExercises.filter { q.isEmpty() || it.name.contains(q, true) || it.category.contains(q, true) }
@@ -1256,14 +1270,14 @@ fun CreateOrEditGoalDialog(
                                                 showExerciseSelector = false
                                                 exerciseQuery = ""
                                             }
-                                            .padding(vertical = 8.dp, horizontal = 6.dp),
+                                            .padding(vertical = 8.dp, horizontal = 8.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(ex.name, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        Text(ex.name, fontSize = 13.5.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                                         CategoryPill(category = ex.category)
                                     }
-                                    HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+                                    HorizontalDivider(color = BorderDark, thickness = 1.dp)
                                 }
                             }
                         }
@@ -1271,7 +1285,7 @@ fun CreateOrEditGoalDialog(
                 }
 
                 // 2. Current / Starting Strength (Auto from recent sessions or manual override)
-                Text("2. CURRENT STRENGTH (STARTING BASELINE)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                Text("2. Current strength (starting baseline)", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1307,50 +1321,52 @@ fun CreateOrEditGoalDialog(
                         )
                     )
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = BgDark,
-                        border = BorderStroke(0.8.dp, BorderDark),
+                        border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("CURR E1RM", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                            Text("Curr E1RM", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                             Text(
                                 text = if (effectiveCurrentE1rm > 0.0) "${formatWeightValue(effectiveCurrentE1rm)}kg" else "--",
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = AccentPeach
+                                fontWeight = FontWeight.SemiBold,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                                color = TextPrimary
                             )
                         }
                     }
                 }
 
                 // 3. Goal Type Selector: 1RM vs Sets / Reps
-                Text("3. GOAL TYPE", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                Text("3. Goal type", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(BgDark, RoundedCornerShape(11.dp))
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        .background(BgDark, RoundedCornerShape(8.dp))
+                        .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf("E1RM" to "🎯 1-Rep Max (1RM)", "SETS_REPS" to "🏋️ Sets × Reps").forEach { (typeKey, label) ->
+                    listOf("E1RM" to "1-Rep Max (1RM)", "SETS_REPS" to "Sets × Reps").forEach { (typeKey, label) ->
                         val active = goalType == typeKey
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(9.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (active) AccentOrange else Color.Transparent)
                                 .clickable { goalType = typeKey }
-                                .padding(vertical = 9.dp),
+                                .padding(vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = label,
                                 fontSize = 12.5.sp,
-                                fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                                 color = if (active) Color(0xFF140D07) else TextSecondary
                             )
                         }
@@ -1359,7 +1375,7 @@ fun CreateOrEditGoalDialog(
 
                 // 4. Target Configuration & Smart Presets
                 if (goalType == "E1RM") {
-                    Text("4. TARGET 1-REP MAX (KG)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    Text("4. Target 1-Rep Max (kg)", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
 
                     if (effectiveCurrentE1rm > 0.0) {
                         val presets = listOf(
@@ -1369,20 +1385,21 @@ fun CreateOrEditGoalDialog(
                             "1.25× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.25, selectedExercise),
                             "1.5× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.50, selectedExercise)
                         )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(presets) { (lbl, valKg) ->
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = BgDark,
-                                    border = BorderStroke(0.8.dp, AccentPeach.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.dp, BorderDark),
                                     modifier = Modifier.clickable { targetE1rmText = formatWeightValue(valKg) }
                                 ) {
                                     Text(
                                         text = "$lbl (${formatWeightValue(valKg)}kg)",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = AccentPeach,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
+                                        color = TextPrimary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
                             }
@@ -1404,7 +1421,7 @@ fun CreateOrEditGoalDialog(
                         )
                     )
                 } else {
-                    Text("4. TARGET SETS × REPS @ WEIGHT", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                    Text("4. Target Sets × Reps @ Weight", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
 
                     val baseW = when {
                         manualStartW > 0.0 -> manualStartW
@@ -1417,12 +1434,12 @@ fun CreateOrEditGoalDialog(
                         Triple("3 × 10 Volume", 3, 10 to baseW),
                         Triple("4 × 6 Power", 4, 6 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise))
                     )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(srPresets) { (lbl, sCnt, repW) ->
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = BgDark,
-                                border = BorderStroke(0.8.dp, AccentPeach.copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, BorderDark),
                                 modifier = Modifier.clickable {
                                     targetSetsText = sCnt.toString()
                                     targetRepsText = repW.first.toString()
@@ -1431,10 +1448,11 @@ fun CreateOrEditGoalDialog(
                             ) {
                                 Text(
                                     text = "$lbl (@ ${formatWeightValue(repW.second)}kg)",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AccentPeach,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
+                                    color = TextPrimary,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
                             }
                         }
@@ -1527,20 +1545,21 @@ fun CreateOrEditGoalDialog(
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = BgDark,
-                    border = BorderStroke(0.8.dp, GoldPR.copy(alpha = 0.45f)),
+                    border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.45f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "📊 IN-APP GOAL PROJECTION",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            text = "Goal projection",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = GoldPR
                         )
                         Text(
                             text = "Equivalent Target E1RM: ${formatWeightValue(previewTargetE1rm)} kg (${"%.2f".format(BodyWeightUtils.relativeStrength(previewTargetE1rm, currentBodyWeightKg))}× BW)",
                             fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = TextPrimary
                         )
                         Text(
@@ -1548,6 +1567,7 @@ fun CreateOrEditGoalDialog(
                                 "Requires +${formatWeightValue(deltaNeeded)} kg E1RM gain over your current ${formatWeightValue(effectiveCurrentE1rm)} kg strength."
                             else "Enter your current lift above or log a workout to calibrate your starting point.",
                             fontSize = 11.5.sp,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = TextSecondary
                         )
                     }
@@ -1555,22 +1575,22 @@ fun CreateOrEditGoalDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f).height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, BorderDark)
                     ) {
-                        Text("Cancel", color = TextSecondary, fontWeight = FontWeight.Bold)
+                        Text("Cancel", color = TextSecondary, fontWeight = FontWeight.Medium)
                     }
                     Button(
                         onClick = {
                             onSave(previewGoal.copy(notes = notesText.trim(), enabled = true))
                         },
-                        modifier = Modifier.weight(1.3f).height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1.3f).height(44.dp),
+                        shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = AccentOrange,
                             contentColor = Color(0xFF140D07)
@@ -1578,7 +1598,7 @@ fun CreateOrEditGoalDialog(
                     ) {
                         Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Save Goal & Plan", fontWeight = FontWeight.ExtraBold)
+                        Text("Save Goal & Plan", fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1605,7 +1625,7 @@ fun ExerciseGoalReportDialog(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.88f),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = BgDark,
             border = BorderStroke(1.dp, BorderDark)
         ) {
@@ -1631,7 +1651,7 @@ fun ExerciseGoalReportDialog(
                             Text(
                                 text = "${goal.exerciseName} Report",
                                 fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -1642,7 +1662,8 @@ fun ExerciseGoalReportDialog(
                         Text(
                             text = "Generated ${report.generatedDate} • Adherence Score: ${report.adherenceScore}/100",
                             fontSize = 11.5.sp,
-                            color = AccentPeach,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
+                            color = TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1651,14 +1672,14 @@ fun ExerciseGoalReportDialog(
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .size(34.dp)
-                            .background(SurfaceCard, CircleShape)
+                            .size(32.dp)
+                            .background(SurfaceCard, RoundedCornerShape(8.dp))
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -1668,19 +1689,20 @@ fun ExerciseGoalReportDialog(
                     // Executive Status Card
                     item {
                         StrengthCard(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, if (eval.isAchieved) GoldPR else AccentOrange.copy(alpha = 0.6f))
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
                                     text = report.executiveStatus,
                                     fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = if (eval.isAchieved) GoldPR else AccentOrange
                                 )
                                 Text(
                                     text = report.headlineSummary,
                                     fontSize = 12.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextPrimary
                                 )
                             }
@@ -1694,21 +1716,21 @@ fun ExerciseGoalReportDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             GoalSummaryMiniCard(
-                                label = "COMPLETION",
+                                label = "Completion",
                                 value = "${formatWeightValue(eval.progressPct)}%",
                                 sub = "${formatWeightValue(eval.remainingKg)}kg to target",
                                 valueColor = if (eval.isAchieved) GoldPR else AccentOrange,
                                 modifier = Modifier.weight(1f)
                             )
                             GoalSummaryMiniCard(
-                                label = "GAIN SINCE START",
+                                label = "Gain since start",
                                 value = "${if (report.strengthGainSinceGoalStartKg >= 0) "+" else ""}${formatWeightValue(report.strengthGainSinceGoalStartKg)}kg",
                                 sub = "${if (report.strengthGainPct >= 0) "+" else ""}${formatWeightValue(report.strengthGainPct)}% E1RM",
                                 valueColor = IncreaseGreen,
                                 modifier = Modifier.weight(1f)
                             )
                             GoalSummaryMiniCard(
-                                label = "REL. STRENGTH",
+                                label = "Rel. strength",
                                 value = "${"%.2f".format(eval.currentRelBw)}× BW",
                                 sub = "Target ${"%.2f".format(eval.targetRelBw)}× BW",
                                 valueColor = GoldPR,
@@ -1719,40 +1741,40 @@ fun ExerciseGoalReportDialog(
 
                     // Strengths & Bottlenecks Analysis
                     item {
-                        StrengthCard(shape = RoundedCornerShape(14.dp)) {
+                        StrengthCard(shape = RoundedCornerShape(12.dp)) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    text = "📈 PERFORMANCE & BODY WEIGHT AUDIT",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = IncreaseGreen,
-                                    letterSpacing = 0.6.sp
+                                    text = "Performance & body weight audit",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = IncreaseGreen
                                 )
                                 report.keyStrengths.forEach { pt ->
-                                    Text("• $pt", fontSize = 12.sp, color = TextPrimary)
+                                    Text("• $pt", fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
                                 }
                                 Text(
-                                    text = "📦 Volume Trend: ${report.volumeTrendSummary}",
+                                    text = "Volume trend: ${report.volumeTrendSummary}",
                                     fontSize = 11.5.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextSecondary
                                 )
                                 Text(
-                                    text = "⚖️ Body Weight Context: ${report.bodyWeightImpactSummary}",
+                                    text = "Body weight context: ${report.bodyWeightImpactSummary}",
                                     fontSize = 11.5.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextSecondary
                                 )
 
-                                HorizontalDivider(color = BorderDark, thickness = 0.6.dp)
+                                HorizontalDivider(color = BorderDark, thickness = 1.dp)
 
                                 Text(
-                                    text = "🎯 ACTIONABLE PROGRAMMING ADJUSTMENTS",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = AccentOrange,
-                                    letterSpacing = 0.6.sp
+                                    text = "Actionable programming adjustments",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AccentOrange
                                 )
                                 report.bottlenecksAndFixes.forEach { fix ->
-                                    Text("• $fix", fontSize = 12.sp, color = TextPrimary)
+                                    Text("• $fix", fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
                                 }
                             }
                         }
@@ -1761,11 +1783,11 @@ fun ExerciseGoalReportDialog(
                     // Session-by-Session History Table
                     item {
                         Text(
-                            text = "SESSION-BY-SESSION GOAL LOG (${report.sessionEntries.size} SESSIONS)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
+                            text = "Session-by-session goal log (${report.sessionEntries.size} sessions)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
+                            color = TextSecondary
                         )
                     }
 
@@ -1774,7 +1796,7 @@ fun ExerciseGoalReportDialog(
                             shape = RoundedCornerShape(12.dp),
                             color = SurfaceCard,
                             border = BorderStroke(
-                                0.8.dp,
+                                1.dp,
                                 if (entry.hitMilestone) GoldPR.copy(alpha = 0.6f) else BorderDark
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -1791,26 +1813,31 @@ fun ExerciseGoalReportDialog(
                                     Text(
                                         text = "${entry.date} • ${entry.workoutTitle}",
                                         fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
+                                    Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = "${formatWeightValue(entry.sessionBestE1rm)}kg E1RM (${formatWeightValue(entry.progressPctAtSession)}%)",
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                         color = if (entry.hitMilestone) GoldPR else AccentOrange
                                     )
                                 }
                                 Text(
                                     text = "Sets: ${entry.setsSummary} • Vol: ${formatWeightValue(entry.totalVolumeKg)}kg",
                                     fontSize = 11.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextSecondary
                                 )
                                 Text(
                                     text = entry.coachNote,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (entry.deltaVsPrevE1rm >= 0.0) IncreaseGreen else AccentPeach
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (entry.deltaVsPrevE1rm >= 0.0) IncreaseGreen else TextSecondary
                                 )
                             }
                         }
@@ -1820,10 +1847,10 @@ fun ExerciseGoalReportDialog(
                 Button(
                     onClick = onDismiss,
                     colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth().height(44.dp)
                 ) {
-                    Text("Close Report", fontWeight = FontWeight.ExtraBold)
+                    Text("Close Report", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -1847,7 +1874,7 @@ fun AllGoalsReportDialog(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.90f),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = BgDark,
             border = BorderStroke(1.dp, BorderDark)
         ) {
@@ -1867,8 +1894,8 @@ fun AllGoalsReportDialog(
                     ) {
                         Text(
                             text = "All Exercise Goals Report",
-                            fontSize = 18.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1876,6 +1903,7 @@ fun AllGoalsReportDialog(
                         Text(
                             text = "Generated ${masterReport.generatedDate} • ${masterReport.totalGoalsCount} Goal Lifts (@ ${formatWeightValue(masterReport.currentBodyWeightKg)}kg BW)",
                             fontSize = 11.5.sp,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = GoldPR,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1885,14 +1913,14 @@ fun AllGoalsReportDialog(
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .size(34.dp)
-                            .background(SurfaceCard, CircleShape)
+                            .size(32.dp)
+                            .background(SurfaceCard, RoundedCornerShape(8.dp))
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -1906,21 +1934,21 @@ fun AllGoalsReportDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             GoalSummaryMiniCard(
-                                label = "OVERALL PROGRESS",
+                                label = "Overall progress",
                                 value = "${formatWeightValue(masterReport.overallPortfolioCompletionPct)}%",
                                 sub = "Adherence ${masterReport.averageAdherenceScore}/100",
                                 valueColor = AccentOrange,
                                 modifier = Modifier.weight(1f)
                             )
                             GoalSummaryMiniCard(
-                                label = "ON TRACK / HIT",
+                                label = "On track / hit",
                                 value = "${masterReport.onTrackCount + masterReport.achievedGoalsCount}/${masterReport.totalGoalsCount}",
-                                sub = "${masterReport.achievedGoalsCount} Achieved 🏆",
+                                sub = "${masterReport.achievedGoalsCount} achieved",
                                 valueColor = IncreaseGreen,
                                 modifier = Modifier.weight(1f)
                             )
                             GoalSummaryMiniCard(
-                                label = "NEEDS FOCUS",
+                                label = "Needs focus",
                                 value = "${masterReport.plateauedCount}",
                                 sub = "Plateau / Frequency",
                                 valueColor = if (masterReport.plateauedCount > 0) DecreaseRed else TextSecondary,
@@ -1931,17 +1959,16 @@ fun AllGoalsReportDialog(
 
                     // Executive Takeaways
                     item {
-                        StrengthCard(shape = RoundedCornerShape(14.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StrengthCard(shape = RoundedCornerShape(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    text = "🏆 EXECUTIVE COACHING SUMMARY",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = GoldPR,
-                                    letterSpacing = 0.6.sp
+                                    text = "Executive coaching summary",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = GoldPR
                                 )
                                 masterReport.executiveTakeaways.forEach { bullet ->
-                                    Text("• $bullet", fontSize = 12.sp, color = TextPrimary)
+                                    Text("• $bullet", fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
                                 }
                             }
                         }
@@ -1949,18 +1976,17 @@ fun AllGoalsReportDialog(
 
                     item {
                         Text(
-                            text = "PER-EXERCISE GOAL STATUS & PRESCRIPTIONS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
+                            text = "Per-exercise goal status & prescriptions",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
                         )
                     }
 
                     items(masterReport.exerciseReports, key = { it.evaluation.goal.id }) { exRep ->
                         val ev = exRep.evaluation
                         StrengthCard(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             onClick = { onInspectExerciseReport(ev.goal) }
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1971,20 +1997,26 @@ fun AllGoalsReportDialog(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f, fill = false)
                                     ) {
                                         Text(
                                             text = ev.goal.exerciseName,
-                                            fontSize = 15.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = TextPrimary
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
                                         )
                                         CategoryPill(category = ev.category)
                                     }
+                                    Spacer(Modifier.width(8.dp))
                                     Text(
                                         text = "${formatWeightValue(ev.progressPct)}% • ${ev.status.label}",
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                         color = if (ev.isAchieved) GoldPR else AccentOrange
                                     )
                                 }
@@ -1992,14 +2024,17 @@ fun AllGoalsReportDialog(
                                 Text(
                                     text = exRep.headlineSummary,
                                     fontSize = 11.5.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextSecondary
                                 )
 
                                 Text(
                                     text = "Next Session Target: ${ev.nextSessionSummary} (${ev.methodologyTitle})",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AccentPeach
+                                    fontWeight = FontWeight.Medium,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
+                                    color = TextPrimary
                                 )
 
                                 Row(
@@ -2009,13 +2044,14 @@ fun AllGoalsReportDialog(
                                 ) {
                                     Text(
                                         text = "Freq: ${ev.sessionsPerWeek}/wk • Adherence: ${exRep.adherenceScore}/100",
-                                        fontSize = 11.sp,
+                                        fontSize = 11.5.sp,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                         color = TextSecondary
                                     )
                                     Text(
                                         text = "Inspect Exercise Report →",
                                         fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.Medium,
                                         color = GoldPR
                                     )
                                 }
@@ -2027,10 +2063,10 @@ fun AllGoalsReportDialog(
                 Button(
                     onClick = onDismiss,
                     colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth().height(44.dp)
                 ) {
-                    Text("Close Master Report", fontWeight = FontWeight.ExtraBold)
+                    Text("Close Master Report", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -2060,9 +2096,9 @@ fun GoalProgressSessionDialog(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.86f),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = BgDark,
-            border = BorderStroke(1.2.dp, if (liveAnalysis.achievedGoalToday) GoldPR else AccentOrange)
+            border = BorderStroke(1.dp, if (liveAnalysis.achievedGoalToday) GoldPR else AccentOrange)
         ) {
             Column(
                 modifier = Modifier
@@ -2080,9 +2116,9 @@ fun GoalProgressSessionDialog(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "🎯 ${goal.exerciseName} Goal Progress",
+                            text = "${goal.exerciseName} Goal Progress",
                             fontSize = 17.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -2092,7 +2128,8 @@ fun GoalProgressSessionDialog(
                                 "Target: ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg (≈${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM)"
                             else "Target: ${formatWeightValue(eval.effectiveTargetE1rm)}kg 1RM (${"%.2f".format(eval.targetRelBw)}× BW)",
                             fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Medium,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = GoldPR,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -2103,28 +2140,29 @@ fun GoalProgressSessionDialog(
                         onClick = onDismiss,
                         modifier = Modifier
                             .size(32.dp)
-                            .background(SurfaceCard, CircleShape)
+                            .background(SurfaceCard, RoundedCornerShape(8.dp))
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(17.dp))
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // 2 Tabs: Today's Target & Live Coach | Exercise Goal Report
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(SurfaceCard, RoundedCornerShape(10.dp))
-                        .padding(3.dp),
+                        .background(SurfaceCard, RoundedCornerShape(8.dp))
+                        .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf(0 to "🎯 Session Target", 1 to "📋 Exercise Report").forEach { (idx, title) ->
+                    listOf(0 to "Session Target", 1 to "Exercise Report").forEach { (idx, title) ->
                         val selected = activeTab == idx
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (selected) AccentOrange else Color.Transparent)
                                 .clickable { activeTab = idx }
                                 .padding(vertical = 8.dp),
@@ -2133,7 +2171,7 @@ fun GoalProgressSessionDialog(
                             Text(
                                 text = title,
                                 fontSize = 12.sp,
-                                fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                                 color = if (selected) Color(0xFF140D07) else TextSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -2153,7 +2191,7 @@ fun GoalProgressSessionDialog(
                         // Live Session Status Card
                         item {
                             StrengthCard(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 border = BorderStroke(
                                     1.dp,
                                     if (liveAnalysis.achievedGoalToday) GoldPR
@@ -2168,21 +2206,22 @@ fun GoalProgressSessionDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Surface(
-                                            shape = RoundedCornerShape(7.dp),
-                                            color = if (liveAnalysis.achievedGoalToday) GoldPR.copy(alpha = 0.2f) else AccentOrange.copy(alpha = 0.18f)
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (liveAnalysis.achievedGoalToday) GoldPR.copy(alpha = 0.16f) else AccentOrange.copy(alpha = 0.16f)
                                         ) {
                                             Text(
                                                 text = liveAnalysis.sessionGrade,
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (liveAnalysis.achievedGoalToday) GoldPR else AccentOrange,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
                                         }
                                         Text(
                                             text = "Goal Progress: ${formatWeightValue(liveAnalysis.updatedProgressPct)}%",
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.ExtraBold,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
                                             color = GoldPR
                                         )
                                     }
@@ -2190,23 +2229,24 @@ fun GoalProgressSessionDialog(
                                     Text(
                                         text = liveAnalysis.liveCoachingHeadline,
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.Medium,
                                         color = TextPrimary
                                     )
 
                                     // Next Set Immediate Callout
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         color = BgDark,
-                                        border = BorderStroke(0.8.dp, AccentPeach.copy(alpha = 0.5f)),
+                                        border = BorderStroke(1.dp, BorderDark),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
-                                            text = "👉 ${liveAnalysis.nextSetTargetText}",
+                                            text = liveAnalysis.nextSetTargetText,
                                             fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = AccentPeach,
-                                            modifier = Modifier.padding(10.dp)
+                                            fontWeight = FontWeight.Medium,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
+                                            color = TextPrimary,
+                                            modifier = Modifier.padding(12.dp)
                                         )
                                     }
 
@@ -2217,17 +2257,17 @@ fun GoalProgressSessionDialog(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             ProgrammingMetricBadge(
-                                                title = "TODAY'S E1RM",
+                                                title = "Today's E1RM",
                                                 value = "${formatWeightValue(liveAnalysis.sessionBestE1rm)} kg",
                                                 modifier = Modifier.weight(1f)
                                             )
                                             ProgrammingMetricBadge(
-                                                title = "TOP SET",
+                                                title = "Top set",
                                                 value = "${formatWeightValue(liveAnalysis.sessionBestWeight)}kg × ${liveAnalysis.sessionBestReps}",
                                                 modifier = Modifier.weight(1f)
                                             )
                                             ProgrammingMetricBadge(
-                                                title = "VS RECENT",
+                                                title = "Vs recent",
                                                 value = "${if (liveAnalysis.deltaVsPreviousBestKg >= 0) "+" else ""}${formatWeightValue(liveAnalysis.deltaVsPreviousBestKg)} kg",
                                                 modifier = Modifier.weight(1f)
                                             )
@@ -2239,7 +2279,7 @@ fun GoalProgressSessionDialog(
 
                         // Today's Prescribed Sets to Aim For
                         item {
-                            StrengthCard(shape = RoundedCornerShape(14.dp)) {
+                            StrengthCard(shape = RoundedCornerShape(12.dp)) {
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -2248,11 +2288,10 @@ fun GoalProgressSessionDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "SETS & REPS TO AIM FOR TODAY",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = AccentOrange,
-                                                letterSpacing = 0.5.sp
+                                                text = "Sets & reps to aim for today",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = AccentOrange
                                             )
                                             Text(
                                                 text = eval.methodologyTitle,
@@ -2268,9 +2307,9 @@ fun GoalProgressSessionDialog(
                                             }
                                         ) {
                                             Text(
-                                                text = "⚡ Auto-Fill Sets",
+                                                text = "Auto-fill sets",
                                                 fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = Color(0xFF140D07),
                                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                             )
@@ -2282,7 +2321,7 @@ fun GoalProgressSessionDialog(
                                     }
 
                                     liveAnalysis.liveCoachingBullets.forEach { b ->
-                                        Text("• $b", fontSize = 11.5.sp, color = TextSecondary)
+                                        Text("• $b", fontSize = 11.5.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = TextSecondary)
                                     }
                                 }
                             }
@@ -2290,14 +2329,13 @@ fun GoalProgressSessionDialog(
 
                         // Rep Equivalence Reference
                         item {
-                            StrengthCard(shape = RoundedCornerShape(14.dp)) {
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            StrengthCard(shape = RoundedCornerShape(12.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
-                                        text = "WEIGHT × REPS NEEDED TO HIT YOUR GOAL TODAY",
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = GoldPR,
-                                        letterSpacing = 0.5.sp
+                                        text = "Weight × reps needed to hit goal today",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = GoldPR
                                     )
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -2308,19 +2346,21 @@ fun GoalProgressSessionDialog(
                                                 modifier = Modifier.weight(1f),
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = BgDark,
-                                                border = BorderStroke(0.7.dp, BorderDark)
+                                                border = BorderStroke(1.dp, BorderDark)
                                             ) {
                                                 Column(
-                                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 3.dp),
+                                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
                                                     horizontalAlignment = Alignment.CenterHorizontally
                                                 ) {
-                                                    Text("${r} reps", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
+                                                    Text("${r} reps", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Medium, style = TextStyle(fontFeatureSettings = "tnum"))
                                                     Text(
                                                         text = if (eval.isBodyweight && w <= 0.0) "BW"
                                                         else if (eval.isBodyweight) "+${formatWeightValue(w)}k"
                                                         else "${formatWeightValue(w)}k",
                                                         fontSize = 11.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                                         color = TextPrimary
                                                     )
                                                 }
@@ -2339,21 +2379,21 @@ fun GoalProgressSessionDialog(
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
                         item {
-                            StrengthCard(shape = RoundedCornerShape(14.dp)) {
+                            StrengthCard(shape = RoundedCornerShape(12.dp)) {
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(
                                         text = exerciseReport.executiveStatus,
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = GoldPR
                                     )
-                                    Text(exerciseReport.headlineSummary, fontSize = 12.sp, color = TextPrimary)
-                                    HorizontalDivider(color = BorderDark, thickness = 0.6.dp)
+                                    Text(exerciseReport.headlineSummary, fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
+                                    HorizontalDivider(color = BorderDark, thickness = 1.dp)
                                     exerciseReport.keyStrengths.forEach { s ->
-                                        Text("✓ $s", fontSize = 11.5.sp, color = IncreaseGreen)
+                                        Text("• $s", fontSize = 11.5.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = IncreaseGreen)
                                     }
                                     exerciseReport.bottlenecksAndFixes.forEach { f ->
-                                        Text("→ $f", fontSize = 11.5.sp, color = AccentPeach)
+                                        Text("→ $f", fontSize = 11.5.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = TextSecondary)
                                     }
                                 }
                             }
@@ -2361,20 +2401,32 @@ fun GoalProgressSessionDialog(
 
                         items(exerciseReport.sessionEntries.take(15)) { entry ->
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = SurfaceCard,
-                                border = BorderStroke(0.7.dp, BorderDark),
+                                border = BorderStroke(1.dp, BorderDark),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("${entry.date} • ${entry.workoutTitle}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                        Text("${formatWeightValue(entry.sessionBestE1rm)}kg E1RM (${formatWeightValue(entry.progressPctAtSession)}%)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = AccentOrange)
+                                        Text("${entry.date} • ${entry.workoutTitle}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                                        Text(
+                                            "${formatWeightValue(entry.sessionBestE1rm)}kg E1RM (${formatWeightValue(entry.progressPctAtSession)}%)",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
+                                            color = AccentOrange
+                                        )
                                     }
-                                    Text("Sets: ${entry.setsSummary}", fontSize = 11.sp, color = TextSecondary)
+                                    Text(
+                                        "Sets: ${entry.setsSummary}",
+                                        fontSize = 11.5.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
+                                        color = TextSecondary
+                                    )
                                     Text(entry.coachNote, fontSize = 11.sp, color = IncreaseGreen)
                                 }
                             }
@@ -2385,10 +2437,10 @@ fun GoalProgressSessionDialog(
                 Button(
                     onClick = onDismiss,
                     colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth().height(44.dp)
                 ) {
-                    Text("Back to Workout Logger", fontWeight = FontWeight.ExtraBold)
+                    Text("Back to Workout Logger", fontWeight = FontWeight.SemiBold)
                 }
             }
         }

@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -110,9 +111,9 @@ fun PlateCalculatorDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight(),
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(16.dp),
             color = SurfaceCard,
-            border = BorderStroke(1.2.dp, BorderDark)
+            border = BorderStroke(1.dp, BorderDark)
         ) {
             Column(
                 modifier = Modifier
@@ -128,32 +129,33 @@ fun PlateCalculatorDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Surface(
-                            shape = CircleShape,
-                            color = AccentOrange.copy(alpha = 0.2f),
-                            modifier = Modifier.size(38.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            color = SurfaceCardElevated,
+                            border = BorderStroke(1.dp, BorderDark),
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     Icons.Default.FitnessCenter,
                                     contentDescription = null,
                                     tint = AccentOrange,
-                                    modifier = Modifier.size(19.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                         Column {
                             Text(
                                 text = "Plate Calculator",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
                             )
                             Text(
                                 text = "Barbell & Dumbbell plate solver",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 color = TextSecondary
                             )
                         }
@@ -162,21 +164,21 @@ fun PlateCalculatorDialog(
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .background(SurfaceDark, CircleShape)
+                            .background(SurfaceDark, RoundedCornerShape(8.dp))
                             .size(32.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(16.dp))
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
 
                 // Equipment Toggle Tabs
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(BgDark, RoundedCornerShape(12.dp))
-                        .padding(3.dp),
+                        .background(BgDark, RoundedCornerShape(8.dp))
+                        .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     EquipmentType.entries.forEach { eq ->
@@ -185,16 +187,16 @@ fun PlateCalculatorDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { selectedEquipment = eq },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(6.dp),
                             color = if (isSelected) AccentOrange else Color.Transparent
                         ) {
                             Text(
                                 text = eq.displayName,
                                 fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                 color = if (isSelected) Color(0xFF140D07) else TextSecondary,
                                 textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(vertical = 7.dp)
+                                modifier = Modifier.padding(vertical = 8.dp)
                             )
                         }
                     }
@@ -249,21 +251,21 @@ fun PlateCalculatorDialog(
                             val nw = ((currentWeight - 2.5) * 2.0).roundToInt() / 2.0
                             if (nw >= barWeight) targetWeightInput = SetUtils.formatWeightValue(nw)
                         },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.size(40.dp),
                         contentPadding = PaddingValues(0.dp),
                         border = BorderStroke(1.dp, BorderDark)
                     ) {
-                        Text("-2.5", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("-2.5", fontSize = 12.sp, fontWeight = FontWeight.Medium, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
                     }
 
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(12.dp))
 
                     Surface(
                         color = BgDark,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.5.dp, AccentOrange),
-                        modifier = Modifier.width(130.dp).height(46.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, AccentOrange),
+                        modifier = Modifier.width(132.dp).height(44.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -273,45 +275,46 @@ fun PlateCalculatorDialog(
                             BasicTextField(
                                 value = targetWeightInput,
                                 onValueChange = { targetWeightInput = it },
-                                textStyle = androidx.compose.ui.text.TextStyle(
+                                textStyle = TextStyle(
                                     color = TextPrimary,
                                     fontSize = 20.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFeatureSettings = "tnum",
                                     textAlign = TextAlign.Center
                                 ),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true,
-                                modifier = Modifier.width(70.dp)
+                                modifier = Modifier.width(72.dp)
                             )
-                            Text("kg", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = AccentPeach)
+                            Text("kg", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                         }
                     }
 
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(12.dp))
 
                     OutlinedButton(
                         onClick = {
                             val nw = ((currentWeight + 2.5) * 2.0).roundToInt() / 2.0
                             targetWeightInput = SetUtils.formatWeightValue(nw)
                         },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.size(40.dp),
                         contentPadding = PaddingValues(0.dp),
                         border = BorderStroke(1.dp, BorderDark)
                     ) {
-                        Text("+2.5", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("+2.5", fontSize = 12.sp, fontWeight = FontWeight.Medium, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
                     }
                 }
 
                 // Quick Increment Pills
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(-5.0, -1.25, 1.25, 5.0).forEach { delta ->
                         val label = if (delta > 0) "+${SetUtils.formatWeightValue(delta)}" else SetUtils.formatWeightValue(delta)
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = BgDark,
-                            border = BorderStroke(0.6.dp, BorderDark),
+                            border = BorderStroke(1.dp, BorderDark),
                             modifier = Modifier.clickable {
                                 val nw = ((currentWeight + delta) * 2.0).roundToInt() / 2.0
                                 if (nw >= 0) targetWeightInput = SetUtils.formatWeightValue(nw)
@@ -319,15 +322,16 @@ fun PlateCalculatorDialog(
                         ) {
                             Text(
                                 text = "${label}kg",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                                 color = TextSecondary,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
 
                 // Visual Barbell / Dumbbell Sleeve Representation
                 if (!isTooLight && plateStack.isNotEmpty()) {
@@ -335,7 +339,7 @@ fun PlateCalculatorDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(60.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(BgDark)
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.CenterStart
@@ -408,37 +412,38 @@ fun PlateCalculatorDialog(
                 // Breakdown Card
                 Surface(
                     color = BgDark,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "PLATES NEEDED EACH SIDE",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
+                            text = "Plates needed each side",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
                         )
 
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(12.dp))
 
                         if (isTooLight) {
                             Text(
-                                text = "⚠️ Weight is less than the ${SetUtils.formatWeightValue(barWeight)}kg bar",
+                                text = "Weight is less than the ${SetUtils.formatWeightValue(barWeight)}kg bar",
                                 color = DecreaseRed,
                                 fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.Medium,
+                                style = TextStyle(fontFeatureSettings = "tnum")
                             )
                         } else if (plateStack.isEmpty()) {
                             Text(
-                                text = "Empty Bar Only (${SetUtils.formatWeightValue(barWeight)} kg)",
-                                color = AccentPeach,
+                                text = "Empty bar only (${SetUtils.formatWeightValue(barWeight)} kg)",
+                                color = TextSecondary,
                                 fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.SemiBold,
+                                style = TextStyle(fontFeatureSettings = "tnum")
                             )
                         } else {
                             // Plate row chips
@@ -451,25 +456,27 @@ fun PlateCalculatorDialog(
                                         Surface(
                                             color = pc.color.copy(alpha = 0.2f),
                                             shape = RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.5.dp, pc.color),
+                                            border = BorderStroke(1.dp, pc.color),
                                             modifier = Modifier.padding(vertical = 2.dp)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
                                                 Text(
                                                     text = "${SetUtils.formatWeightValue(pc.weight)}kg",
                                                     fontSize = 13.5.sp,
-                                                    fontWeight = FontWeight.Bold,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                                     color = pc.color
                                                 )
                                                 if (pc.count > 1) {
                                                     Text(
                                                         text = "× ${pc.count}",
                                                         fontSize = 12.5.sp,
-                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontWeight = FontWeight.Medium,
+                                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                                         color = TextPrimary
                                                     )
                                                 }
@@ -477,7 +484,8 @@ fun PlateCalculatorDialog(
                                         }
                                         Text(
                                             text = "${pc.count} plate${if (pc.count > 1) "s" else ""}",
-                                            fontSize = 9.5.sp,
+                                            fontSize = 10.sp,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
                                             color = TextSecondary
                                         )
                                     }
@@ -488,15 +496,17 @@ fun PlateCalculatorDialog(
 
                             Text(
                                 text = "Total per side: ${SetUtils.formatWeightValue(loadedPerSide)} kg  •  Bar: ${SetUtils.formatWeightValue(barWeight)} kg",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                                 color = TextSecondary
                             )
 
                             if (!isExactMatch) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "⚠️ Nearest achievable: ${SetUtils.formatWeightValue(totalLoadedWeight)} kg (diff: ${SetUtils.formatWeightValue(currentWeight - totalLoadedWeight)}kg)",
-                                    fontSize = 11.sp,
+                                    text = "Nearest achievable: ${SetUtils.formatWeightValue(totalLoadedWeight)} kg (diff: ${SetUtils.formatWeightValue(currentWeight - totalLoadedWeight)}kg)",
+                                    fontSize = 11.5.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = GoldPR
                                 )
                             }
@@ -509,15 +519,15 @@ fun PlateCalculatorDialog(
                 // Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, BorderDark)
                     ) {
-                        Text("Cancel", color = TextSecondary, fontSize = 13.sp)
+                        Text("Cancel", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
 
                     Button(
@@ -533,9 +543,9 @@ fun PlateCalculatorDialog(
                             containerColor = AccentOrange,
                             contentColor = Color(0xFF140D07)
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Apply to Set", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                        Text("Apply to Set", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
                     }
                 }
             }

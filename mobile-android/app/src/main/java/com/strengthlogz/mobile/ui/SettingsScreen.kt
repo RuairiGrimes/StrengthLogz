@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,7 +139,7 @@ fun SettingsScreen(
 
         // 1. Google Sheets Cloud Sync & Credentials Card
         StrengthCard(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -153,9 +154,10 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Surface(
-                            shape = CircleShape,
-                            color = AccentOrange.copy(alpha = 0.2f),
-                            modifier = Modifier.size(34.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            color = SurfaceCardElevated,
+                            border = BorderStroke(1.dp, BorderDark),
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -323,11 +325,11 @@ fun SettingsScreen(
                                         border = BorderStroke(0.8.dp, AccentOrange.copy(alpha = 0.5f)),
                                         modifier = Modifier.clickable {
                                             clipboardManager.setText(AnnotatedString(extractedEmail))
-                                            syncStatusMessage = "Copied Service Account email to clipboard!"
+                                            syncStatusMessage = "Copied service account email"
                                         }
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
@@ -339,8 +341,8 @@ fun SettingsScreen(
                                             )
                                             Text(
                                                 text = "Copy",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Medium,
                                                 color = AccentOrange
                                             )
                                         }
@@ -359,7 +361,7 @@ fun SettingsScreen(
                                         onClick = {
                                             jsonFilePickerLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
                                         },
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         border = BorderStroke(1.dp, BorderDark),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
@@ -369,7 +371,7 @@ fun SettingsScreen(
                                     ) {
                                         Icon(Icons.Default.FolderOpen, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Import .json File", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        Text("Import .json File", fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                                     }
 
                                     OutlinedButton(
@@ -386,7 +388,7 @@ fun SettingsScreen(
                                                 }
                                             }
                                         },
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         border = BorderStroke(1.dp, BorderDark),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
@@ -394,9 +396,9 @@ fun SettingsScreen(
                                             .weight(1f)
                                             .height(38.dp)
                                     ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = AccentPeach, modifier = Modifier.size(15.dp))
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Paste Clipboard", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        Text("Paste Clipboard", fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                                     }
                                 }
 
@@ -420,7 +422,7 @@ fun SettingsScreen(
                                         focusedContainerColor = SurfaceDark,
                                         unfocusedContainerColor = SurfaceDark
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(8.dp)
                                 )
                             }
                         }
@@ -436,7 +438,7 @@ fun SettingsScreen(
                             val result = onTriggerSync()
                             isSyncing = false
                             syncStatusMessage = if (result.isSuccess) {
-                                result.getOrNull() ?: "Sync complete!"
+                                result.getOrNull() ?: "Sync complete"
                             } else {
                                 "Sync failed: ${result.exceptionOrNull()?.message}"
                             }
@@ -556,19 +558,20 @@ fun SettingsScreen(
                                 InstructionStepRow(
                                     stepNum = "4",
                                     title = "Paste Details Above & Tap Sync",
-                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, and Programs tabs!"
+                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, and Programs tabs."
                                 )
                                 Surface(
                                     color = SurfaceCard,
                                     shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, BorderDark),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        text = "💡 Offline-First Guarantee: You can use StrengthLogz 100% offline without Google Sheets. All workouts, programs, and exercises are saved locally on your device.",
-                                        fontSize = 11.sp,
-                                        color = AccentPeach,
-                                        lineHeight = 15.sp,
-                                        modifier = Modifier.padding(8.dp)
+                                        text = "Offline-first: You can use StrengthLogz 100% offline without Google Sheets. All workouts, programs, and exercises are saved locally on your device.",
+                                        fontSize = 11.5.sp,
+                                        color = TextSecondary,
+                                        lineHeight = 16.sp,
+                                        modifier = Modifier.padding(12.dp)
                                     )
                                 }
                             }
@@ -589,7 +592,7 @@ fun SettingsScreen(
 
         // 3. Exercise Catalog Manager Link Card
         StrengthCard(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             onClick = onNavigateExercises,
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -600,12 +603,13 @@ fun SettingsScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Surface(
-                        shape = CircleShape,
-                        color = AccentOrange.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = SurfaceCardElevated,
+                        border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -620,13 +624,14 @@ fun SettingsScreen(
                     Column {
                         Text(
                             text = "Built-In Exercise Catalog",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                         Text(
                             text = "$exerciseCount movements pre-loaded • Create, edit or flag bodyweight lifts",
                             fontSize = 12.sp,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = TextSecondary
                         )
                     }
@@ -642,24 +647,25 @@ fun SettingsScreen(
 
         // 4. Local Database Summary Strip
         StrengthCard(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Surface(
-                        shape = CircleShape,
-                        color = BlueAccent.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(8.dp),
+                        color = SurfaceCardElevated,
+                        border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 Icons.Default.Storage,
                                 contentDescription = null,
-                                tint = BlueAccent,
+                                tint = TextSecondary,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -667,7 +673,7 @@ fun SettingsScreen(
                     Text(
                         text = "Local Device Storage",
                         fontSize = 15.5.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                 }
@@ -683,9 +689,9 @@ fun SettingsScreen(
                     ).forEach { (label, count) ->
                         Surface(
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = BgDark,
-                            border = BorderStroke(0.8.dp, BorderDark)
+                            border = BorderStroke(1.dp, BorderDark)
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
@@ -694,12 +700,13 @@ fun SettingsScreen(
                                 Text(
                                     text = "$count",
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = AccentPeach
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
+                                    color = TextPrimary
                                 )
                                 Text(
                                     text = label,
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     color = TextSecondary
                                 )
                             }
@@ -725,16 +732,17 @@ private fun InstructionStepRow(
         verticalAlignment = Alignment.Top
     ) {
         Surface(
-            shape = CircleShape,
-            color = AccentOrange.copy(alpha = 0.2f),
-            border = BorderStroke(0.8.dp, AccentOrange.copy(alpha = 0.5f)),
+            shape = RoundedCornerShape(6.dp),
+            color = SurfaceCardElevated,
+            border = BorderStroke(1.dp, BorderDark),
             modifier = Modifier.size(22.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = stepNum,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
                     color = AccentOrange
                 )
             }
@@ -743,7 +751,7 @@ private fun InstructionStepRow(
             Text(
                 text = title,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 color = TextPrimary
             )
             Text(

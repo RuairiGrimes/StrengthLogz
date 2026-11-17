@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -102,9 +103,10 @@ fun WheelPicker(
                     Text(
                         text = label,
                         fontSize = if (isCentre) 22.sp else 16.sp,
-                        fontWeight = if (isCentre) FontWeight.ExtraBold else FontWeight.Medium,
+                        fontWeight = if (isCentre) FontWeight.SemiBold else FontWeight.Medium,
                         color = if (isCentre) AccentOrange else TextSecondary,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        style = TextStyle(fontFeatureSettings = "tnum")
                     )
                 }
             }
@@ -232,7 +234,7 @@ fun SetValuePickerDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.weight(1.2f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("WEIGHT (kg)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                        Text("Weight (kg)", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                         Spacer(Modifier.height(4.dp))
                         WheelPicker(
                             values = weightLabels,
@@ -241,7 +243,7 @@ fun SetValuePickerDialog(
                         )
                     }
                     Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("REPS", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+                        Text("Reps", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary)
                         Spacer(Modifier.height(4.dp))
                         WheelPicker(
                             values = repLabels,
@@ -262,12 +264,12 @@ fun SetValuePickerDialog(
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
                 modifier = Modifier
                     .height(48.dp)
                     .defaultMinSize(minWidth = 112.dp)
-            ) { Text("OK", fontWeight = FontWeight.ExtraBold, fontSize = 15.sp) }
+            ) { Text("OK", fontWeight = FontWeight.SemiBold, fontSize = 15.sp) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) }
@@ -293,14 +295,14 @@ fun TapValueBox(
     }
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = BgDark,
         border = BorderStroke(if (isHighlightedPr || isFailedAttempt) 1.5.dp else 1.dp, borderColor),
-        modifier = modifier.height(38.dp)
+        modifier = modifier.height(40.dp)
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             if (value.isEmpty()) {
-                Text(placeholder, color = TextMuted, fontSize = 13.5.sp, textAlign = TextAlign.Center)
+                Text(placeholder, color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
             } else {
                 Text(
                     text = value,
@@ -309,9 +311,10 @@ fun TapValueBox(
                         isHighlightedPr -> GoldPR
                         else -> TextPrimary
                     },
-                    fontSize = 14.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    style = TextStyle(fontFeatureSettings = "tnum")
                 )
             }
         }

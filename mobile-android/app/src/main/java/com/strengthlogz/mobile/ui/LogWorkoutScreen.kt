@@ -3,8 +3,7 @@ package com.strengthlogz.mobile.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,8 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -40,6 +39,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -366,21 +366,21 @@ fun LogWorkoutScreen(
                         onClick = { showExercisePicker = true },
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp),
+                            .height(48.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, BorderDark)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Add, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 text = "Add Exercise",
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.Medium,
                                 fontSize = 13.5.sp,
                                 maxLines = 1,
                                 softWrap = false
@@ -441,7 +441,7 @@ fun LogWorkoutScreen(
                         },
                         modifier = Modifier
                             .weight(1.1f)
-                            .height(50.dp),
+                            .height(48.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = AccentOrange,
@@ -449,7 +449,7 @@ fun LogWorkoutScreen(
                             disabledContainerColor = SurfaceDark,
                             disabledContentColor = TextSecondary
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         enabled = loggedExercises.isNotEmpty()
                     ) {
                         Column(
@@ -464,7 +464,7 @@ fun LogWorkoutScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     text = "Finish Workout",
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontWeight = FontWeight.SemiBold,
                                     fontSize = 13.5.sp,
                                     maxLines = 1,
                                     softWrap = false
@@ -473,11 +473,12 @@ fun LogWorkoutScreen(
                             if (totalLoggedSets > 0) {
                                 Text(
                                     text = "$totalLoggedSets sets • ${formatWeightValue(totalSessionTonnage)}kg",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
                                     color = Color(0xFF140D07).copy(alpha = 0.85f),
                                     maxLines = 1,
-                                    softWrap = false
+                                    softWrap = false,
+                                    style = TextStyle(fontFeatureSettings = "tnum")
                                 )
                             }
                         }
@@ -726,7 +727,7 @@ fun LogWorkoutScreen(
                 sessionBlock()
 
                 StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -743,24 +744,25 @@ fun LogWorkoutScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Surface(
-                                shape = CircleShape,
-                                color = AccentOrange.copy(alpha = 0.2f),
-                                modifier = Modifier.size(64.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                color = SurfaceCardElevated,
+                                border = BorderStroke(1.dp, BorderDark),
+                                modifier = Modifier.size(56.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         Icons.Default.FitnessCenter,
                                         contentDescription = null,
                                         tint = AccentOrange,
-                                        modifier = Modifier.size(32.dp)
+                                        modifier = Modifier.size(28.dp)
                                     )
                                 }
                             }
-                            Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(16.dp))
                             Text(
                                 text = "Ready to Lift",
                                 fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
                             )
                             Text(
@@ -776,16 +778,16 @@ fun LogWorkoutScreen(
                                     containerColor = AccentOrange,
                                     contentColor = Color(0xFF140D07)
                                 ),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(54.dp)
+                                    .height(48.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Add Lift", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("Add Lift", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                             }
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(12.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -793,30 +795,30 @@ fun LogWorkoutScreen(
                                 OutlinedButton(
                                     onClick = onNavigateProgram,
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     border = BorderStroke(1.dp, BorderDark),
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(50.dp)
+                                        .height(44.dp)
                                 ) {
-                                    Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = AccentPeach, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(5.dp))
-                                    Text("Load Program", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Load Program", fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 OutlinedButton(
                                     onClick = onNavigateSuggest,
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     border = BorderStroke(1.dp, BorderDark),
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(50.dp)
+                                        .height(44.dp)
                                 ) {
-                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = GoldPR, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(5.dp))
-                                    Text("AI Suggest", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Suggest Workout", fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -891,9 +893,9 @@ fun LogWorkoutScreen(
             if (initialDraft != null && (initialDraft.exercises.isNotEmpty() || initialDraft.title.isNotBlank())) {
                 item {
                     Surface(
-                        color = AccentPeach.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, AccentPeach.copy(alpha = 0.35f)),
+                        color = SurfaceCard,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -901,16 +903,16 @@ fun LogWorkoutScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("💾 Active Session Restored", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AccentPeach)
-                                Text("• ${loggedExercises.size} exercise${if (loggedExercises.size == 1) "" else "s"}", fontSize = 11.5.sp, color = TextSecondary)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Active session restored", fontSize = 12.5.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                                Text("• ${loggedExercises.size} exercise${if (loggedExercises.size == 1) "" else "s"}", fontSize = 12.sp, color = TextSecondary, style = TextStyle(fontFeatureSettings = "tnum"))
                             }
                             TextButton(
                                 onClick = { showDiscardConfirm = true },
                                 contentPadding = PaddingValues(0.dp),
                                 modifier = Modifier.height(24.dp)
                             ) {
-                                Text("Discard", fontSize = 11.5.sp, color = DecreaseRed, fontWeight = FontWeight.Bold)
+                                Text("Discard", fontSize = 12.sp, color = DecreaseRed, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -925,14 +927,11 @@ fun LogWorkoutScreen(
                 key = { _, exLog -> "${exLog.exerciseName}-${exLog.hashCode()}" }
             ) { exIndex, exLog ->
                 StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .animateContentSize(
-                            animationSpec = spring(
-                                stiffness = Spring.StiffnessMediumLow,
-                                dampingRatio = Spring.DampingRatioLowBouncy
-                            )
+                            animationSpec = tween(durationMillis = 180)
                         )
                 ) {
                     Column {
@@ -945,44 +944,58 @@ fun LogWorkoutScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = exLog.exerciseName,
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
-                                    CategoryPill(category = exLog.category)
-                                }
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(2.dp)
+                                        .height(28.dp)
+                                        .background(AccentOrange, RoundedCornerShape(1.dp))
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = exLog.exerciseName,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary
+                                        )
+                                        CategoryPill(category = exLog.category)
+                                    }
 
-                                if (exLog.previousSets.isNotEmpty()) {
-                                    Text(
-                                        text = "Last (${exLog.previousDate}): ${exLog.previousSummary}",
-                                        fontSize = 11.5.sp,
-                                        color = AccentPeach,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .padding(top = 2.dp)
-                                            .clickable {
-                                                val compSets = exLog.previousSets.filter { (it.reps ?: 0) > 0 }
-                                                if (compSets.isNotEmpty()) {
-                                                    exLog.sets.clear()
-                                                    compSets.forEach { s ->
-                                                        exLog.sets.add(
-                                                            SetInputState(
-                                                                initialWeight = formatWeightValue(s.weight),
-                                                                initialReps = s.reps?.toString() ?: ""
+                                    if (exLog.previousSets.isNotEmpty()) {
+                                        Text(
+                                            text = "Last (${exLog.previousDate}): ${exLog.previousSummary}",
+                                            fontSize = 11.5.sp,
+                                            color = TextSecondary,
+                                            fontFamily = FontFamily.Monospace,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier
+                                                .padding(top = 2.dp)
+                                                .clickable {
+                                                    val compSets = exLog.previousSets.filter { (it.reps ?: 0) > 0 }
+                                                    if (compSets.isNotEmpty()) {
+                                                        exLog.sets.clear()
+                                                        compSets.forEach { s ->
+                                                            exLog.sets.add(
+                                                                SetInputState(
+                                                                    initialWeight = formatWeightValue(s.weight),
+                                                                    initialReps = s.reps?.toString() ?: ""
+                                                                )
                                                             )
-                                                        )
+                                                        }
                                                     }
                                                 }
-                                            }
-                                    )
+                                        )
+                                    }
                                 }
                             }
 
@@ -992,15 +1005,15 @@ fun LogWorkoutScreen(
                             ) {
                                 if (activeExGoal != null) {
                                     Surface(
-                                        shape = RoundedCornerShape(9.dp),
-                                        color = GoldPR.copy(alpha = 0.18f),
-                                        border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.7f)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = GoldPR.copy(alpha = 0.14f),
+                                        border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.5f)),
                                         modifier = Modifier.clickable {
                                             goalProgressTargetExLog = exLog
                                         }
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
@@ -1008,12 +1021,12 @@ fun LogWorkoutScreen(
                                                 imageVector = Icons.Default.EmojiEvents,
                                                 contentDescription = "Goal Progress",
                                                 tint = GoldPR,
-                                                modifier = Modifier.size(13.5.dp)
+                                                modifier = Modifier.size(14.dp)
                                             )
                                             Text(
                                                 text = "Goal Progress",
                                                 fontSize = 11.sp,
-                                                fontWeight = FontWeight.ExtraBold,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = GoldPR,
                                                 maxLines = 1
                                             )
@@ -1110,50 +1123,50 @@ fun LogWorkoutScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "SET",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
+                                text = "Set",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextMuted,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.width(30.dp)
                             )
                             Spacer(Modifier.width(6.dp))
 
                             Text(
-                                text = "PREV",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
+                                text = "Prev",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextMuted,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.width(64.dp)
                             )
                             Spacer(Modifier.width(6.dp))
 
                             Text(
-                                text = "WEIGHT (kg)",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
+                                text = "Weight (kg)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextMuted,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.width(6.dp))
 
                             Text(
-                                text = "REPS",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
+                                text = "Reps",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextMuted,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.width(6.dp))
 
                             Text(
-                                text = "DONE",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
+                                text = "Done",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = TextMuted,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.width(36.dp)
                             )
@@ -1192,9 +1205,10 @@ fun LogWorkoutScreen(
                                     Text(
                                         text = "${setIdx + 1}",
                                         fontSize = 13.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (sState.isCompleted) IncreaseGreen else AccentPeach,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (sState.isCompleted) IncreaseGreen else TextSecondary,
                                         textAlign = TextAlign.Center,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                         modifier = Modifier.width(30.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
@@ -1203,10 +1217,10 @@ fun LogWorkoutScreen(
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
                                         color = BgDark,
-                                        border = BorderStroke(0.6.dp, BorderDark),
+                                        border = BorderStroke(1.dp, BorderDark),
                                         modifier = Modifier
                                             .width(64.dp)
-                                            .height(38.dp)
+                                            .height(40.dp)
                                             .clickable {
                                                 if (prevSetMatch != null) {
                                                     sState.weight = formatWeightValue(prevSetMatch.weight)
@@ -1219,7 +1233,9 @@ fun LogWorkoutScreen(
                                                 text = prevString,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Medium,
-                                                color = if (prevString != "–") TextSecondary else BorderDark,
+                                                fontFamily = FontFamily.Monospace,
+                                                style = TextStyle(fontFeatureSettings = "tnum"),
+                                                color = if (prevString != "–") TextSecondary else TextMuted,
                                                 textAlign = TextAlign.Center
                                             )
                                         }
@@ -1277,41 +1293,42 @@ fun LogWorkoutScreen(
                                 // LIVE PR RADAR OR FAILED SET NOTICE (only shown when triggered; normal E1RM lives in card footer)
                                 if (isFailedAttempt) {
                                     Surface(
-                                        color = DecreaseRed.copy(alpha = 0.15f),
+                                        color = DecreaseRed.copy(alpha = 0.14f),
                                         shape = RoundedCornerShape(6.dp),
                                         border = BorderStroke(1.dp, DecreaseRed.copy(alpha = 0.4f)),
                                         modifier = Modifier
-                                            .padding(start = 36.dp, top = 2.dp)
+                                            .padding(start = 36.dp, top = 4.dp)
                                             .fillMaxWidth(0.85f)
                                     ) {
                                         Text(
-                                            text = "✕ FAILED ATTEMPT (0 reps) — excluded from PRs & volume",
+                                            text = "Failed attempt (0 reps) — excluded from PRs and volume",
                                             color = DecreaseRed,
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
                                     }
                                 } else if (isE1rmPr || isWeightPr) {
                                     val prText = if (isE1rmPr) {
-                                        "🏆 NEW ALL-TIME PR! ${formatWeightValue(liveE1rm)}kg Est. 1RM (+${formatWeightValue(liveE1rm - exLog.peakE1rm)}kg)"
+                                        "New all-time PR · ${formatWeightValue(liveE1rm)}kg Est. 1RM (+${formatWeightValue(liveE1rm - exLog.peakE1rm)}kg)"
                                     } else {
-                                        "🏆 NEW TOP WEIGHT! ${formatWeightValue(wVal)}kg"
+                                        "New top weight · ${formatWeightValue(wVal)}kg"
                                     }
                                     Surface(
-                                        color = GoldPR.copy(alpha = 0.18f),
+                                        color = GoldPR.copy(alpha = 0.14f),
                                         shape = RoundedCornerShape(6.dp),
-                                        border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.6f)),
+                                        border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.5f)),
                                         modifier = Modifier
-                                            .padding(start = 36.dp, top = 2.dp)
+                                            .padding(start = 36.dp, top = 4.dp)
                                             .fillMaxWidth(0.85f)
                                     ) {
                                         Text(
                                             text = prText,
                                             color = GoldPR,
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
                                     }
                                 }
@@ -1330,9 +1347,11 @@ fun LogWorkoutScreen(
                                 text = if (exLog.isBodyweight)
                                     "Best Est. 1RM: ${formatWeightValue(bestCardE1rm)} kg • ${"%.2f".format(BodyWeightUtils.relativeStrength(bestCardE1rm, cardBwKg))}× BW (BW ${formatWeightValue(cardBwKg)}kg)"
                                 else "Best Est. 1RM: ${formatWeightValue(bestCardE1rm)} kg",
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 color = TextSecondary,
-                                modifier = Modifier.padding(top = 6.dp)
+                                fontFamily = FontFamily.Monospace,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                                modifier = Modifier.padding(top = 8.dp)
                             )
                         }
 
@@ -1380,10 +1399,11 @@ fun LogWorkoutScreen(
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "🎯 ${liveSessionAnalysis.sessionGrade} • ${formatWeightValue(liveSessionAnalysis.updatedProgressPct)}% of Goal",
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = if (liveSessionAnalysis.achievedGoalToday) GoldPR else AccentOrange
+                                            text = "${liveSessionAnalysis.sessionGrade} · ${formatWeightValue(liveSessionAnalysis.updatedProgressPct)}% of goal",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (liveSessionAnalysis.achievedGoalToday) GoldPR else AccentOrange,
+                                            style = TextStyle(fontFeatureSettings = "tnum")
                                         )
                                         Text(
                                             text = liveSessionAnalysis.nextSetTargetText,
@@ -1865,7 +1885,7 @@ fun LogWorkoutScreen(
                     ModernSearchBar(
                         query = exerciseSearchQuery,
                         onQueryChange = { exerciseSearchQuery = it },
-                        placeholder = "Search or type new movement..."
+                        placeholder = "Search or add exercise"
                     )
 
                     Spacer(Modifier.height(10.dp))

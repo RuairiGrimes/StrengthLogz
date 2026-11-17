@@ -207,7 +207,7 @@ class WorkoutUpgradeTest {
             bodyWeights = bodyWeights
         )
         assertEquals(4, exReport.sessionEntries.size)
-        assertTrue(exReport.executiveStatus.contains("ACHIEVED"))
+        assertTrue(exReport.executiveStatus.contains("Achieved", ignoreCase = true))
 
         val masterReport = com.strengthlogz.mobile.util.GoalEngine.generateAllGoalsReport(
             goals = listOf(e1rmGoal, updatedGoal),

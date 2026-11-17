@@ -9,7 +9,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -19,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -340,9 +341,9 @@ private fun buildSuggestedExerciseItem(
             PrescribedSet(weight = "", reps = slot.defaultReps.toString())
         }
         val newReason = if (!benefitText.isNullOrBlank()) {
-            "✨ New Exercise Suggestion: $benefitText"
+            "New exercise suggestion: $benefitText"
         } else {
-            "🎯 New stimulus for $cat (${slot.defaultSets} × ${slot.defaultReps})"
+            "New stimulus for $cat (${slot.defaultSets} × ${slot.defaultReps})"
         }
         return SuggestedExerciseItem(
             slotTitle = slot.slotTitle,
@@ -397,13 +398,13 @@ private fun buildSuggestedExerciseItem(
     val benefitSuffix = if (!benefitText.isNullOrBlank()) " • Benefit: $benefitText" else ""
     val reasonTag = when {
         peakE1rm > 0 && currE1rm < peakE1rm * 0.94 ->
-            "🔧 Needs Improvement: Current E1RM (${formatWeightValue(currE1rm)}kg) is below your ${formatWeightValue(peakE1rm)}kg PR (${peakSession?.displayDate ?: ""})$benefitSuffix"
+            "Needs improvement: Current E1RM (${formatWeightValue(currE1rm)}kg) is below your ${formatWeightValue(peakE1rm)}kg PR (${peakSession?.displayDate ?: ""})$benefitSuffix"
         targetE1rm > peakE1rm && peakE1rm > 0 ->
-            "🏆 PR Opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)!$benefitSuffix"
+            "PR opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)$benefitSuffix"
         volStat != null && volStat.setsLast7Days < volStat.targetWeeklySets / 2 ->
-            "📊 Weekly Volume Gap: $cat has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days$benefitSuffix"
+            "Weekly volume gap: $cat has ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days$benefitSuffix"
         else ->
-            "📈 Progressive Overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
+            "Progressive overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
     }
 
     val targetSummary = if (targetWeight > 0) {
@@ -522,7 +523,7 @@ fun SuggestWorkoutScreen(
         bottomBar = {
             Surface(
                 color = SurfaceDark,
-                border = BorderStroke(0.8.dp, BorderDark),
+                border = BorderStroke(1.dp, BorderDark),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
@@ -531,18 +532,19 @@ fun SuggestWorkoutScreen(
                         containerColor = AccentOrange,
                         contentColor = Color(0xFF140D07)
                     ),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .height(50.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .height(48.dp)
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Start ${selectedSplit.label} Session (${generatedExercises.size} Lifts)",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.5.sp
+                        text = "Start ${selectedSplit.label} Session (${generatedExercises.size} lifts)",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        style = TextStyle(fontFeatureSettings = "tnum")
                     )
                 }
             }
@@ -553,7 +555,7 @@ fun SuggestWorkoutScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .background(BgDark),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 1. Clean Header with 7-Day Volume Sheet trigger & Shuffle
@@ -569,22 +571,22 @@ fun SuggestWorkoutScreen(
                             OutlinedButton(
                                 onClick = { showVolumeSheet = true },
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 border = BorderStroke(1.dp, BorderDark),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                                modifier = Modifier.height(38.dp)
+                                modifier = Modifier.height(36.dp)
                             ) {
-                                Text("7-Day Volume", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("7-Day Volume", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             }
 
                             IconButton(
                                 onClick = { shuffleSeed++ },
                                 modifier = Modifier
-                                    .background(SurfaceCard, RoundedCornerShape(10.dp))
-                                    .border(0.8.dp, BorderDark, RoundedCornerShape(10.dp))
-                                    .size(38.dp)
+                                    .background(SurfaceCard, RoundedCornerShape(8.dp))
+                                    .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                                    .size(36.dp)
                             ) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Shuffle", tint = AccentOrange, modifier = Modifier.size(19.dp))
+                                Icon(Icons.Default.Refresh, contentDescription = "Shuffle", tint = AccentOrange, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -601,9 +603,10 @@ fun SuggestWorkoutScreen(
                     Row(
                         modifier = Modifier
                             .weight(1f)
-                            .background(SurfaceCard, RoundedCornerShape(12.dp))
-                            .padding(3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            .background(SurfaceCard, RoundedCornerShape(8.dp))
+                            .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         WorkoutSplitType.entries.forEach { split ->
                             val selected = selectedSplit == split
@@ -611,19 +614,19 @@ fun SuggestWorkoutScreen(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(9.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(if (selected) AccentOrange else Color.Transparent)
                                     .clickable {
                                         selectedSplit = split
                                         slotOffsets.clear()
                                     }
-                                    .padding(vertical = 9.dp),
+                                    .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = if (isRec && !selected) "${split.label} •" else split.label,
                                     fontSize = 13.sp,
-                                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                                     color = if (selected) Color(0xFF140D07) else TextPrimary,
                                     maxLines = 1
                                 )
@@ -632,9 +635,9 @@ fun SuggestWorkoutScreen(
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = SurfaceCard,
-                        border = BorderStroke(0.8.dp, BorderDark),
+                        border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.clickable {
                             targetExerciseCount = if (targetExerciseCount == 5) 4 else 5
                         }
@@ -642,8 +645,9 @@ fun SuggestWorkoutScreen(
                         Text(
                             text = "$targetExerciseCount lifts",
                             fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AccentPeach,
+                            fontWeight = FontWeight.Medium,
+                            color = TextPrimary,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                         )
                     }
@@ -655,7 +659,7 @@ fun SuggestWorkoutScreen(
                 val isExpanded = expandedSlots[idx] == true
 
                 StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     onClick = { expandedSlots[idx] = !isExpanded },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -672,35 +676,38 @@ fun SuggestWorkoutScreen(
                                 ) {
                                     Text(
                                         text = "${idx + 1}. ${item.exerciseName}",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = TextPrimary,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                     CategoryPill(category = item.category)
                                 }
                                 Text(
                                     text = item.slotTitle,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
                                     color = TextSecondary,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
+
+                            Spacer(Modifier.width(8.dp))
 
                             OutlinedButton(
                                 onClick = {
                                     slotOffsets[idx] = (slotOffsets[idx] ?: 0) + 1
                                 },
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                shape = RoundedCornerShape(9.dp),
-                                border = BorderStroke(0.8.dp, BorderDark),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, BorderDark),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
                                 modifier = Modifier.height(32.dp)
                             ) {
                                 Icon(Icons.Default.SwapHoriz, contentDescription = "Swap", modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Swap", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Swap", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             }
                         }
 
@@ -711,20 +718,24 @@ fun SuggestWorkoutScreen(
                         ) {
                             Surface(
                                 color = AccentOrange.copy(alpha = 0.14f),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
                                     text = item.targetSummary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = AccentOrange,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
 
                             Text(
                                 text = "Last: ${item.lastSummary}",
                                 fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                                 color = TextSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -733,17 +744,18 @@ fun SuggestWorkoutScreen(
                         }
 
                         if (isExpanded) {
-                            HorizontalDivider(color = BorderDark, thickness = 0.5.dp)
+                            HorizontalDivider(color = BorderDark, thickness = 1.dp)
                             Text(
                                 text = item.reasonTag,
                                 fontSize = 12.sp,
-                                color = TextPrimary,
+                                color = TextSecondary,
                                 lineHeight = 17.sp
                             )
                             if (item.peakE1rm > 0) {
                                 Text(
                                     text = "All-time E1RM PR: ${formatWeightValue(item.peakE1rm)} kg • Last logged ${item.lastSessionDate}",
-                                    fontSize = 11.5.sp,
+                                    fontSize = 12.sp,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = GoldPR
                                 )
                             }
@@ -759,11 +771,12 @@ fun SuggestWorkoutScreen(
         AlertDialog(
             onDismissRequest = { showVolumeSheet = false },
             containerColor = SurfaceDark,
+            shape = RoundedCornerShape(16.dp),
             title = {
-                Text("7-Day Muscle Volume", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextPrimary)
+                Text("7-Day Muscle Volume", fontWeight = FontWeight.SemiBold, fontSize = 17.sp, color = TextPrimary)
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "Working sets completed in the last 7 days vs weekly target:",
                         fontSize = 12.sp,
@@ -779,28 +792,30 @@ fun SuggestWorkoutScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(BgDark)
-                                .padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                                .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(stat.category, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                Text(stat.category, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                                 Text(
                                     text = "${stat.setsLast7Days} / ${stat.targetWeeklySets} sets (14d: ${stat.setsLast14Days})",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = barColor
                                 )
                             }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
                                     .background(SurfaceHighlight)
                             ) {
                                 Box(
@@ -816,7 +831,7 @@ fun SuggestWorkoutScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showVolumeSheet = false }) {
-                    Text("Close", color = AccentOrange, fontWeight = FontWeight.Bold)
+                    Text("Close", color = AccentOrange, fontWeight = FontWeight.Medium)
                 }
             }
         )

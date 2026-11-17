@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -40,27 +41,34 @@ fun BodyWeightCard(
     val latest = bodyWeights.maxByOrNull { DateUtils.toSortableIso(it.date) }
     val currentKg = BodyWeightUtils.weightOn(DateUtils.todayDdMonYyyy(), bodyWeights)
 
-    StrengthCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    StrengthCard(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Surface(shape = CircleShape, color = AccentOrange.copy(alpha = 0.2f), modifier = Modifier.size(34.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = SurfaceCardElevated,
+                    border = BorderStroke(1.dp, BorderDark),
+                    modifier = Modifier.size(32.dp)
+                ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.MonitorWeight, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(18.dp))
                     }
                 }
-                Text("Body Weight", fontSize = 16.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("Body Weight", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
             }
 
             Text(
                 text = "${formatWeightValue(Math.round(currentKg * 10.0) / 10.0)} kg",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 color = AccentOrange
             )
             Text(
                 text = "Latest reading: ${latest?.let { "${it.date} (${it.source})" } ?: "none"} \u2022 ${bodyWeights.size} entries. " +
                     "Used for total-load E1RM and relative strength on bodyweight lifts.",
                 fontSize = 12.sp,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 color = TextSecondary,
                 lineHeight = 16.sp
             )
@@ -77,27 +85,27 @@ fun BodyWeightCard(
                     },
                     enabled = healthConnectAvailable && !syncing,
                     colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.weight(1f)
-                ) { Text(if (syncing) "Syncing..." else "Sync Health Connect", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) }
+                ) { Text(if (syncing) "Syncing..." else "Sync Health Connect", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp) }
 
                 OutlinedButton(
                     onClick = { showAddDialog = true },
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, BorderDark),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                     modifier = Modifier.weight(1f)
-                ) { Text("Add manually", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) }
+                ) { Text("Add manually", fontWeight = FontWeight.Medium, fontSize = 12.5.sp) }
             }
 
             if (onOpenDashboard != null) {
                 Button(
                     onClick = onOpenDashboard,
                     colors = ButtonDefaults.buttonColors(containerColor = SurfaceCard, contentColor = AccentOrange),
-                    border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.6f)),
-                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, AccentOrange.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Weight trend & relative strength charts →", fontWeight = FontWeight.Bold, fontSize = 12.5.sp) }
+                ) { Text("Weight trend & relative strength charts →", fontWeight = FontWeight.Medium, fontSize = 12.5.sp) }
             }
 
             if (!healthConnectAvailable) {
@@ -108,7 +116,7 @@ fun BodyWeightCard(
                 )
             }
             if (status.isNotBlank()) {
-                Text(status, fontSize = 12.sp, color = AccentPeach)
+                Text(status, fontSize = 12.sp, color = TextSecondary)
             }
         }
     }
@@ -120,9 +128,10 @@ fun BodyWeightCard(
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             containerColor = SurfaceDark,
-            title = { Text("Add body weight", fontWeight = FontWeight.Bold, color = TextPrimary) },
+            shape = RoundedCornerShape(16.dp),
+            title = { Text("Add body weight", fontWeight = FontWeight.SemiBold, color = TextPrimary) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = dateText,
                         onValueChange = { dateText = it },
@@ -153,8 +162,9 @@ fun BodyWeightCard(
                             showAddDialog = false
                         }
                     },
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07))
-                ) { Text("Save", fontWeight = FontWeight.Bold) }
+                ) { Text("Save", fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Cancel", color = TextSecondary) } }
         )

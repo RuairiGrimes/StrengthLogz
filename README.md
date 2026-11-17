@@ -1,4 +1,4 @@
-# StrengthLogz 🏋️‍♂️
+# StrengthLogz
 
 An open-source, dual-client strength workout tracker for **Windows Desktop (Electron)** and **Android (Native Kotlin + Jetpack Compose)**, backed by your own **Google Sheet** with full offline local storage fallback.
 

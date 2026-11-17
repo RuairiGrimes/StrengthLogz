@@ -38,7 +38,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -357,46 +358,47 @@ private fun ProgressDirectoryView(
             subtitle = "Charts, records & movement history",
             badgeText = "${distinctExercises.size} lifts",
             action = {
-              Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+              Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    shape = RoundedCornerShape(9.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = SurfaceCard,
-                    border = BorderStroke(0.8.dp, BorderDark),
+                    border = BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.clickable { onOpenFourteenDaySummary() }
                 ) {
                     Text(
                         text = "14d",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
                         color = AccentOrange,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                        style = TextStyle(fontFeatureSettings = "tnum"),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(9.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = SurfaceCard,
-                    border = BorderStroke(0.8.dp, BorderDark),
+                    border = BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.clickable { onNavigateBodyWeight() }
                 ) {
                     Text(
                         text = "Weight",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
                         color = TextPrimary,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(9.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = AccentOrange,
                     modifier = Modifier.clickable { onNavigateGoals() }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -404,15 +406,16 @@ private fun ProgressDirectoryView(
                             imageVector = Icons.Default.EmojiEvents,
                             contentDescription = "Goals",
                             tint = Color(0xFF140D07),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = if (goalByExerciseLower.isNotEmpty()) "Goals (${goalByExerciseLower.size})" else "Goals",
-                            fontSize = 11.5.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = Color(0xFF140D07),
                             maxLines = 1,
-                            softWrap = false
+                            softWrap = false,
+                            style = TextStyle(fontFeatureSettings = "tnum")
                         )
                     }
                 }
@@ -420,15 +423,15 @@ private fun ProgressDirectoryView(
             }
         )
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
 
         ModernSearchBar(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
-            placeholder = "Search exercises..."
+            placeholder = "Search exercises"
         )
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
 
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -437,27 +440,27 @@ private fun ProgressDirectoryView(
             items(categories) { cat ->
                 val isSelected = selectedCategory == cat
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = if (isSelected) AccentOrange else SurfaceCard,
-                    border = if (isSelected) null else BorderStroke(0.8.dp, BorderDark),
+                    border = if (isSelected) null else BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.clickable { selectedCategory = cat }
                 ) {
                     Text(
                         text = cat,
                         fontSize = 12.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                         color = if (isSelected) Color(0xFF140D07) else TextSecondary,
-                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 28.dp)
         ) {
             items(filteredExercises, key = { it }) { exName ->
@@ -471,7 +474,7 @@ private fun ProgressDirectoryView(
                 val latestReps = summary?.latestTopReps ?: 0
 
                 StrengthCard(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     onClick = { onSelectExercise(exName) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -491,7 +494,7 @@ private fun ProgressDirectoryView(
                                 Text(
                                     text = exName,
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.Medium,
                                     color = TextPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -501,13 +504,13 @@ private fun ProgressDirectoryView(
                                 if (exGoal != null && exGoal.enabled) {
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = GoldPR.copy(alpha = 0.16f),
-                                        border = BorderStroke(0.7.dp, GoldPR.copy(alpha = 0.55f))
+                                        color = GoldPR.copy(alpha = 0.14f),
+                                        border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.45f))
                                     ) {
                                         Text(
-                                            text = "🎯 GOAL",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
+                                            text = "Goal",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = GoldPR,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
@@ -517,7 +520,8 @@ private fun ProgressDirectoryView(
                             Text(
                                 text = "$sessCount sessions" + (lastDate?.let { " • Last $it" } ?: ""),
                                 fontSize = 12.sp,
-                                color = TextSecondary
+                                color = TextSecondary,
+                                style = TextStyle(fontFeatureSettings = "tnum")
                             )
                         }
 
@@ -530,20 +534,23 @@ private fun ProgressDirectoryView(
                                     Text(
                                         text = "${formatWeightValue(bestE1rm)} kg",
                                         fontSize = 15.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = GoldPR
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = GoldPR,
+                                        style = TextStyle(fontFeatureSettings = "tnum")
                                     )
                                     Text(
                                         text = if (isBw && bestRel > 0.0) "${"%.2f".format(bestRel)}× BW PR" else "Best E1RM",
                                         fontSize = 11.sp,
-                                        color = TextSecondary
+                                        color = TextSecondary,
+                                        style = TextStyle(fontFeatureSettings = "tnum")
                                     )
                                 } else {
                                     Text(
                                         text = "$latestReps reps",
                                         fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        fontWeight = FontWeight.Medium,
+                                        color = TextPrimary,
+                                        style = TextStyle(fontFeatureSettings = "tnum")
                                     )
                                 }
                             }
@@ -632,27 +639,29 @@ private fun ExerciseProgressDetailView(
                     Text(
                         text = exerciseName,
                         fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         CategoryPill(category = category)
                         Text(
                             text = "${sessions.size} sessions",
                             fontSize = 12.sp,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            style = TextStyle(fontFeatureSettings = "tnum")
                         )
                         if (isBwExercise && (latestSession?.relativeStrength ?: 0.0) > 0.0) {
                             Text(
                                 text = "• ${"%.2f".format(latestSession!!.relativeStrength)}× BW",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = AccentPeach
+                                fontWeight = FontWeight.Medium,
+                                color = AccentPeach,
+                                style = TextStyle(fontFeatureSettings = "tnum")
                             )
                         }
                     }
@@ -681,9 +690,9 @@ private fun ExerciseProgressDetailView(
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
-                            text = if (activeGoal != null) "Goal" else "+ Goal",
+                            text = if (activeGoal != null) "Goal" else "Set Goal",
                             fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (activeGoal != null) GoldPR else AccentOrange
                         )
                     }
@@ -693,8 +702,8 @@ private fun ExerciseProgressDetailView(
                     IconButton(
                         onClick = { showFullChartModal = true },
                         modifier = Modifier
-                            .size(38.dp)
-                            .background(SurfaceCard, CircleShape)
+                            .size(36.dp)
+                            .background(SurfaceCard, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInFull,
@@ -707,13 +716,14 @@ private fun ExerciseProgressDetailView(
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         // 3 Sub-Tabs: Overview | History | PRs
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SurfaceCard, RoundedCornerShape(12.dp))
+                .background(SurfaceCard, RoundedCornerShape(8.dp))
+                .border(1.dp, BorderDark, RoundedCornerShape(8.dp))
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
@@ -727,16 +737,17 @@ private fun ExerciseProgressDetailView(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(9.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .background(if (active) AccentOrange else Color.Transparent)
                         .clickable { activeTab = tab }
-                        .padding(vertical = 9.dp),
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
                         color = if (active) Color(0xFF140D07) else TextSecondary,
-                        fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                        style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
                         fontSize = 12.5.sp
                     )
                 }
@@ -786,24 +797,24 @@ private fun ExerciseProgressDetailView(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CompactKpiCard(
-                                label = "ALL-TIME PR",
+                                label = "All-time PR",
                                 value = if (bestE1rmVal > 0) "${formatWeightValue(bestE1rmVal)} kg" else "–",
                                 caption = bestSetStr,
                                 valueColor = GoldPR,
                                 modifier = Modifier.weight(1f)
                             )
                             CompactKpiCard(
-                                label = "LATEST",
+                                label = "Latest",
                                 value = latestValStr,
                                 caption = prevDeltaStr,
                                 valueColor = TextPrimary,
                                 modifier = Modifier.weight(1f)
                             )
                             CompactKpiCard(
-                                label = if (isBwExercise && bestRel > 0.0) "REL. STRENGTH" else "TOTAL GAIN",
+                                label = if (isBwExercise && bestRel > 0.0) "Rel. strength" else "Total gain",
                                 value = if (isBwExercise && bestRel > 0.0) "${"%.2f".format(bestRel)}× BW" else "$gainSign${formatWeightValue(totalGain)} kg",
                                 caption = if (isBwExercise && latestSession != null) "BW ${formatWeightValue(latestSession.bodyWeightKg)}kg"
                                 else (firstSession?.displayDate?.let { "Since $it" } ?: "–"),
@@ -892,7 +903,7 @@ private fun ExerciseProgressDetailView(
                                         metricMode = metricMode,
                                         selectedIndex = safeIdx,
                                         onSelectIndex = { selectedPointIndex = it },
-                                        chartHeight = 240.dp
+                                        chartHeight = 260.dp
                                     )
                                 } else {
                                     Box(
@@ -992,26 +1003,26 @@ internal fun CompactKpiCard(
     modifier: Modifier = Modifier
 ) {
     StrengthCard(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         modifier = modifier
     ) {
         Text(
             text = label,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
             color = TextSecondary,
-            letterSpacing = 0.4.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = value,
-            fontSize = 15.5.sp,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
             color = valueColor,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            style = TextStyle(fontFeatureSettings = "tnum")
         )
         Text(
             text = caption,
@@ -1019,7 +1030,8 @@ internal fun CompactKpiCard(
             color = TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp)
+            style = TextStyle(fontFeatureSettings = "tnum"),
+            modifier = Modifier.padding(top = 4.dp)
         )
     }
 }
@@ -1039,12 +1051,12 @@ private fun InspectedPointBanner(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(BgDark)
             .border(
                 width = 1.dp,
-                color = if (isPr) GoldPR.copy(alpha = 0.55f) else BorderDark,
-                shape = RoundedCornerShape(12.dp)
+                color = if (isPr) GoldPR.copy(alpha = 0.5f) else BorderDark,
+                shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -1062,8 +1074,9 @@ private fun InspectedPointBanner(
                 Text(
                     text = point.displayDate,
                     fontSize = 13.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = AccentPeach
+                    fontWeight = FontWeight.SemiBold,
+                    color = AccentPeach,
+                    style = TextStyle(fontFeatureSettings = "tnum")
                 )
                 if (isPr) {
                     PrTrophyBadge(text = "PR", isNewPr = true)
@@ -1071,19 +1084,19 @@ private fun InspectedPointBanner(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = onPrev, enabled = pointIndex > 0, modifier = Modifier.size(26.dp)) {
+                IconButton(onClick = onPrev, enabled = pointIndex > 0, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Older", tint = if (pointIndex > 0) TextPrimary else TextMuted, modifier = Modifier.size(18.dp))
                 }
                 TextButton(
                     onClick = onJumpPr,
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                    modifier = Modifier.height(26.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)
                 ) {
                     Icon(Icons.Default.Star, contentDescription = null, tint = GoldPR, modifier = Modifier.size(12.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text("Peak", fontSize = 11.sp, color = GoldPR, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Peak", fontSize = 11.5.sp, color = GoldPR, fontWeight = FontWeight.Medium)
                 }
-                IconButton(onClick = onNext, enabled = pointIndex < totalPoints - 1, modifier = Modifier.size(26.dp)) {
+                IconButton(onClick = onNext, enabled = pointIndex < totalPoints - 1, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Newer", tint = if (pointIndex < totalPoints - 1) TextPrimary else TextMuted, modifier = Modifier.size(18.dp))
                 }
             }
@@ -1098,13 +1111,16 @@ private fun InspectedPointBanner(
                 text = if (point.e1rm > 0) "E1RM ${formatWeightValue(point.e1rm)} kg (${formatWeightValue(point.e1rmWeight)}×${point.e1rmReps})"
                 else "Top: ${point.topWeightReps} reps",
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary,
+                style = TextStyle(fontFeatureSettings = "tnum")
             )
             Text(
                 text = SetUtils.formatSetsSummary(point.sets),
                 fontSize = 11.5.sp,
                 color = TextSecondary,
+                fontFamily = FontFamily.Monospace,
+                style = TextStyle(fontFeatureSettings = "tnum"),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 8.dp)
@@ -1136,9 +1152,9 @@ fun InteractiveProgressChart(
     val textPaint = remember {
         Paint().apply {
             isAntiAlias = true
-            color = android.graphics.Color.parseColor("#949EB2")
-            textSize = 25f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            color = android.graphics.Color.parseColor("#85858B")
+            textSize = 24f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         }
     }
 
@@ -1250,15 +1266,8 @@ fun InteractiveProgressChart(
             for (i in 0 until points.size - 1) {
                 val p0 = points[i]
                 val p1 = points[i + 1]
-                val v0 = values[i]
-                val v1 = values[i + 1]
-                val segColor = when {
-                    v1 > v0 -> IncreaseGreen
-                    v1 < v0 -> DecreaseRed
-                    else -> AccentOrange
-                }
                 drawLine(
-                    color = segColor,
+                    color = AccentOrange,
                     start = p0,
                     end = p1,
                     strokeWidth = 4.2f,
@@ -1430,14 +1439,17 @@ private fun SessionHistoryRowCard(
                     text = SetUtils.formatSetsSummary(session.sets),
                     fontSize = 12.5.sp,
                     color = TextPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
                     modifier = Modifier.weight(1f)
                 )
                 if (session.e1rm > 0) {
                     Text(
                         text = "E1RM ${formatWeightValue(session.e1rm)}kg",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Medium,
                         color = TextSecondary,
+                        style = TextStyle(fontFeatureSettings = "tnum"),
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
@@ -1445,10 +1457,9 @@ private fun SessionHistoryRowCard(
 
             if (setNotes.isNotBlank()) {
                 Text(
-                    text = "“$setNotes”",
-                    fontSize = 11.5.sp,
-                    color = TextMuted,
-                    fontStyle = FontStyle.Italic
+                    text = setNotes,
+                    fontSize = 12.sp,
+                    color = TextSecondary
                 )
             }
         }
@@ -1504,13 +1515,14 @@ private fun FullScreenChartInspectorDialog(
                         Text(
                             text = exerciseName,
                             fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                         Text(
                             text = "${displayedSessions.size} sessions",
                             fontSize = 12.sp,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            style = TextStyle(fontFeatureSettings = "tnum")
                         )
                     }
 
@@ -1533,7 +1545,7 @@ private fun FullScreenChartInspectorDialog(
                     ChartMetricMode.entries.filter { it != ChartMetricMode.RELATIVE || dialogHasRel }.forEach { mode ->
                         val active = metricMode == mode
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (active) AccentOrange else SurfaceCard,
                             border = if (active) null else BorderStroke(1.dp, BorderDark),
                             modifier = Modifier
@@ -1547,7 +1559,7 @@ private fun FullScreenChartInspectorDialog(
                                 Text(
                                     text = mode.label,
                                     color = if (active) Color(0xFF140D07) else TextPrimary,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                                     fontSize = 12.5.sp
                                 )
                             }
@@ -1555,7 +1567,7 @@ private fun FullScreenChartInspectorDialog(
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = if (prOnlyFilter) GoldPR else SurfaceCard,
                         border = if (prOnlyFilter) null else BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.clickable { prOnlyFilter = !prOnlyFilter }
@@ -1567,7 +1579,7 @@ private fun FullScreenChartInspectorDialog(
                             Text(
                                 text = "PRs Only",
                                 color = if (prOnlyFilter) Color(0xFF140D07) else GoldPR,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.Medium,
                                 fontSize = 12.5.sp
                             )
                         }

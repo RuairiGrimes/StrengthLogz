@@ -24,7 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,7 +119,7 @@ fun ExercisesScreen(
             ModernScreenHeader(
                 title = "Exercises",
                 subtitle = "${exercises.size} catalogued movements • Google Sheets Synced",
-                badgeText = "${exercises.size} LIFTS",
+                badgeText = "${exercises.size} lifts",
                 action = {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -138,14 +139,14 @@ fun ExercisesScreen(
                                 }
                             },
                             modifier = Modifier
-                                .background(SurfaceDark, CircleShape)
-                                .size(38.dp)
+                                .background(SurfaceDark, RoundedCornerShape(8.dp))
+                                .size(36.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CloudSync,
                                 contentDescription = "Backup to Google Sheets",
-                                tint = if (isSyncing) AccentOrange else AccentPeach,
-                                modifier = Modifier.size(20.dp)
+                                tint = if (isSyncing) AccentOrange else TextSecondary,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
@@ -156,13 +157,13 @@ fun ExercisesScreen(
                                 containerColor = AccentOrange,
                                 contentColor = Color(0xFF140D07)
                             ),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(38.dp)
+                            modifier = Modifier.height(36.dp)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("+ New", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            Text("New", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
                         }
                     }
                 }
@@ -174,14 +175,14 @@ fun ExercisesScreen(
             ModernSearchBar(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
-                placeholder = "Search exercises, category, form cues..."
+                placeholder = "Search exercises"
             )
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
             // CATEGORY FILTER CHIPS
             LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(categories) { cat ->
@@ -195,10 +196,11 @@ fun ExercisesScreen(
                     ) {
                         Text(
                             text = if (count > 0) "$cat ($count)" else cat,
-                            fontSize = 11.5.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = if (isSelected) Color(0xFF140D07) else TextSecondary,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }
                 }
@@ -231,16 +233,16 @@ fun ExercisesScreen(
                         Button(
                             onClick = { showCreateDialog = true },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentOrange, contentColor = Color(0xFF140D07)),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("+ Create \"$searchQuery\"", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Create \"$searchQuery\"", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                     }
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(filteredExercises, key = { index, ex -> "${ex.name}_$index" }) { _, exercise ->
                         val exSets = setsByExercise[exercise.name.lowercase()] ?: emptyList()
@@ -248,7 +250,7 @@ fun ExercisesScreen(
                         val peakWeight = validSets.mapNotNull { it.weight }.maxOrNull() ?: 0.0
 
                         StrengthCard(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             onClick = { exerciseToEdit = exercise },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -259,7 +261,7 @@ fun ExercisesScreen(
                             ) {
                                 Column(
                                     modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
@@ -267,27 +269,28 @@ fun ExercisesScreen(
                                     ) {
                                         Text(
                                             text = exercise.name,
-                                            fontSize = 15.5.sp,
-                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
                                             color = TextPrimary,
                                             maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
                                         )
 
                                         CategoryPill(category = exercise.category.ifBlank { "Other" })
 
                                         if (exercise.bodyweight) {
                                             Surface(
-                                                color = GoldPR.copy(alpha = 0.15f),
+                                                color = GoldPR.copy(alpha = 0.14f),
                                                 shape = RoundedCornerShape(6.dp),
-                                                border = BorderStroke(0.5.dp, GoldPR.copy(alpha = 0.5f))
+                                                border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.45f))
                                             ) {
                                                 Text(
                                                     text = "BW",
                                                     color = GoldPR,
                                                     fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }
@@ -308,6 +311,7 @@ fun ExercisesScreen(
                                     Text(
                                         text = statsLine,
                                         fontSize = 12.sp,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                         color = TextSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -536,7 +540,7 @@ fun ExerciseFormDialog(
                         focusedContainerColor = SurfaceDark,
                         unfocusedContainerColor = SurfaceDark
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -555,9 +559,9 @@ fun ExerciseFormDialog(
                     containerColor = AccentOrange,
                     contentColor = Color(0xFF140D07)
                 ),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text(confirmButtonLabel, fontWeight = FontWeight.Bold)
+                Text(confirmButtonLabel, fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {

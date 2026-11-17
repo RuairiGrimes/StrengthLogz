@@ -187,14 +187,15 @@ fun ProgramScreen(
                             Text(
                                 text = activeDay.dayName,
                                 fontSize = 14.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = "${activeExercises.size} exercise${if (activeExercises.size == 1) "" else "s"} • ${activeExercises.sumOf { it.targetSets }} working sets",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                                 color = TextSecondary,
                                 maxLines = 1
                             )
@@ -208,12 +209,12 @@ fun ProgramScreen(
                                 containerColor = AccentOrange,
                                 contentColor = Color(0xFF140D07)
                             ),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Start Workout", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                            Text("Start Workout", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -226,7 +227,7 @@ fun ProgramScreen(
                 .padding(innerPadding)
                 .background(BgDark),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Header: Program Switcher & Actions
             item(key = "program_header") {
@@ -237,7 +238,7 @@ fun ProgramScreen(
                 ) {
                     if (activeProgram != null) {
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = SurfaceCard,
                             border = BorderStroke(1.dp, BorderDark),
                             modifier = Modifier
@@ -258,7 +259,7 @@ fun ProgramScreen(
                                 Text(
                                     text = activeProgram.safeProgramName,
                                     fontSize = 15.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = TextPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -275,7 +276,7 @@ fun ProgramScreen(
                         Text(
                             text = "Workout Program",
                             fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary
                         )
                     }
@@ -283,16 +284,16 @@ fun ProgramScreen(
                     Spacer(Modifier.width(8.dp))
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (activeProgram != null) {
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = SurfaceCard,
-                                border = BorderStroke(0.8.dp, BorderDark),
+                                border = BorderStroke(1.dp, BorderDark),
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(36.dp)
                                     .clickable { showProgramSwitcher = true }
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -307,14 +308,14 @@ fun ProgramScreen(
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = AccentOrange,
                             modifier = Modifier
-                                .height(34.dp)
+                                .height(36.dp)
                                 .clickable { showCreateProgramDialog = true }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 10.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -326,8 +327,8 @@ fun ProgramScreen(
                                 )
                                 Text(
                                     text = "New Program",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color(0xFF140D07)
                                 )
                             }
@@ -340,7 +341,7 @@ fun ProgramScreen(
             if (activeProgram == null) {
                 item(key = "no_programs_empty_state") {
                     StrengthCard(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 16.dp)
@@ -353,24 +354,25 @@ fun ProgramScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Surface(
-                                shape = CircleShape,
-                                color = AccentOrange.copy(alpha = 0.16f),
-                                modifier = Modifier.size(56.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                color = SurfaceCardElevated,
+                                border = BorderStroke(1.dp, BorderDark),
+                                modifier = Modifier.size(52.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.CalendarMonth,
                                         contentDescription = null,
                                         tint = AccentOrange,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(26.dp)
                                     )
                                 }
                             }
 
                             Text(
                                 text = "Build Your Custom Program",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
                             )
 
@@ -390,14 +392,14 @@ fun ProgramScreen(
                                     containerColor = AccentOrange,
                                     contentColor = Color(0xFF140D07)
                                 ),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(46.dp)
+                                    .height(44.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Create Your First Program", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                Text("Create your first program", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                             }
                         }
                     }
@@ -412,17 +414,17 @@ fun ProgramScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "WORKOUT DAYS (${activeDays.size})",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextSecondary,
-                                letterSpacing = 0.6.sp
+                                text = "Workout days (${activeDays.size})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                                color = TextSecondary
                             )
 
                             Text(
-                                text = "+ Add Day",
+                                text = "Add day",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = AccentOrange,
                                 modifier = Modifier
                                     .clickable { showAddDayDialog = true }
@@ -438,7 +440,7 @@ fun ProgramScreen(
                                 itemsIndexed(activeDays) { idx, day ->
                                     val isSelected = idx == safeDayIdx
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         color = if (isSelected) AccentOrange else SurfaceCard,
                                         border = BorderStroke(
                                             1.dp,
@@ -454,7 +456,7 @@ fun ProgramScreen(
                                             Text(
                                                 text = day.dayName,
                                                 fontSize = 12.5.sp,
-                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                                 color = if (isSelected) Color(0xFF140D07) else TextPrimary
                                             )
                                             if (day.safeExercises.isNotEmpty()) {
@@ -465,9 +467,10 @@ fun ProgramScreen(
                                                     Text(
                                                         text = "${day.safeExercises.size}",
                                                         fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
+                                                        fontWeight = FontWeight.Medium,
+                                                        style = TextStyle(fontFeatureSettings = "tnum"),
                                                         color = if (isSelected) Color(0xFF140D07) else TextSecondary,
-                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                     )
                                                 }
                                             }
@@ -477,27 +480,27 @@ fun ProgramScreen(
 
                                 item {
                                     Surface(
-                                        shape = RoundedCornerShape(10.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         color = SurfaceDark,
                                         border = BorderStroke(1.dp, BorderDark),
                                         modifier = Modifier.clickable { showAddDayDialog = true }
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Add,
                                                 contentDescription = "Add Day",
-                                                tint = AccentPeach,
+                                                tint = AccentOrange,
                                                 modifier = Modifier.size(15.dp)
                                             )
                                             Text(
-                                                text = "Add Day",
+                                                text = "Add day",
                                                 fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = AccentPeach
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextPrimary
                                             )
                                         }
                                     }
@@ -511,7 +514,7 @@ fun ProgramScreen(
                 if (activeDay == null || activeDays.isEmpty()) {
                     item(key = "no_days_empty_state") {
                         StrengthCard(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 12.dp)
@@ -521,12 +524,12 @@ fun ProgramScreen(
                                     .fillMaxWidth()
                                     .padding(vertical = 12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Text(
                                     text = "No Workout Days Yet",
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = TextPrimary
                                 )
                                 Text(
@@ -535,17 +538,18 @@ fun ProgramScreen(
                                     color = TextSecondary,
                                     textAlign = TextAlign.Center
                                 )
+                                Spacer(Modifier.height(4.dp))
                                 Button(
                                     onClick = { showAddDayDialog = true },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = AccentOrange,
                                         contentColor = Color(0xFF140D07)
                                     ),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("+ Add Workout Day", fontWeight = FontWeight.Bold)
+                                    Text("Add workout day", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -554,15 +558,15 @@ fun ProgramScreen(
                     // Day Header & Edit Day Action
                     item(key = "active_day_banner_${activeDay.dayIndex}") {
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             color = SurfaceCard,
-                            border = BorderStroke(0.8.dp, BorderDark),
+                            border = BorderStroke(1.dp, BorderDark),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -573,7 +577,7 @@ fun ProgramScreen(
                                     Text(
                                         text = activeDay.dayName,
                                         fontSize = 16.sp,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = TextPrimary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -581,8 +585,8 @@ fun ProgramScreen(
                                     if (activeDay.safeFocus.isNotBlank()) {
                                         Text(
                                             text = activeDay.safeFocus,
-                                            fontSize = 11.5.sp,
-                                            color = AccentPeach,
+                                            fontSize = 12.sp,
+                                            color = TextSecondary,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -594,11 +598,11 @@ fun ProgramScreen(
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = BgDark,
-                                    border = BorderStroke(0.6.dp, BorderDark),
+                                    border = BorderStroke(1.dp, BorderDark),
                                     modifier = Modifier.clickable { dayToEdit = activeDay }
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
@@ -609,9 +613,9 @@ fun ProgramScreen(
                                             modifier = Modifier.size(13.dp)
                                         )
                                         Text(
-                                            text = "Edit Day",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
+                                            text = "Edit day",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = TextSecondary
                                         )
                                     }
@@ -626,7 +630,7 @@ fun ProgramScreen(
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = BgDark,
-                                border = BorderStroke(0.8.dp, BorderDark.copy(alpha = 0.7f)),
+                                border = BorderStroke(1.dp, BorderDark),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(
@@ -645,7 +649,7 @@ fun ProgramScreen(
                                     Text(
                                         text = "No exercises in this day yet",
                                         fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = TextPrimary
                                     )
                                     Text(
@@ -661,11 +665,11 @@ fun ProgramScreen(
                                             containerColor = AccentOrange,
                                             contentColor = Color(0xFF140D07)
                                         ),
-                                        shape = RoundedCornerShape(10.dp)
+                                        shape = RoundedCornerShape(8.dp)
                                     ) {
                                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("+ Add Exercise to Day", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                        Text("Add exercise to day", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
                                     }
                                 }
                             }
@@ -713,7 +717,7 @@ fun ProgramScreen(
                         // Add Exercise Button below list
                         item(key = "add_exercise_button") {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = SurfaceDark,
                                 border = BorderStroke(1.dp, BorderDark),
                                 modifier = Modifier
@@ -735,9 +739,9 @@ fun ProgramScreen(
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
-                                        text = "+ Add Exercise to ${activeDay.dayName}",
+                                        text = "Add exercise to ${activeDay.dayName}",
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = AccentOrange
                                     )
                                 }
@@ -811,8 +815,9 @@ fun ProgramScreen(
         AlertDialog(
             onDismissRequest = { programToDelete = null },
             containerColor = SurfaceCard,
+            shape = RoundedCornerShape(16.dp),
             title = {
-                Text("Delete Program?", fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text("Delete Program?", fontWeight = FontWeight.SemiBold, color = TextPrimary)
             },
             text = {
                 Text(
@@ -827,9 +832,10 @@ fun ProgramScreen(
                         onDeleteProgram(prog.id)
                         programToDelete = null
                     },
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = DecreaseRed)
                 ) {
-                    Text("Delete", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Delete", fontWeight = FontWeight.SemiBold, color = Color.White)
                 }
             },
             dismissButton = {
@@ -940,13 +946,13 @@ private fun ProgramSwitcherDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = SurfaceCard,
             border = BorderStroke(1.dp, BorderDark)
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -955,13 +961,14 @@ private fun ProgramSwitcherDialog(
                 ) {
                     Text(
                         text = "My Programs (${programs.size})",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        style = TextStyle(fontFeatureSettings = "tnum"),
                         color = TextPrimary
                     )
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                     }
@@ -1006,7 +1013,7 @@ private fun ProgramSwitcherDialog(
                                             Text(
                                                 text = prog.safeProgramName,
                                                 fontSize = 14.5.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (isActive) AccentOrange else TextPrimary,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
@@ -1023,6 +1030,7 @@ private fun ProgramSwitcherDialog(
                                         Text(
                                             text = "${prog.safeDays.size} workout day${if (prog.safeDays.size == 1) "" else "s"}",
                                             fontSize = 11.5.sp,
+                                            style = TextStyle(fontFeatureSettings = "tnum"),
                                             color = TextSecondary
                                         )
                                     }
@@ -1077,14 +1085,14 @@ private fun ProgramSwitcherDialog(
                         containerColor = AccentOrange,
                         contentColor = Color(0xFF140D07)
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("+ Create New Program", fontWeight = FontWeight.ExtraBold, fontSize = 13.5.sp)
+                    Text("Create new program", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
                 }
             }
         }
@@ -1109,13 +1117,13 @@ private fun CreateOrRenameProgramDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
                     text = title,
                     fontSize = 17.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     color = TextPrimary
                 )
 
@@ -1152,9 +1160,9 @@ private fun CreateOrRenameProgramDialog(
                             containerColor = AccentOrange,
                             contentColor = Color(0xFF140D07)
                         ),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(confirmButtonText, fontWeight = FontWeight.Bold)
+                        Text(confirmButtonText, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1183,13 +1191,13 @@ private fun AddOrEditDayDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
                     text = title,
                     fontSize = 17.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     color = TextPrimary
                 )
 
@@ -1233,7 +1241,7 @@ private fun AddOrEditDayDialog(
                             onClick = onDelete,
                             colors = ButtonDefaults.textButtonColors(contentColor = DecreaseRed)
                         ) {
-                            Text("Delete Day", fontWeight = FontWeight.Bold)
+                            Text("Delete Day", fontWeight = FontWeight.Medium)
                         }
                     } else {
                         Spacer(Modifier.width(1.dp))
@@ -1252,9 +1260,9 @@ private fun AddOrEditDayDialog(
                                 containerColor = AccentOrange,
                                 contentColor = Color(0xFF140D07)
                             ),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Save", fontWeight = FontWeight.Bold)
+                            Text("Save", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -1276,10 +1284,10 @@ private fun ProgramExerciseCard(
     onRemove: () -> Unit
 ) {
     StrengthCard(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Top Row: Index badge, Exercise Name, Category Pill, Remove Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1292,15 +1300,17 @@ private fun ProgramExerciseCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Surface(
-                        shape = CircleShape,
-                        color = AccentOrange.copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(6.dp),
+                        color = SurfaceCardElevated,
+                        border = BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.size(26.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = "${index + 1}",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                                 color = AccentOrange
                             )
                         }
@@ -1310,7 +1320,7 @@ private fun ProgramExerciseCard(
                         Text(
                             text = item.exerciseName,
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1318,6 +1328,8 @@ private fun ProgramExerciseCard(
                         Text(
                             text = "Last: $previousSummary",
                             fontSize = 11.5.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
                             color = TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1325,7 +1337,7 @@ private fun ProgramExerciseCard(
                     }
                 }
 
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1335,16 +1347,16 @@ private fun ProgramExerciseCard(
 
                     if (isBodyweight) {
                         Surface(
-                            color = GoldPR.copy(alpha = 0.15f),
+                            color = GoldPR.copy(alpha = 0.14f),
                             shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(0.5.dp, GoldPR.copy(alpha = 0.5f))
+                            border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.45f))
                         ) {
                             Text(
                                 text = "BW",
                                 color = GoldPR,
                                 fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -1363,14 +1375,14 @@ private fun ProgramExerciseCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CompactStepperPill(
-                        label = "SETS",
+                        label = "Sets",
                         value = item.targetSets,
                         onDecrement = { if (item.targetSets > 1) onUpdateSetsReps(item.targetSets - 1, item.targetReps) },
                         onIncrement = { if (item.targetSets < 10) onUpdateSetsReps(item.targetSets + 1, item.targetReps) }
                     )
 
                     CompactStepperPill(
-                        label = "REPS",
+                        label = "Reps",
                         value = item.targetReps,
                         onDecrement = { if (item.targetReps > 1) onUpdateSetsReps(item.targetSets, item.targetReps - 1) },
                         onIncrement = { if (item.targetReps < 50) onUpdateSetsReps(item.targetSets, item.targetReps + 1) }
@@ -1386,7 +1398,7 @@ private fun ProgramExerciseCard(
                         IconButton(
                             onClick = onMoveUp,
                             enabled = index > 0,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 Icons.Default.ArrowUpward,
@@ -1398,7 +1410,7 @@ private fun ProgramExerciseCard(
                         IconButton(
                             onClick = onMoveDown,
                             enabled = index < totalCount - 1,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 Icons.Default.ArrowDownward,
@@ -1411,12 +1423,12 @@ private fun ProgramExerciseCard(
 
                     IconButton(
                         onClick = onRemove,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Remove Exercise",
-                            tint = DecreaseRed.copy(alpha = 0.8f),
+                            tint = DecreaseRed.copy(alpha = 0.85f),
                             modifier = Modifier.size(17.dp)
                         )
                     }
@@ -1434,9 +1446,9 @@ private fun CompactStepperPill(
     onIncrement: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = BgDark,
-        border = BorderStroke(0.8.dp, BorderDark)
+        border = BorderStroke(1.dp, BorderDark)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -1454,7 +1466,7 @@ private fun CompactStepperPill(
                     Text(
                         text = "−",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                 }
@@ -1467,14 +1479,15 @@ private fun CompactStepperPill(
                 Text(
                     text = "$value",
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
+                    style = TextStyle(fontFeatureSettings = "tnum"),
                     color = AccentOrange,
                     maxLines = 1
                 )
                 Text(
                     text = label,
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Medium,
                     color = TextSecondary,
                     maxLines = 1
                 )
@@ -1491,7 +1504,7 @@ private fun CompactStepperPill(
                     Text(
                         text = "+",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = AccentOrange
                     )
                 }
@@ -1541,7 +1554,7 @@ private fun ProgramExercisePickerDialog(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.85f),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             color = SurfaceDark,
             border = BorderStroke(1.dp, BorderDark)
         ) {
@@ -1560,12 +1573,12 @@ private fun ProgramExercisePickerDialog(
                     Text(
                         text = "Add Exercise to Day",
                         fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(32.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
                     }
@@ -1573,9 +1586,9 @@ private fun ProgramExercisePickerDialog(
 
                 // Steppers for Target Sets & Reps
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = SurfaceCard,
-                    border = BorderStroke(0.7.dp, BorderDark),
+                    border = BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -1586,11 +1599,10 @@ private fun ProgramExercisePickerDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "PRESCRIBED TARGETS",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
-                            letterSpacing = 0.5.sp
+                            text = "Prescribed targets",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
                         )
 
                         Row(
@@ -1598,13 +1610,13 @@ private fun ProgramExercisePickerDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             CompactStepperPill(
-                                label = "SETS",
+                                label = "Sets",
                                 value = targetSets,
                                 onDecrement = { if (targetSets > 1) targetSets-- },
                                 onIncrement = { if (targetSets < 10) targetSets++ }
                             )
                             CompactStepperPill(
-                                label = "REPS",
+                                label = "Reps",
                                 value = targetReps,
                                 onDecrement = { if (targetReps > 1) targetReps-- },
                                 onIncrement = { if (targetReps < 50) targetReps++ }
@@ -1615,7 +1627,7 @@ private fun ProgramExercisePickerDialog(
 
                 // Search box
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = BgDark,
                     border = BorderStroke(1.dp, BorderDark),
                     modifier = Modifier.fillMaxWidth()
@@ -1633,7 +1645,7 @@ private fun ProgramExercisePickerDialog(
                                     .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 if (searchQuery.isEmpty()) {
-                                    Text("Search exercises catalog...", color = TextMuted, fontSize = 14.sp)
+                                    Text("Search exercises", color = TextMuted, fontSize = 14.sp)
                                 }
                                 innerTextField()
                             }
@@ -1642,19 +1654,19 @@ private fun ProgramExercisePickerDialog(
                 }
 
                 // Category chips
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(categories) { cat ->
                         val isSelected = selectedCategory == cat
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isSelected) AccentOrange else SurfaceCard,
-                            border = BorderStroke(0.7.dp, if (isSelected) AccentOrange else BorderDark),
+                            border = BorderStroke(1.dp, if (isSelected) AccentOrange else BorderDark),
                             modifier = Modifier.clickable { selectedCategory = cat }
                         ) {
                             Text(
                                 text = cat,
-                                fontSize = 11.5.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                                 color = if (isSelected) Color(0xFF140D07) else TextSecondary,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
@@ -1683,7 +1695,7 @@ private fun ProgramExercisePickerDialog(
                                     Text(
                                         text = "Create & Add \"${searchQuery.trim()}\"",
                                         fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = AccentOrange
                                     )
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1696,8 +1708,8 @@ private fun ProgramExercisePickerDialog(
                                             ) {
                                                 Text(
                                                     text = cat,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Medium,
                                                     color = if (sel) Color(0xFF140D07) else TextSecondary,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                                 )
@@ -1735,7 +1747,7 @@ private fun ProgramExercisePickerDialog(
                                             ),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Text("+ Create & Add", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Text("Create & Add", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                                         }
                                     }
                                 }
@@ -1749,7 +1761,7 @@ private fun ProgramExercisePickerDialog(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isAlreadyInDay) SurfaceCard.copy(alpha = 0.6f) else SurfaceCard,
                             border = BorderStroke(
-                                0.8.dp,
+                                1.dp,
                                 if (isAlreadyInDay) IncreaseGreen.copy(alpha = 0.5f) else BorderDark
                             ),
                             modifier = Modifier
@@ -1767,15 +1779,16 @@ private fun ProgramExercisePickerDialog(
                                     Text(
                                         text = ex.name,
                                         fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = TextPrimary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "${targetSets} sets × ${targetReps} reps",
-                                        fontSize = 11.5.sp,
-                                        color = AccentPeach
+                                        fontSize = 12.sp,
+                                        style = TextStyle(fontFeatureSettings = "tnum"),
+                                        color = TextSecondary
                                     )
                                 }
                                 Spacer(Modifier.width(8.dp))

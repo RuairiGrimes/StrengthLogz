@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -132,7 +133,7 @@ fun BodyWeightScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary, modifier = Modifier.size(19.dp))
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Body Weight & Strength", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Body Weight & Strength", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("Trends, relative strength & DOTS", fontSize = 12.sp, color = TextSecondary)
                 }
                 SegChips(listOf("kg", "lb"), if (useLbs) 1 else 0) { onSetUseLbs(it == 1) }
@@ -149,23 +150,23 @@ fun BodyWeightScreen(
             val rate = if (delta != null && spanDays >= 7) delta / (spanDays / 7.0) else null
             val peakDots = dotsAll.maxByOrNull { it.dots }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CompactKpiCard(
-                    label = "CURRENT",
+                    label = "Current",
                     value = last?.let { "${f1(disp(it.weightKg))} $unit" } ?: "–",
                     caption = last?.let { "7d avg ${f1(disp(it.avg7Kg))}" } ?: "No readings",
                     valueColor = AccentOrange,
                     modifier = Modifier.weight(1f)
                 )
                 CompactKpiCard(
-                    label = "CHANGE (${range.label})",
+                    label = "Change (${range.label})",
                     value = delta?.let { (if (it > 0) "+" else "") + f1(disp(it)) + " $unit" } ?: "–",
                     caption = rate?.let { (if (it > 0) "+" else "") + f2(disp(it)) + " $unit/wk" } ?: "Need 7+ days",
                     valueColor = TextPrimary,
                     modifier = Modifier.weight(1f)
                 )
                 CompactKpiCard(
-                    label = if (peakDots != null) "PEAK DOTS" else "DOTS",
+                    label = if (peakDots != null) "Peak DOTS" else "DOTS",
                     value = peakDots?.let { f1(it.dots) } ?: "–",
                     caption = peakDots?.let { "Total ${f1(disp(it.totalKg))} $unit" } ?: "Needs S+B+D",
                     valueColor = GoldPR,
@@ -185,14 +186,14 @@ fun BodyWeightScreen(
 
         // Body weight chart
         item {
-            StrengthCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            StrengthCard(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Body Weight", fontSize = 15.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Body Weight", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                         FilterPill("7d avg", showAvg) { showAvg = !showAvg }
                     }
                     if (visible.isEmpty()) {
@@ -202,7 +203,10 @@ fun BodyWeightScreen(
                         val p = visible[safe]
                         Text(
                             "${p.displayDate} • ${f1(disp(p.weightKg))} $unit • 7d avg ${f1(disp(p.avg7Kg))} • ${p.source}",
-                            fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = AccentPeach
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            style = TextStyle(fontFeatureSettings = "tnum"),
+                            color = TextSecondary
                         )
                         TrendLineChart(
                             labels = visible.map { it.displayDate },
@@ -219,14 +223,14 @@ fun BodyWeightScreen(
 
         // Strength card (Lift ×BW / DOTS)
         item {
-            StrengthCard(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            StrengthCard(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Relative Strength", fontSize = 15.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Relative Strength", fontSize = 15.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                         SegChips(StrengthMode.entries.map { it.label }, mode.ordinal) { mode = StrengthMode.entries[it] }
                     }
 
@@ -304,7 +308,7 @@ fun BodyWeightScreen(
 
         // History
         item {
-            Text("Readings (${history.size})", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text("Readings (${history.size})", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
         }
         items(history.take(if (showAllHistory) history.size else 20), key = { it.isoDate }) { p ->
             StrengthCard(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
@@ -314,10 +318,10 @@ fun BodyWeightScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(p.displayDate, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = AccentPeach)
-                        Text(p.source, fontSize = 11.sp, color = TextSecondary)
+                        Text(p.displayDate, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                        Text(p.source, fontSize = 11.5.sp, color = TextSecondary)
                     }
-                    Text("${f1(disp(p.weightKg))} $unit", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+                    Text("${f1(disp(p.weightKg))} $unit", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, style = TextStyle(fontFeatureSettings = "tnum"), color = TextPrimary)
                     IconButton(
                         onClick = { pendingDelete = bodyWeights.firstOrNull { e -> com.strengthlogz.mobile.util.DateUtils.toSortableIso(e.date) == p.isoDate } },
                         modifier = Modifier.size(34.dp)
@@ -330,7 +334,7 @@ fun BodyWeightScreen(
         if (history.size > 20 && !showAllHistory) {
             item {
                 TextButton(onClick = { showAllHistory = true }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Show all ${history.size} readings", color = AccentOrange, fontWeight = FontWeight.Bold)
+                    Text("Show all ${history.size} readings", color = AccentOrange, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -340,13 +344,15 @@ fun BodyWeightScreen(
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             containerColor = SurfaceDark,
-            title = { Text("Delete reading?", fontWeight = FontWeight.Bold, color = TextPrimary) },
+            shape = RoundedCornerShape(16.dp),
+            title = { Text("Delete reading?", fontWeight = FontWeight.SemiBold, color = TextPrimary) },
             text = { Text("${entry.date} • ${f1(disp(entry.weightKg))} $unit will be removed from this device and Google Sheets.", color = TextSecondary) },
             confirmButton = {
                 Button(
                     onClick = { onDeleteWeight(entry.date); pendingDelete = null },
+                    shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = DecreaseRed, contentColor = Color.White)
-                ) { Text("Delete", fontWeight = FontWeight.Bold) }
+                ) { Text("Delete", fontWeight = FontWeight.SemiBold) }
             },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel", color = TextSecondary) } }
         )
@@ -363,15 +369,15 @@ private fun EmptyNote(text: String) {
 @Composable
 private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = if (selected) AccentOrange else SurfaceCard,
-        border = if (selected) null else BorderStroke(0.8.dp, BorderDark),
+        border = if (selected) null else BorderStroke(1.dp, BorderDark),
         modifier = Modifier.clickable { onClick() }
     ) {
         Text(
             text = label,
             fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             color = if (selected) Color(0xFF140D07) else TextSecondary,
             maxLines = 1,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -383,7 +389,7 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun SegChips(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     Row(
         modifier = Modifier
-            .background(BgDark, RoundedCornerShape(9.dp))
+            .background(BgDark, RoundedCornerShape(8.dp))
             .padding(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -391,14 +397,14 @@ private fun SegChips(labels: List<String>, selected: Int, onSelect: (Int) -> Uni
             val active = i == selected
             Box(
                 modifier = Modifier
-                    .background(if (active) AccentOrange else Color.Transparent, RoundedCornerShape(7.dp))
+                    .background(if (active) AccentOrange else Color.Transparent, RoundedCornerShape(6.dp))
                     .clickable { onSelect(i) }
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Text(
                     label,
                     fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                     color = if (active) Color(0xFF140D07) else TextSecondary,
                     maxLines = 1
                 )

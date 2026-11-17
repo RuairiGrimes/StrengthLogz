@@ -1,10 +1,8 @@
 package com.strengthlogz.mobile.ui.theme
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -28,16 +25,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Reusable high-contrast category or state tag pill.
+ * Quiet neutral category tag pill.
  */
 @Composable
 fun CategoryPill(
@@ -45,29 +40,18 @@ fun CategoryPill(
     modifier: Modifier = Modifier,
     active: Boolean = false
 ) {
-    val (bgColor, textColor, borderColor) = when (category.lowercase()) {
-        "chest" -> Triple(Color(0x24FF7A45), AccentOrange, AccentOrange.copy(alpha = 0.45f))
-        "back" -> Triple(Color(0x2438BDF8), BlueAccent, BlueAccent.copy(alpha = 0.45f))
-        "legs" -> Triple(Color(0x2434D399), IncreaseGreen, IncreaseGreen.copy(alpha = 0.45f))
-        "shoulders" -> Triple(Color(0x24A78BFA), PurpleAccent, PurpleAccent.copy(alpha = 0.45f))
-        "arms" -> Triple(Color(0x24FFD166), GoldPR, GoldPR.copy(alpha = 0.45f))
-        "core" -> Triple(Color(0x24F472B6), Color(0xFFF472B6), Color(0xFFF472B6).copy(alpha = 0.45f))
-        else -> Triple(Color(0x1F8B93A7), TextSecondary, BorderDark)
-    }
-
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = if (active) textColor else bgColor,
-        border = if (active) null else BorderStroke(0.8.dp, borderColor)
+        shape = RoundedCornerShape(6.dp),
+        color = if (active) AccentOrange else SurfaceCardElevated,
+        border = if (active) null else BorderStroke(1.dp, BorderDark)
     ) {
         Text(
-            text = category.uppercase(),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (active) Color(0xFF140D07) else textColor,
-            letterSpacing = 0.6.sp,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp),
+            text = category,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (active) Color(0xFF140D07) else TextSecondary,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -75,7 +59,7 @@ fun CategoryPill(
 }
 
 /**
- * Golden PR badge with trophy/fire indicator.
+ * Reserved gold PR badge.
  */
 @Composable
 fun PrTrophyBadge(
@@ -85,34 +69,23 @@ fun PrTrophyBadge(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = if (isNewPr) Color(0x38FFD166) else Color(0x24FFD166),
-        border = BorderStroke(1.dp, if (isNewPr) GoldPR else GoldPR.copy(alpha = 0.5f))
+        shape = RoundedCornerShape(6.dp),
+        color = GoldPR.copy(alpha = if (isNewPr) 0.18f else 0.12f),
+        border = BorderStroke(1.dp, GoldPR.copy(alpha = if (isNewPr) 0.55f else 0.35f))
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
-        ) {
-            Text(
-                text = if (isNewPr) "★" else "PR",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = GoldPR
-            )
-            Text(
-                text = text,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = GoldPR,
-                maxLines = 1
-            )
-        }
+        Text(
+            text = text,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = GoldPR,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+        )
     }
 }
 
 /**
- * Animated completion checkmark for workout sets with spring bounce.
+ * Calm completion checkmark toggle for workout sets.
  */
 @Composable
 fun SetCompletionCheckButton(
@@ -120,24 +93,15 @@ fun SetCompletionCheckButton(
     onToggle: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (isCompleted) 1.05f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "checkScale"
-    )
-
     val bgColor by animateColorAsState(
-        targetValue = if (isCompleted) IncreaseGreen else SurfaceHighlight,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        targetValue = if (isCompleted) IncreaseGreen else SurfaceCardElevated,
+        animationSpec = tween(durationMillis = 150),
         label = "checkBg"
     )
 
     val iconColor by animateColorAsState(
         targetValue = if (isCompleted) Color(0xFF092317) else TextMuted,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        animationSpec = tween(durationMillis = 150),
         label = "checkIcon"
     )
 
@@ -145,14 +109,13 @@ fun SetCompletionCheckButton(
 
     Box(
         modifier = modifier
-            .size(34.dp)
-            .scale(scale)
-            .clip(RoundedCornerShape(9.dp))
+            .size(36.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(
                 1.dp,
                 if (isCompleted) IncreaseGreenDark else BorderDark,
-                RoundedCornerShape(9.dp)
+                RoundedCornerShape(8.dp)
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -165,19 +128,19 @@ fun SetCompletionCheckButton(
             imageVector = Icons.Default.Check,
             contentDescription = if (isCompleted) "Completed" else "Mark Complete",
             tint = iconColor,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(18.dp)
         )
     }
 }
 
 /**
- * Modern card container with subtle gradient rim and dark surface.
+ * Neutral raised card container with hairline border.
  */
 @Composable
 fun StrengthCard(
     modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = RoundedCornerShape(16.dp),
-    border: BorderStroke? = BorderStroke(0.8.dp, BorderDark.copy(alpha = 0.65f)),
+    shape: RoundedCornerShape = RoundedCornerShape(12.dp),
+    border: BorderStroke? = BorderStroke(1.dp, BorderDark),
     gradientBrush: Brush? = null,
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
@@ -185,8 +148,8 @@ fun StrengthCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && onClick != null) 0.985f else 1.0f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        targetValue = if (isPressed && onClick != null) 0.98f else 1.0f,
+        animationSpec = tween(durationMillis = 140),
         label = "cardPress"
     )
 
@@ -220,7 +183,7 @@ fun StrengthCard(
 }
 
 /**
- * Modern Search Bar with leading icon and instant clear button.
+ * Search bar with hairline border and clear button.
  */
 @Composable
 fun ModernSearchBar(
@@ -237,7 +200,7 @@ fun ModernSearchBar(
             Text(
                 text = placeholder,
                 color = TextMuted,
-                fontSize = 13.5.sp,
+                fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -246,8 +209,8 @@ fun ModernSearchBar(
             Icon(
                 imageVector = Icons.Default.Search,
                 contentDescription = "Search",
-                tint = if (query.isNotBlank()) AccentOrange else TextSecondary,
-                modifier = Modifier.size(19.dp)
+                tint = if (query.isNotBlank()) AccentOrange else TextMuted,
+                modifier = Modifier.size(18.dp)
             )
         },
         trailingIcon = {
@@ -257,7 +220,7 @@ fun ModernSearchBar(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Clear",
                         tint = TextSecondary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             } else {
@@ -266,7 +229,7 @@ fun ModernSearchBar(
         },
         singleLine = true,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = TextPrimary,
             unfocusedTextColor = TextPrimary,
@@ -280,7 +243,7 @@ fun ModernSearchBar(
 }
 
 /**
- * Screen Header with modern bold typography, sub-caption, and optional right action.
+ * Screen header with balanced weight, subtitle, and optional right action.
  */
 @Composable
 fun ModernScreenHeader(
@@ -302,22 +265,24 @@ fun ModernScreenHeader(
             ) {
                 Text(
                     text = title,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = TextPrimary,
-                    letterSpacing = (-0.4).sp
+                    letterSpacing = (-0.2).sp
                 )
                 if (!badgeText.isNullOrBlank()) {
                     Surface(
-                        color = SurfaceHighlight,
-                        shape = RoundedCornerShape(6.dp)
+                        color = SurfaceCardElevated,
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, BorderDark)
                     ) {
                         Text(
                             text = badgeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
                             color = TextSecondary,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            style = TextStyle(fontFeatureSettings = "tnum"),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -325,11 +290,11 @@ fun ModernScreenHeader(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     color = TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 1.dp)
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
@@ -340,4 +305,3 @@ fun ModernScreenHeader(
         }
     }
 }
-

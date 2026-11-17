@@ -5,12 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -19,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -32,9 +29,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,7 +60,7 @@ import kotlinx.coroutines.launch
 enum class Screen(val title: String, val icon: ImageVector) {
     LOG("Log", Icons.Default.AddCircle),
     PROGRAM("Program", Icons.Default.CalendarMonth),
-    SUGGEST("Suggest", Icons.Default.AutoAwesome),
+    SUGGEST("Suggest", Icons.AutoMirrored.Filled.TrendingUp),
     HISTORY("History", Icons.Default.History),
     PROGRESS("Progress", Icons.Default.BarChart),
     GOALS("Goals", Icons.Default.EmojiEvents),
@@ -202,7 +199,8 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .size(28.dp)
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .background(AccentOrange.copy(alpha = 0.16f)),
+                                                .background(SurfaceCardElevated)
+                                                .border(1.dp, BorderDark, RoundedCornerShape(8.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
@@ -213,11 +211,11 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
                                         Text(
-                                            text = "STRENGTHLOGZ",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.ExtraBold,
+                                            text = "StrengthLogz",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.SemiBold,
                                             color = TextPrimary,
-                                            letterSpacing = 1.sp
+                                            letterSpacing = 0.sp
                                         )
                                     }
 
@@ -226,79 +224,84 @@ class MainActivity : ComponentActivity() {
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Surface(
-                                            color = SurfaceDark,
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(1.dp, BorderDark.copy(alpha = 0.7f)),
-                                            modifier = Modifier.clickable {
-                                                showSummaryDialog = true
-                                            }
+                                            color = SurfaceCard,
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, BorderDark),
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .clickable { showSummaryDialog = true }
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier.padding(horizontal = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Icon(
                                                     Icons.AutoMirrored.Filled.TrendingUp,
                                                     contentDescription = "14-Day Summary",
                                                     tint = AccentOrange,
-                                                    modifier = Modifier.size(14.dp)
+                                                    modifier = Modifier.size(16.dp)
                                                 )
                                                 Text(
                                                     "14d",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = TextPrimary
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = TextPrimary,
+                                                    style = TextStyle(fontFeatureSettings = "tnum")
                                                 )
                                             }
                                         }
 
                                         val isExercises = currentScreen == Screen.EXERCISES
                                         Surface(
-                                            color = if (isExercises) AccentOrange.copy(alpha = 0.18f) else SurfaceDark,
-                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isExercises) SurfaceCardElevated else SurfaceCard,
+                                            shape = RoundedCornerShape(8.dp),
                                             border = BorderStroke(
                                                 1.dp,
-                                                if (isExercises) AccentOrange else BorderDark.copy(alpha = 0.7f)
+                                                if (isExercises) AccentOrange else BorderDark
                                             ),
-                                            modifier = Modifier.clickable {
-                                                currentScreen = if (isExercises) lastPrimaryScreen else Screen.EXERCISES
-                                            }
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .clickable {
+                                                    currentScreen = if (isExercises) lastPrimaryScreen else Screen.EXERCISES
+                                                }
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier.padding(horizontal = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Icon(
                                                     Icons.Default.FitnessCenter,
                                                     contentDescription = "Exercises Catalog",
                                                     tint = if (isExercises) AccentOrange else TextSecondary,
-                                                    modifier = Modifier.size(15.dp)
+                                                    modifier = Modifier.size(16.dp)
                                                 )
                                                 Text(
                                                     "Catalog",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = if (isExercises) AccentOrange else TextSecondary
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (isExercises) TextPrimary else TextSecondary
                                                 )
                                             }
                                         }
 
                                         val isSettings = currentScreen == Screen.SETTINGS
                                         Surface(
-                                            color = if (isSettings) AccentOrange.copy(alpha = 0.18f) else SurfaceDark,
-                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSettings) SurfaceCardElevated else SurfaceCard,
+                                            shape = RoundedCornerShape(8.dp),
                                             border = BorderStroke(
                                                 1.dp,
-                                                if (isSettings) AccentOrange else BorderDark.copy(alpha = 0.7f)
+                                                if (isSettings) AccentOrange else BorderDark
                                             ),
-                                            modifier = Modifier.clickable {
-                                                currentScreen = if (isSettings) lastPrimaryScreen else Screen.SETTINGS
-                                            }
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .clickable {
+                                                    currentScreen = if (isSettings) lastPrimaryScreen else Screen.SETTINGS
+                                                }
                                         ) {
                                             Box(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier.padding(horizontal = 10.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -361,9 +364,8 @@ class MainActivity : ComponentActivity() {
                             AnimatedContent(
                                 targetState = selectedWorkoutForDetail to currentScreen,
                                 transitionSpec = {
-                                    fadeIn(animationSpec = tween(200)) +
-                                        scaleIn(initialScale = 0.985f, animationSpec = tween(200)) togetherWith
-                                        fadeOut(animationSpec = tween(150))
+                                    fadeIn(animationSpec = tween(180)) togetherWith
+                                        fadeOut(animationSpec = tween(140))
                                 },
                                 label = "screenTransition"
                             ) { (workoutDetail, screen) ->
@@ -718,7 +720,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Modern responsive navigation item with smooth animated scale and micro-capsule.
+ * Navigation item with calm surface step and aligned label.
  */
 @Composable
 private fun ModernNavItem(
@@ -729,16 +731,6 @@ private fun ModernNavItem(
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-
-    val iconScale by animateFloatAsState(
-        targetValue = if (isSelected) 1.08f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "navIconScale"
-    )
-
     val contentColor = if (isSelected) AccentOrange else TextSecondary
 
     Column(
@@ -749,32 +741,30 @@ private fun ModernNavItem(
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 2.dp),
+            .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
             modifier = Modifier
-                .height(28.dp)
+                .height(32.dp)
                 .width(48.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(if (isSelected) AccentOrange.copy(alpha = 0.18f) else Color.Transparent),
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (isSelected) SurfaceCardElevated else Color.Transparent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = screen.icon,
                 contentDescription = screen.title,
                 tint = contentColor,
-                modifier = Modifier
-                    .size(20.dp)
-                    .scale(iconScale)
+                modifier = Modifier.size(20.dp)
             )
 
             // Active draft badge dot
             if (hasBadge) {
                 Box(
                     modifier = Modifier
-                        .size(7.dp)
+                        .size(8.dp)
                         .align(Alignment.TopEnd)
                         .padding(top = 2.dp, end = 2.dp)
                         .clip(CircleShape)
@@ -783,12 +773,12 @@ private fun ModernNavItem(
             }
         }
 
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(4.dp))
 
         Text(
             text = screen.title,
-            fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
             color = contentColor,
             maxLines = 1,
             softWrap = false,

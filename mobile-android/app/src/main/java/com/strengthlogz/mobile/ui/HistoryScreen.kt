@@ -19,7 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -149,7 +150,7 @@ fun HistoryScreen(
                                 val res = onQuickSync()
                                 isSyncing = false
                                 syncToast = if (res.isSuccess) {
-                                    res.getOrNull() ?: "Synced!"
+                                    res.getOrNull() ?: "Synced"
                                 } else {
                                     "Sync failed: ${res.exceptionOrNull()?.message}"
                                 }
@@ -157,15 +158,15 @@ fun HistoryScreen(
                         }
                     },
                     enabled = !isSyncing,
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(0.8.dp, BorderDark),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, BorderDark),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     modifier = Modifier.height(36.dp)
                 ) {
                     SyncSpinIcon(isSyncing = isSyncing, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (isSyncing) "Syncing" else "Sync", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (isSyncing) "Syncing" else "Sync", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
         )
@@ -182,9 +183,9 @@ fun HistoryScreen(
                 Text(
                     text = syncToast,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     color = if (syncToast.startsWith("Sync failed")) DecreaseRed else IncreaseGreen,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                 )
             }
         }
@@ -194,21 +195,21 @@ fun HistoryScreen(
         ModernSearchBar(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
-            placeholder = "Search date, split, or exercise..."
+            placeholder = "Search history"
         )
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(bottom = 28.dp)
+            contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             items(filteredModels, key = { it.workout.id }) { model ->
                 val workout = model.workout
 
                 StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(12.dp),
                     onClick = { onSelectWorkout(workout) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -220,15 +221,15 @@ fun HistoryScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = workout.title.ifBlank { "Workout Session" },
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 color = TextPrimary
                             )
                             Text(
                                 text = model.displayDateWithDay,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = AccentPeach,
+                                fontWeight = FontWeight.Medium,
+                                color = TextSecondary,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
@@ -237,36 +238,37 @@ fun HistoryScreen(
                             if (model.sessionVolume > 0) {
                                 Text(
                                     text = model.sessionVolumeFormatted,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextPrimary
                                 )
                             }
                             Text(
                                 text = "${model.workingSetsCount} sets • ${model.liftCount} lifts",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
                                 color = TextSecondary
                             )
                         }
                     }
 
                     if (workout.notes.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "“${workout.notes}”",
+                            text = workout.notes,
                             fontSize = 12.sp,
                             color = TextSecondary,
-                            fontStyle = FontStyle.Italic,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    Spacer(Modifier.height(10.dp))
-                    HorizontalDivider(color = BorderDark.copy(alpha = 0.6f), thickness = 0.5.dp)
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider(color = BorderDark, thickness = 1.dp)
+                    Spacer(Modifier.height(12.dp))
 
-                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         model.topExerciseLines.forEach { (exerciseName, setsSummary) ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -285,13 +287,15 @@ fun HistoryScreen(
                                 Text(
                                     text = setsSummary,
                                     fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = TextStyle(fontFeatureSettings = "tnum"),
                                     color = TextSecondary,
                                     textAlign = TextAlign.End,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .weight(0.58f)
-                                        .padding(start = 10.dp)
+                                        .padding(start = 12.dp)
                                 )
                             }
                         }
@@ -299,10 +303,11 @@ fun HistoryScreen(
                         if (model.extraLiftCount > 0) {
                             Text(
                                 text = "+ ${model.extraLiftCount} more",
-                                fontSize = 11.5.sp,
-                                color = AccentPeach,
+                                fontSize = 12.sp,
+                                color = AccentOrange,
                                 fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(top = 2.dp)
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
                     }
