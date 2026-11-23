@@ -65,7 +65,8 @@ data class GoalSessionReport(
 
 /**
  * User-defined target goal for a specific exercise.
- * [goalType] is either "E1RM" (1-Rep Max target) or "SETS_REPS" (Target sets x reps @ weight).
+ * [goalType] is "E1RM" (1-Rep Max target), "SETS_REPS" (Target sets x reps @ weight),
+ * or "RELATIVE_BW" (Relative Strength target in × Body Weight).
  */
 @Immutable
 data class ExerciseGoal(
@@ -76,6 +77,7 @@ data class ExerciseGoal(
     @SerializedName("targetWeightKg") val targetWeightKg: Double = 0.0,
     @SerializedName("targetSets") val targetSets: Int = 3,
     @SerializedName("targetReps") val targetReps: Int = 8,
+    @SerializedName("targetRelativeBw") val targetRelativeBw: Double = 0.0,
     @SerializedName("baselineE1rmKg") val baselineE1rmKg: Double = 0.0,
     @SerializedName("baselineWeightKg") val baselineWeightKg: Double = 0.0,
     @SerializedName("baselineReps") val baselineReps: Int = 0,
@@ -89,8 +91,14 @@ data class ExerciseGoal(
     @SerializedName("sessionReports") val sessionReports: List<GoalSessionReport>? = emptyList(),
     @SerializedName("updatedAt") val updatedAt: Long = 0L
 ) {
-    val safeGoalType: String get() = if (goalType == "SETS_REPS") "SETS_REPS" else "E1RM"
+    val safeGoalType: String
+        get() = when (goalType) {
+            "SETS_REPS" -> "SETS_REPS"
+            "RELATIVE_BW" -> "RELATIVE_BW"
+            else -> "E1RM"
+        }
     val isSetsRepsGoal: Boolean get() = safeGoalType == "SETS_REPS"
+    val isRelativeBwGoal: Boolean get() = safeGoalType == "RELATIVE_BW"
     val safeCreatedDate: String get() = createdDate ?: ""
     val safeTargetDate: String get() = targetDate ?: ""
     val safeNotes: String get() = notes ?: ""
@@ -150,7 +158,11 @@ data class SavedSummaryLiftItem(
     @SerializedName("e1rmDeltaPct") val e1rmDeltaPct: Double? = null,
     @SerializedName("withinPeriodE1rmDeltaKg") val withinPeriodE1rmDeltaKg: Double? = null,
     @SerializedName("relativeStrengthBw") val relativeStrengthBw: Double? = null,
-    @SerializedName("isAllTimePr") val isAllTimePr: Boolean = false
+    @SerializedName("priorRelativeStrengthBw") val priorRelativeStrengthBw: Double? = null,
+    @SerializedName("relBwDelta") val relBwDelta: Double? = null,
+    @SerializedName("retentionPct") val retentionPct: Double? = null,
+    @SerializedName("isAllTimePr") val isAllTimePr: Boolean = false,
+    @SerializedName("isAllTimeRelPr") val isAllTimeRelPr: Boolean = false
 )
 
 @Immutable
@@ -192,9 +204,12 @@ data class SavedSummaryEntry(
     @SerializedName("avg7BodyWeightKg") val avg7BodyWeightKg: Double? = null,
     @SerializedName("dotsScore") val dotsScore: Double? = null,
     @SerializedName("prsCount") val prsCount: Int = 0,
+    @SerializedName("relPrsCount") val relPrsCount: Int = 0,
+    @SerializedName("retainedCount") val retainedCount: Int = 0,
     @SerializedName("progressingCount") val progressingCount: Int = 0,
     @SerializedName("holdingCount") val holdingCount: Int = 0,
     @SerializedName("regressingCount") val regressingCount: Int = 0,
+    @SerializedName("trainingMode") val trainingMode: String? = "MAINGAIN",
     @SerializedName("pushToPullRatio") val pushToPullRatio: Double? = null,
     @SerializedName("upperSharePct") val upperSharePct: Int = 0,
     @SerializedName("heavySets") val heavySets: Int = 0,
@@ -210,6 +225,7 @@ data class SavedSummaryEntry(
     val safeTopLifts: List<SavedSummaryLiftItem> get() = topLifts ?: emptyList()
     val safeHighlights: List<String> get() = highlights ?: emptyList()
     val safeRecommendations: List<String> get() = recommendations ?: emptyList()
+    val safeTrainingMode: TrainingMode get() = TrainingMode.fromString(trainingMode)
 }
 
 data class AppData(
@@ -221,7 +237,9 @@ data class AppData(
     @SerializedName("program") var program: WorkoutProgram? = null,
     @SerializedName("programs") var programs: MutableList<WorkoutProgram>? = mutableListOf(),
     @SerializedName("activeProgramId") var activeProgramId: String? = null,
-    @SerializedName("savedSummaries") var savedSummaries: MutableList<SavedSummaryEntry>? = mutableListOf()
+    @SerializedName("savedSummaries") var savedSummaries: MutableList<SavedSummaryEntry>? = mutableListOf(),
+    @SerializedName("trainingMode") var trainingMode: String? = "MAINGAIN",
+    @SerializedName("trainingModeUpdatedAt") var trainingModeUpdatedAt: Long = 0L
 )
 
 @Immutable

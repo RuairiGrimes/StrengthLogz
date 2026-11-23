@@ -1,10 +1,10 @@
 // In-engine 14-day training summary & deterministic scoring engine (Desktop parity with SummaryEngine.kt).
 const crypto = require('crypto');
 const SyncMerge = require('./sync-merge');
+const TrainingMode = require('./training-mode');
 
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const FALLBACK_BW_KG = 157.5 / 2.20462;
-const WEEKLY_MUSCLE_TARGETS = { Chest: 10, Back: 12, Legs: 10, Shoulders: 9, Arms: 9, Core: 4 };
 
 const SQUAT_NAMES = new Set(['squat', 'back squat', 'low bar squat', 'high bar squat', 'barbell squat', 'barbell back squat']);
 const BENCH_NAMES = new Set(['bench press', 'flat bench press', 'barbell bench press', 'flat barbell bench press']);
@@ -160,12 +160,17 @@ function computeDeterministicScores({
   muscleItems,
   lifts,
   prsCount,
+  relPrsCount = 0,
+  retainedCount = 0,
   progressingCount,
+  holdingCount = 0,
   regressingCount,
   pushToPullRatio,
   upperSets,
   lowerSets,
+  trainingMode = 'MAINGAIN',
 }) {
+  const mode = TrainingMode.normalizeTrainingMode(trainingMode);
   if (workoutsCount === 0 || validSetsCount === 0) {
     return { overallScore: 0, volumeScore: 0, strengthScore: 0, consistencyScore: 0, balanceScore: 0, tierLabel: 'No Activity' };
   }
@@ -183,20 +188,44 @@ function computeDeterministicScores({
     : 0;
   let continuityAdj = 5;
   if (volumeDeltaPct !== null && volumeDeltaPct !== undefined) {
-    if (volumeDeltaPct >= -15 && volumeDeltaPct <= 25) continuityAdj = 8;
-    else if (volumeDeltaPct > 25) continuityAdj = 4;
-    else continuityAdj = -6;
+    if (mode === 'CUT') {
+      if (volumeDeltaPct >= -25 && volumeDeltaPct <= 25) continuityAdj = 8;
+      else if (volumeDeltaPct > 25) continuityAdj = 4;
+      else continuityAdj = -4;
+    } else if (mode === 'BULK') {
+      if (volumeDeltaPct >= 0 && volumeDeltaPct <= 25) continuityAdj = 10;
+      else if (volumeDeltaPct >= -15 && volumeDeltaPct < 0) continuityAdj = 4;
+      else if (volumeDeltaPct > 25) continuityAdj = 6;
+      else continuityAdj = -6;
+    } else {
+      if (volumeDeltaPct >= -15 && volumeDeltaPct <= 25) continuityAdj = 8;
+      else if (volumeDeltaPct > 25) continuityAdj = 4;
+      else continuityAdj = -6;
+    }
   }
   const volumeScore = Math.max(10, Math.min(100, Math.round((avgMuscleCoverage * 88) + continuityAdj)));
 
   let strengthScore = 0;
   if (lifts.length) {
-    const netPositiveRatio = (progressingCount + 0.5 * (lifts.length - progressingCount - regressingCount)) / lifts.length;
     const withDelta = lifts.filter((l) => l.e1rmDeltaPct !== null && l.e1rmDeltaPct !== undefined);
     const avgDeltaPct = withDelta.length ? withDelta.reduce((a, l) => a + l.e1rmDeltaPct, 0) / withDelta.length : 0;
     const clampedAvg = Math.max(-10, Math.min(10, avgDeltaPct));
-    const prBonus = Math.min(18, prsCount * 6);
-    strengthScore = Math.max(15, Math.min(100, Math.round(45 + (netPositiveRatio * 35) + (clampedAvg * 1.5) + prBonus)));
+
+    if (mode === 'CUT') {
+      const effectivePositive = progressingCount + retainedCount + (0.5 * holdingCount);
+      const retentionRatio = effectivePositive / lifts.length;
+      const cutFloorAdj = clampedAvg >= -3.0 ? Math.max(0, clampedAvg) * 1.2 : (clampedAvg + 3.0) * 1.5;
+      const relOrPrBonus = Math.min(18, (prsCount + relPrsCount) * 6);
+      strengthScore = Math.max(15, Math.min(100, Math.round(46 + (retentionRatio * 34) + cutFloorAdj + relOrPrBonus)));
+    } else if (mode === 'BULK') {
+      const netPositiveRatio = (progressingCount + 0.5 * (lifts.length - progressingCount - regressingCount)) / lifts.length;
+      const prBonus = Math.min(20, prsCount * 7);
+      strengthScore = Math.max(15, Math.min(100, Math.round(43 + (netPositiveRatio * 36) + (clampedAvg * 1.6) + prBonus)));
+    } else {
+      const netPositiveRatio = (progressingCount + 0.5 * (lifts.length - progressingCount - regressingCount)) / lifts.length;
+      const prBonus = Math.min(18, prsCount * 6);
+      strengthScore = Math.max(15, Math.min(100, Math.round(45 + (netPositiveRatio * 35) + (clampedAvg * 1.5) + prBonus)));
+    }
   }
 
   const coveredCount = primaryMuscles.filter((m) => m.workingSets14d >= m.target14dSets * 0.45).length;
@@ -213,15 +242,15 @@ function computeDeterministicScores({
   }
   const balanceScore = Math.max(10, Math.min(100, Math.round(coveragePts + pushPullPts + lowerPts)));
 
+  const weights = TrainingMode.scoreWeights(mode);
   const overallScore = Math.max(0, Math.min(100, Math.round(
-    consistencyScore * 0.25 + volumeScore * 0.25 + strengthScore * 0.30 + balanceScore * 0.20
+    consistencyScore * weights.consistency +
+    volumeScore * weights.volume +
+    strengthScore * weights.strength +
+    balanceScore * weights.balance
   )));
 
-  let tierLabel = 'Low Stimulus';
-  if (overallScore >= 88) tierLabel = 'Peak Block';
-  else if (overallScore >= 74) tierLabel = 'Strong Momentum';
-  else if (overallScore >= 58) tierLabel = 'Steady Progress';
-  else if (overallScore >= 40) tierLabel = 'Building Base';
+  const tierLabel = TrainingMode.tierLabel(mode, overallScore);
 
   return { overallScore, volumeScore, strengthScore, consistencyScore, balanceScore, tierLabel };
 }
@@ -235,7 +264,9 @@ function build14DaySummary({
   activeProgram = null,
   isMale = true,
   referenceDate = null,
+  trainingMode = 'MAINGAIN',
 }) {
+  const mode = TrainingMode.normalizeTrainingMode(trainingMode);
   const endIso = SyncMerge.isoKey(referenceDate) || todayIso();
   const endDay = isoToEpochDay(endIso);
   const startDay = endDay - 13;
@@ -370,7 +401,8 @@ function build14DaySummary({
     const cat = resolveCategory(s.exercise);
     priorSetsByCat[cat] = (priorSetsByCat[cat] || 0) + 1;
   }
-  const muscleItems = Object.entries(WEEKLY_MUSCLE_TARGETS).map(([category, wkTarget]) => ({
+  const weeklyTargets = TrainingMode.weeklyMuscleTargets(mode);
+  const muscleItems = Object.entries(weeklyTargets).map(([category, wkTarget]) => ({
     category,
     workingSets14d: sets14ByCat[category] || 0,
     prior14dWorkingSets: priorSetsByCat[category] || 0,
@@ -402,6 +434,11 @@ function build14DaySummary({
     }
   }
 
+  const bwPaceObj = (hasBwData && bwWeeklyRateKg !== null)
+    ? TrainingMode.classifyBodyWeightPace(mode, bwWeeklyRateKg)
+    : null;
+  const bwPaceAssessment = bwPaceObj ? bwPaceObj.status : null;
+
   const dotsTimeline = hasBwData ? buildDotsTimeline(workouts, sets, bodyWeights, isMale) : [];
   const latestDotsPt = [...dotsTimeline].reverse().find((p) => p.iso <= endIso);
   const startIso = SyncMerge.isoKey(startDate);
@@ -425,6 +462,8 @@ function build14DaySummary({
   }
 
   let prsCount = 0;
+  let relPrsCount = 0;
+  let retainedCount = 0;
   let progressingCount = 0;
   let holdingCount = 0;
   let regressingCount = 0;
@@ -450,6 +489,7 @@ function build14DaySummary({
 
     let bestSet = null;
     let bestE1rm14 = 0;
+    let bestRel14 = 0;
     let exVol14 = 0;
     for (const s of exSets14) {
       exVol14 += Number(s.weight || 0) * Number(s.reps || 0);
@@ -458,26 +498,72 @@ function build14DaySummary({
         bestE1rm14 = e;
         bestSet = s;
       }
+      if (hasBwData && e > 0) {
+        const sbw = weightOn(setDateStr(s), bodyWeights);
+        if (sbw > 0) {
+          const rVal = round2(e / sbw);
+          if (rVal > bestRel14) bestRel14 = rVal;
+        }
+      }
     }
 
     const priorSets = priorByEx.get(exName.toLowerCase()) || [];
     const priorAllBest = priorSets.length ? Math.max(0, ...priorSets.map(e1rmForSet)) : 0;
+    let priorAllBestRel = 0;
+    if (hasBwData && priorSets.length) {
+      for (const ps of priorSets) {
+        const pe = e1rmForSet(ps);
+        const pbw = weightOn(setDateStr(ps), bodyWeights);
+        if (pe > 0 && pbw > 0) {
+          const prRel = round2(pe / pbw);
+          if (prRel > priorAllBestRel) priorAllBestRel = prRel;
+        }
+      }
+    }
     const recentPrior = priorSets.filter((s) => setDay(s) >= priorStartDay - 28);
     const baselinePool = recentPrior.length ? recentPrior : priorSets;
     const recentBaseRaw = baselinePool.length ? Math.max(0, ...baselinePool.map(e1rmForSet)) : 0;
     const priorBestE1rmKg = recentBaseRaw > 0 ? round1(recentBaseRaw) : null;
+    let priorRelRaw = 0;
+    if (hasBwData && baselinePool.length) {
+      for (const ps of baselinePool) {
+        const pe = e1rmForSet(ps);
+        const pbw = weightOn(setDateStr(ps), bodyWeights);
+        if (pe > 0 && pbw > 0) {
+          const prRel = round2(pe / pbw);
+          if (prRel > priorRelRaw) priorRelRaw = prRel;
+        }
+      }
+    }
+    const priorRelativeStrengthBw = priorRelRaw > 0 ? round2(priorRelRaw) : null;
 
     const e1rmDeltaKg = (priorBestE1rmKg !== null && bestE1rm14 > 0) ? round1(bestE1rm14 - priorBestE1rmKg) : null;
     const e1rmDeltaPct = (priorBestE1rmKg !== null && priorBestE1rmKg > 0 && e1rmDeltaKg !== null)
       ? round1((e1rmDeltaKg / priorBestE1rmKg) * 100)
       : null;
 
+    const retentionPct = (priorBestE1rmKg !== null && priorBestE1rmKg > 0 && bestE1rm14 > 0)
+      ? round1((bestE1rm14 / priorBestE1rmKg) * 100)
+      : null;
+
     const isAllTimePr = bestE1rm14 > 0 && priorAllBest > 0 && bestE1rm14 > priorAllBest;
+    const isAllTimeRelPr = hasBwData && bestRel14 > 0 && priorAllBestRel > 0 && bestRel14 > (priorAllBestRel + 0.004);
     const trendDelta = e1rmDeltaKg !== null ? e1rmDeltaKg : withinPeriodE1rmDeltaKg;
+
     if (isAllTimePr) prsCount++;
-    if (trendDelta !== null && trendDelta > 0.5) progressingCount++;
-    else if (trendDelta !== null && trendDelta < -0.5) regressingCount++;
-    else holdingCount++;
+    if (isAllTimeRelPr) relPrsCount++;
+
+    if (trendDelta !== null && trendDelta > 0.5) {
+      progressingCount++;
+    } else if (trendDelta !== null && trendDelta < -0.5) {
+      if (mode === 'CUT' && (retentionPct === null || retentionPct >= TrainingMode.CUT_RETENTION_FLOOR_PCT)) {
+        retainedCount++;
+      } else {
+        regressingCount++;
+      }
+    } else {
+      holdingCount++;
+    }
 
     let bestSet14d = '-';
     if (bestSet) {
@@ -486,8 +572,11 @@ function build14DaySummary({
       bestSet14d = `${wPart} x ${bestSet.reps || 0}`;
     }
 
-    const relativeStrengthBw = (endBodyWeightKg && endBodyWeightKg > 0 && bestE1rm14 > 0)
-      ? round2(bestE1rm14 / endBodyWeightKg)
+    const relativeStrengthBw = bestRel14 > 0
+      ? bestRel14
+      : ((endBodyWeightKg && endBodyWeightKg > 0 && bestE1rm14 > 0) ? round2(bestE1rm14 / endBodyWeightKg) : null);
+    const relBwDelta = (relativeStrengthBw !== null && priorRelativeStrengthBw !== null)
+      ? round2(relativeStrengthBw - priorRelativeStrengthBw)
       : null;
 
     return {
@@ -504,11 +593,24 @@ function build14DaySummary({
       e1rmDeltaPct,
       withinPeriodE1rmDeltaKg,
       relativeStrengthBw,
+      priorRelativeStrengthBw,
+      relBwDelta,
+      retentionPct,
       isAllTimePr,
+      isAllTimeRelPr,
     };
-  }).sort((a, b) => (Number(b.isAllTimePr) - Number(a.isAllTimePr))
-    || ((b.e1rmDeltaKg ?? b.withinPeriodE1rmDeltaKg ?? 0) - (a.e1rmDeltaKg ?? a.withinPeriodE1rmDeltaKg ?? 0))
-    || (b.workingSets14d - a.workingSets14d));
+  }).sort((a, b) => {
+    if (mode === 'CUT') {
+      return (Number(b.isAllTimeRelPr) - Number(a.isAllTimeRelPr))
+        || (Number(b.isAllTimePr) - Number(a.isAllTimePr))
+        || ((b.relBwDelta ?? 0) - (a.relBwDelta ?? 0))
+        || ((b.e1rmDeltaKg ?? b.withinPeriodE1rmDeltaKg ?? 0) - (a.e1rmDeltaKg ?? a.withinPeriodE1rmDeltaKg ?? 0))
+        || (b.workingSets14d - a.workingSets14d);
+    }
+    return (Number(b.isAllTimePr) - Number(a.isAllTimePr))
+      || ((b.e1rmDeltaKg ?? b.withinPeriodE1rmDeltaKg ?? 0) - (a.e1rmDeltaKg ?? a.withinPeriodE1rmDeltaKg ?? 0))
+      || (b.workingSets14d - a.workingSets14d);
+  });
 
   const sets14ByWorkoutId = new Map();
   for (const s of validSets14d) {
@@ -528,19 +630,24 @@ function build14DaySummary({
     };
   });
 
+  const currentBwForGoals = endBodyWeightKg && endBodyWeightKg > 0 ? endBodyWeightKg : FALLBACK_BW_KG;
   const goalStatuses = (goals || [])
     .filter((g) => g.enabled !== false)
     .map((g) => {
       const exSets = sets.filter((s) => String(s.exercise || '').trim().toLowerCase() === String(g.exerciseName || '').trim().toLowerCase() && Number(s.reps || 0) > 0);
       const bestE = exSets.length ? Math.max(0, ...exSets.map(e1rmForSet)) : 0;
       const targetE = g.goalType === 'SETS_REPS'
-        ? computeEpley(Number(g.targetWeightKg || 0), Number(g.targetReps || 8))
-        : Number(g.targetE1rmKg || 0);
+        ? computeEpley((resolveIsBw(g.exerciseName) ? currentBwForGoals + Number(g.targetWeightKg || 0) : Number(g.targetWeightKg || 0)), Number(g.targetReps || 8))
+        : g.goalType === 'RELATIVE_BW'
+          ? (Number(g.targetRelativeBw || 1.25) * currentBwForGoals)
+          : Number(g.targetE1rmKg || 0);
       const pct = targetE > 0 ? Math.max(0, Math.min(100, Math.round((bestE / targetE) * 100))) : 0;
       const achieved = !!g.achievedDate || pct >= 100;
       const targetSummary = g.goalType === 'SETS_REPS'
         ? `${g.targetSets || 3}x${g.targetReps || 8} @ ${fmtNum(g.targetWeightKg || 0)}kg`
-        : `${fmtNum(g.targetE1rmKg || 0)}kg 1RM`;
+        : g.goalType === 'RELATIVE_BW'
+          ? `${fmtNum(g.targetRelativeBw || 1.25)}× BW (${fmtNum(round1(targetE))}kg)`
+          : `${fmtNum(g.targetE1rmKg || 0)}kg 1RM`;
       return {
         exerciseName: g.exerciseName,
         targetSummary,
@@ -559,11 +666,15 @@ function build14DaySummary({
     muscleItems,
     lifts,
     prsCount,
+    relPrsCount,
+    retainedCount,
     progressingCount,
+    holdingCount,
     regressingCount,
     pushToPullRatio,
     upperSets,
     lowerSets,
+    trainingMode: mode,
   });
 
   const highlights = [];
@@ -582,7 +693,22 @@ function build14DaySummary({
       highlights.push(`Logged ${workoutsCount} sessions totaling ${fmtNum(totalVolumeKg)} kg of external workload.`);
     }
 
-    if (prsCount > 0) {
+    if (mode === 'CUT') {
+      if (relPrsCount > 0) {
+        const topRel = lifts.find((l) => l.isAllTimeRelPr);
+        if (topRel) {
+          highlights.push(`${relPrsCount} all-time Relative Strength PR${relPrsCount > 1 ? 's' : ''}, led by ${topRel.exerciseName} at ${fmtNum(topRel.relativeStrengthBw)}× BW.`);
+        }
+      } else if (prsCount > 0) {
+        const topPr = lifts.find((l) => l.isAllTimePr);
+        if (topPr) {
+          highlights.push(`${prsCount} E1RM PR${prsCount > 1 ? 's' : ''} even during a Cut, led by ${topPr.exerciseName} at ${fmtNum(topPr.bestE1rm14dKg)} kg.`);
+        }
+      }
+      if (retainedCount + progressingCount + holdingCount > 0) {
+        highlights.push(`${progressingCount + retainedCount + holdingCount} of ${lifts.length} tracked movements held ≥95% strength (${retainedCount} minor cut dips within normal deficit tolerance).`);
+      }
+    } else if (prsCount > 0) {
       const topPr = lifts.find((l) => l.isAllTimePr);
       if (topPr) {
         highlights.push(`${prsCount} all-time E1RM PR${prsCount > 1 ? 's' : ''} set, led by ${topPr.exerciseName} at ${fmtNum(topPr.bestE1rm14dKg)} kg (${topPr.bestSet14d}).`);
@@ -600,7 +726,8 @@ function build14DaySummary({
       const dotsStr = dotsScore !== null
         ? ` • DOTS ${fmtNum(dotsScore)}${dotsDelta !== null ? ` (${dotsDelta > 0 ? '+' : ''}${fmtNum(dotsDelta)})` : ''}`
         : '';
-      highlights.push(`Body weight moved ${sign}${fmtNum(bodyWeightDeltaKg)} kg over 14 days${rateStr}${dotsStr}.`);
+      const paceSuffix = bwPaceAssessment ? ` — ${bwPaceAssessment}` : '';
+      highlights.push(`Body weight moved ${sign}${fmtNum(bodyWeightDeltaKg)} kg over 14 days${rateStr}${dotsStr}${paceSuffix}.`);
     }
 
     if (activeProgram?.programName && programAdherencePct !== null) {
@@ -612,7 +739,7 @@ function build14DaySummary({
       .sort((a, b) => (a.workingSets14d / Math.max(1, a.target14dSets)) - (b.workingSets14d / Math.max(1, b.target14dSets)));
     if (underTrained.length) {
       const names = underTrained.slice(0, 2).map((m) => `${m.category} (${m.workingSets14d}/${m.target14dSets} sets)`).join(' and ');
-      recommendations.push(`Prioritize ${names} in the upcoming block to close 14-day volume deficits.`);
+      recommendations.push(`Prioritize ${names} in the upcoming block to hit ${mode === 'CUT' ? 'minimum maintenance' : '14-day'} volume targets.`);
     }
 
     if (pushToPullRatio !== null && pushToPullRatio > 1.4) {
@@ -626,7 +753,9 @@ function build14DaySummary({
     }
 
     if (failedSetsCount >= 2) {
-      recommendations.push(`${failedSetsCount} zero-rep failed sets logged in 14 days; trim top-set load by 2.5-5% to restore bar speed.`);
+      recommendations.push(mode === 'CUT'
+        ? `${failedSetsCount} zero-rep failed sets logged in 14 days; avoid grinding to failure during a deficit and leave 1-2 reps in reserve.`
+        : `${failedSetsCount} zero-rep failed sets logged in 14 days; trim top-set load by 2.5-5% to restore bar speed.`);
     }
 
     const untouchedGoals = goalStatuses.filter((g) => !g.achieved && !g.trainedIn14d);
@@ -638,12 +767,21 @@ function build14DaySummary({
       recommendations.push(`Longest training gap was ${longestRestGapDays} days; tighter session spacing will improve weekly stimulus.`);
     }
 
-    if (volumeDeltaPct !== null && volumeDeltaPct > 30) {
+    if (mode !== 'CUT' && volumeDeltaPct !== null && volumeDeltaPct > 30) {
       recommendations.push(`Volume jumped +${fmtNum(volumeDeltaPct)}% vs the prior 14 days; watch recovery before adding more sets.`);
+    }
+    if (mode === 'CUT' && regressingCount > 0) {
+      recommendations.push(`${regressingCount} lift${regressingCount > 1 ? 's' : ''} dipped >5% below baseline — trim accessory fatigue and focus on top-set weight retention.`);
     }
 
     if (!recommendations.length) {
-      recommendations.push('Volume, cadence, and strength trends are balanced; hold current split and progress loads by 1.25-2.5 kg on top-rep hits.');
+      if (mode === 'CUT') {
+        recommendations.push('Retention and recovery look solid — keep heavy top-set intensity high and avoid unnecessary junk volume.');
+      } else if (mode === 'BULK') {
+        recommendations.push('Momentum is strong — keep adding 1.25-2.5 kg or +1 rep on key compounds while riding your lean surplus.');
+      } else {
+        recommendations.push('Volume, cadence, and strength trends are balanced; hold current split and progress loads by 1.25-2.5 kg on top-rep hits.');
+      }
     }
   }
 
@@ -691,9 +829,13 @@ function build14DaySummary({
     bodyWeightDeltaKg,
     avg7BodyWeightKg,
     bwWeeklyRateKg,
+    bwPaceAssessment,
+    trainingMode: mode,
     dotsScore,
     dotsDelta,
     prsCount,
+    relPrsCount,
+    retainedCount,
     progressingCount,
     holdingCount,
     regressingCount,
@@ -718,6 +860,7 @@ function toSavedEntry(summary, customTitle = '', customNotes = '') {
     savedEpochMs: Date.now(),
     startDate: summary.startDate,
     endDate: summary.endDate,
+    trainingMode: TrainingMode.normalizeTrainingMode(summary.trainingMode),
     overallScore: summary.overallScore,
     tierLabel: summary.tierLabel,
     volumeScore: summary.volumeScore,
@@ -739,6 +882,8 @@ function toSavedEntry(summary, customTitle = '', customNotes = '') {
     avg7BodyWeightKg: summary.avg7BodyWeightKg,
     dotsScore: summary.dotsScore,
     prsCount: summary.prsCount,
+    relPrsCount: summary.relPrsCount || 0,
+    retainedCount: summary.retainedCount || 0,
     progressingCount: summary.progressingCount,
     holdingCount: summary.holdingCount,
     regressingCount: summary.regressingCount,

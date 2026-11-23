@@ -630,5 +630,129 @@ button.icon-only { padding: 6px 9px; min-width: 32px; text-align: center; }
   border-top: 1px solid var(--border);
 }
 
+/* ---------------- Training Phase Mode Styles ---------------- */
+.mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: rgba(52, 211, 153, 0.14);
+  color: #34d399;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+.mode-pill:hover { opacity: 0.9; transform: translateY(-1px); }
+.sidebar-foot .mode-pill {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+}
+.mode-pill.mode-bulk, .mode-bulk {
+  color: #ff7a45;
+  background: rgba(255, 122, 69, 0.14);
+  border-color: rgba(255, 122, 69, 0.45);
+}
+.mode-pill.mode-maingain, .mode-maingain {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.14);
+  border-color: rgba(52, 211, 153, 0.45);
+}
+.mode-pill.mode-cut, .mode-cut {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.14);
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
+.mode-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.mode-seg-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.mode-seg-btn .sub {
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.78;
+}
+.mode-seg-btn[data-mode="BULK"].active {
+  border-color: #ff7a45;
+  background: rgba(255, 122, 69, 0.16);
+  color: #ff7a45;
+}
+.mode-seg-btn[data-mode="MAINGAIN"].active {
+  border-color: #34d399;
+  background: rgba(52, 211, 153, 0.16);
+  color: #34d399;
+}
+.mode-seg-btn[data-mode="CUT"].active {
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.16);
+  color: #60a5fa;
+}
+
+.mode-details {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.mode-details .tagline {
+  font-weight: 700;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+.mode-details ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mode-banner {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.delta-retained {
+  color: #60a5fa !important;
+  font-weight: 700;
+}
+.badge-rel-pr {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(255, 209, 102, 0.16);
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  color: #ffd166;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+
 
 

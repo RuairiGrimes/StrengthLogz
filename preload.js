@@ -45,5 +45,8 @@ contextBridge.exposeInMainWorld('api', {
   get14DaySummary: (opts) => call('get14DaySummary', opts),
   saveSummaryEntry: (opts) => call('saveSummaryEntry', opts),
   deleteSummaryEntry: (id) => call('deleteSummaryEntry', id),
+
+  // Settings / Training Phase Mode
+  setTrainingMode: (mode) => call('setTrainingMode', mode),
 });
 

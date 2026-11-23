@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.strengthlogz.mobile.model.Exercise
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.theme.*
@@ -39,6 +41,7 @@ fun WorkoutDetailScreen(
     getSetsForWorkout: (String) -> List<WorkoutSet>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
     availableExercises: List<Exercise>,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     onBack: () -> Unit,
     onNavigateToProgress: (String) -> Unit = {},
     onDeleteWorkout: (String) -> Unit = {}
@@ -55,12 +58,12 @@ fun WorkoutDetailScreen(
     val totalWorkingSets = workoutSets.count { (it.reps ?: 0) > 0 }
     val totalReps = workoutSets.filter { (it.reps ?: 0) > 0 }.sumOf { it.reps ?: 0 }
 
-    val prExercises = remember(groupedByExercise, workout.id) {
+    val prExercises = remember(groupedByExercise, workout.id, trainingMode) {
         groupedByExercise.keys.filter { exName ->
             val allExSets = getSetsForExercise(exName)
             val pts = buildSessionPoints(allExSets, workoutMap, BodyWeightUtils.isBodyweightExercise(exName))
             val thisPt = pts.find { it.workoutId == workout.id }
-            thisPt != null && (thisPt.isE1rmPr || thisPt.isWeightPr)
+            thisPt != null && (thisPt.isE1rmPr || thisPt.isWeightPr || (trainingMode == TrainingMode.CUT && thisPt.isRelPr))
         }
     }
 
@@ -207,6 +210,7 @@ fun WorkoutDetailScreen(
                 val currentSess = if (currentSessIdx >= 0) sessions[currentSessIdx] else null
                 val prevSess = if (currentSessIdx > 0) sessions[currentSessIdx - 1] else null
                 val isPr = currentSess != null && (currentSess.isE1rmPr || currentSess.isWeightPr)
+                val isRelPr = currentSess != null && currentSess.isRelPr && !isPr
                 val e1rmDelta = if (currentSess != null && prevSess != null && prevSess.e1rm > 0) {
                     ((currentSess.e1rm - prevSess.e1rm) * 10.0).roundToInt() / 10.0
                 } else null
@@ -238,6 +242,8 @@ fun WorkoutDetailScreen(
                                     CategoryPill(category = exInfo?.category ?: "Other")
                                     if (isPr) {
                                         PrTrophyBadge(text = "PR", isNewPr = true)
+                                    } else if (isRelPr && trainingMode == TrainingMode.CUT) {
+                                        PrTrophyBadge(text = "REL PR", isNewPr = true)
                                     }
                                 }
                                 Text(
@@ -263,11 +269,26 @@ fun WorkoutDetailScreen(
                                         )
                                         if (e1rmDelta != null && e1rmDelta != 0.0) {
                                             val sign = if (e1rmDelta > 0) "+" else ""
+                                            val isHeldDip = e1rmDelta < 0.0 &&
+                                                prevSess != null &&
+                                                TrainingModePolicy.isExpectedCutDip(
+                                                    mode = trainingMode,
+                                                    currentVal = currentSess.e1rm,
+                                                    prevVal = prevSess.e1rm,
+                                                    currentRel = currentSess.relativeStrength,
+                                                    prevRel = prevSess.relativeStrength
+                                                )
+                                            val deltaText = "$sign${SetUtils.formatWeightValue(e1rmDelta)}kg" +
+                                                if (isHeldDip) " (held)" else ""
                                             Text(
-                                                text = "$sign${SetUtils.formatWeightValue(e1rmDelta)}kg",
+                                                text = deltaText,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (e1rmDelta > 0) IncreaseGreen else DecreaseRed
+                                                color = when {
+                                                    e1rmDelta > 0 -> IncreaseGreen
+                                                    isHeldDip -> BlueAccent
+                                                    else -> DecreaseRed
+                                                }
                                             )
                                         } else {
                                             Text("Est. 1RM", fontSize = 10.5.sp, color = TextSecondary)

@@ -48,6 +48,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ExerciseGoal
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.theme.*
@@ -72,7 +74,7 @@ internal fun SessionProgressPoint.metricValue(mode: ChartMetricMode): Double = w
 internal fun SessionProgressPoint.isPrFor(mode: ChartMetricMode): Boolean = when (mode) {
     ChartMetricMode.E1RM -> isE1rmPr
     ChartMetricMode.SET_REPS -> isWeightPr
-    ChartMetricMode.RELATIVE -> false
+    ChartMetricMode.RELATIVE -> isRelPr
 }
 
 internal fun ChartMetricMode.formatValue(v: Double): String =
@@ -102,6 +104,7 @@ data class SessionProgressPoint(
     val totalReps: Int,
     val isE1rmPr: Boolean = false,
     val isWeightPr: Boolean = false,
+    val isRelPr: Boolean = false,
     /** Body weight on this session date (kg); 0 when the exercise is not bodyweight-based. */
     val bodyWeightKg: Double = 0.0,
     /** E1RM (total load) divided by body weight; 0 when not applicable. */
@@ -219,10 +222,12 @@ fun buildSessionPoints(
     var runningBestE1rm = 0.0
     var runningBestWeight = 0.0
     var runningBestWeightReps = 0
+    var runningBestRel = 0.0
 
     return rawPoints.map { pt ->
         var e1rmPr = false
         var weightPr = false
+        var relPr = false
         if (pt.e1rm > runningBestE1rm && pt.e1rm > 0.0) {
             e1rmPr = true
             runningBestE1rm = pt.e1rm
@@ -235,7 +240,11 @@ fun buildSessionPoints(
             weightPr = true
             runningBestWeightReps = pt.topWeightReps
         }
-        if (e1rmPr || weightPr) pt.copy(isE1rmPr = e1rmPr, isWeightPr = weightPr) else pt
+        if (pt.relativeStrength > runningBestRel + 0.004 && pt.relativeStrength > 0.0) {
+            relPr = true
+            runningBestRel = pt.relativeStrength
+        }
+        if (e1rmPr || weightPr || relPr) pt.copy(isE1rmPr = e1rmPr, isWeightPr = weightPr, isRelPr = relPr) else pt
     }
 }
 
@@ -251,6 +260,8 @@ fun ProgressScreen(
     workouts: List<Workout> = emptyList(),
     getSetsForExercise: (String) -> List<WorkoutSet>,
     goals: List<ExerciseGoal> = emptyList(),
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     onNavigateGoals: (String?) -> Unit = {},
     onNavigateBodyWeight: () -> Unit = {},
     onOpenFourteenDaySummary: () -> Unit = {},
@@ -283,6 +294,8 @@ fun ProgressScreen(
             workoutMap = workoutMap,
             getSetsForExercise = getSetsForExercise,
             goalByExerciseLower = goalByExerciseLower,
+            trainingMode = trainingMode,
+            onOpenModePicker = onOpenModePicker,
             onNavigateGoals = { onNavigateGoals(null) },
             onNavigateBodyWeight = onNavigateBodyWeight,
             onOpenFourteenDaySummary = onOpenFourteenDaySummary,
@@ -296,6 +309,8 @@ fun ProgressScreen(
             workoutMap = workoutMap,
             getSetsForExercise = getSetsForExercise,
             activeGoal = goalByExerciseLower[activeExercise!!.trim().lowercase()],
+            trainingMode = trainingMode,
+            onOpenModePicker = onOpenModePicker,
             onNavigateGoalsForExercise = { onNavigateGoals(activeExercise) },
             onBack = { activeExercise = null }
         )
@@ -309,6 +324,8 @@ private fun ProgressDirectoryView(
     workoutMap: Map<String, Workout>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
     goalByExerciseLower: Map<String, ExerciseGoal> = emptyMap(),
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     onNavigateGoals: () -> Unit = {},
     onNavigateBodyWeight: () -> Unit = {},
     onOpenFourteenDaySummary: () -> Unit = {},
@@ -328,7 +345,7 @@ private fun ProgressDirectoryView(
                 sessionCount = pts.size,
                 lastDisplayDate = latest?.displayDate,
                 bestE1rm = pts.maxOfOrNull { it.e1rm } ?: 0.0,
-                bestRelStrength = if (isBw) (pts.maxOfOrNull { it.relativeStrength } ?: 0.0) else 0.0,
+                bestRelStrength = pts.maxOfOrNull { it.relativeStrength } ?: 0.0,
                 latestTopReps = latest?.topWeightReps ?: 0
             )
         }
@@ -420,7 +437,28 @@ private fun ProgressDirectoryView(
             }
         )
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
+            Text(
+                text = when (trainingMode) {
+                    TrainingMode.BULK -> "Surplus view • Absolute strength & PR tracking"
+                    TrainingMode.MAINGAIN -> "Balanced view • Steady strength progression"
+                    TrainingMode.CUT -> "Cut view • Relative ×BW & ≥95% E1RM retention"
+                },
+                fontSize = 11.5.sp,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         ModernSearchBar(
             query = searchQuery,
@@ -528,13 +566,23 @@ private fun ProgressDirectoryView(
                             Column(horizontalAlignment = Alignment.End) {
                                 if (bestE1rm > 0.0) {
                                     Text(
-                                        text = "${formatWeightValue(bestE1rm)} kg",
+                                        text = if (trainingMode == TrainingMode.CUT && bestRel > 0.0) {
+                                            "${"%.2f".format(bestRel)}× BW"
+                                        } else {
+                                            "${formatWeightValue(bestE1rm)} kg"
+                                        },
                                         fontSize = 15.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = GoldPR
+                                        color = if (trainingMode == TrainingMode.CUT && bestRel > 0.0) BlueAccent else GoldPR
                                     )
                                     Text(
-                                        text = if (isBw && bestRel > 0.0) "${"%.2f".format(bestRel)}× BW PR" else "Best E1RM",
+                                        text = if (trainingMode == TrainingMode.CUT && bestRel > 0.0) {
+                                            "Peak ${formatWeightValue(bestE1rm)}kg E1RM"
+                                        } else if (bestRel > 0.0) {
+                                            "${"%.2f".format(bestRel)}× BW PR"
+                                        } else {
+                                            "Best E1RM"
+                                        },
                                         fontSize = 11.sp,
                                         color = TextSecondary
                                     )
@@ -568,6 +616,8 @@ private fun ExerciseProgressDetailView(
     workoutMap: Map<String, Workout>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
     activeGoal: ExerciseGoal? = null,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     onNavigateGoalsForExercise: () -> Unit = {},
     onBack: () -> Unit
 ) {
@@ -577,8 +627,14 @@ private fun ExerciseProgressDetailView(
         buildSessionPoints(rawSets, workoutMap, isBwExercise)
     }
 
+    val hasRelData = remember(sessions) { sessions.any { it.relativeStrength > 0.0 } }
     var activeTab by remember { mutableStateOf(ProgressDetailTab.OVERVIEW) }
-    var metricMode by remember { mutableStateOf(ChartMetricMode.E1RM) }
+    var metricMode by remember(exerciseName, trainingMode, hasRelData) {
+        mutableStateOf(
+            if (trainingMode == TrainingMode.CUT && hasRelData) ChartMetricMode.RELATIVE
+            else ChartMetricMode.E1RM
+        )
+    }
     var showFullChartModal by remember { mutableStateOf(false) }
 
     var selectedPointIndex by remember(exerciseName, sessions.size) {
@@ -590,9 +646,10 @@ private fun ExerciseProgressDetailView(
     val prevSession = if (sessions.size >= 2) sessions[sessions.size - 2] else null
     val firstSession = sessions.firstOrNull()
     val reversedSessions = remember(sessions) { sessions.reversed() }
-    val hasRelData = remember(sessions) { sessions.any { it.relativeStrength > 0.0 } }
-    val prSessions = remember(reversedSessions) {
-        reversedSessions.filter { it.isE1rmPr || it.isWeightPr }
+    val prSessions = remember(reversedSessions, trainingMode) {
+        reversedSessions.filter {
+            it.isE1rmPr || it.isWeightPr || (trainingMode == TrainingMode.CUT && it.isRelPr)
+        }
     }
 
     Column(
@@ -647,12 +704,12 @@ private fun ExerciseProgressDetailView(
                             fontSize = 12.sp,
                             color = TextSecondary
                         )
-                        if (isBwExercise && (latestSession?.relativeStrength ?: 0.0) > 0.0) {
+                        if ((latestSession?.relativeStrength ?: 0.0) > 0.0) {
                             Text(
                                 text = "• ${"%.2f".format(latestSession!!.relativeStrength)}× BW",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = AccentPeach
+                                color = if (trainingMode == TrainingMode.CUT) BlueAccent else AccentPeach
                             )
                         }
                     }
@@ -661,8 +718,9 @@ private fun ExerciseProgressDetailView(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = if (activeGoal != null) GoldPR.copy(alpha = 0.18f) else SurfaceCard,
@@ -802,14 +860,26 @@ private fun ExerciseProgressDetailView(
                                 valueColor = TextPrimary,
                                 modifier = Modifier.weight(1f)
                             )
-                            CompactKpiCard(
-                                label = if (isBwExercise && bestRel > 0.0) "REL. STRENGTH" else "TOTAL GAIN",
-                                value = if (isBwExercise && bestRel > 0.0) "${"%.2f".format(bestRel)}× BW" else "$gainSign${formatWeightValue(totalGain)} kg",
-                                caption = if (isBwExercise && latestSession != null) "BW ${formatWeightValue(latestSession.bodyWeightKg)}kg"
-                                else (firstSession?.displayDate?.let { "Since $it" } ?: "–"),
-                                valueColor = if (totalGain >= 0) IncreaseGreen else DecreaseRed,
-                                modifier = Modifier.weight(1f)
-                            )
+                            if (trainingMode == TrainingMode.CUT && bestE1rmVal > 0.0 && latestSession != null) {
+                                val retentionPct = ((latestSession.e1rm / bestE1rmVal) * 100.0).coerceIn(0.0, 115.0)
+                                val isHeld = latestSession.e1rm >= bestE1rmVal * TrainingModePolicy.CUT_RETENTION_FLOOR_RATIO
+                                CompactKpiCard(
+                                    label = "STRENGTH HELD",
+                                    value = "${retentionPct.roundToInt()}%",
+                                    caption = if (bestRel > 0.0) "Peak ${"%.2f".format(bestRel)}× BW" else "Target ≥95%",
+                                    valueColor = if (isHeld) IncreaseGreen else BlueAccent,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                CompactKpiCard(
+                                    label = if ((isBwExercise || metricMode == ChartMetricMode.RELATIVE) && bestRel > 0.0) "REL. STRENGTH" else "TOTAL GAIN",
+                                    value = if ((isBwExercise || metricMode == ChartMetricMode.RELATIVE) && bestRel > 0.0) "${"%.2f".format(bestRel)}× BW" else "$gainSign${formatWeightValue(totalGain)} kg",
+                                    caption = if ((isBwExercise || metricMode == ChartMetricMode.RELATIVE) && latestSession != null) "BW ${formatWeightValue(latestSession.bodyWeightKg)}kg"
+                                    else (firstSession?.displayDate?.let { "Since $it" } ?: "–"),
+                                    valueColor = if (totalGain >= 0) IncreaseGreen else DecreaseRed,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
 
@@ -892,7 +962,8 @@ private fun ExerciseProgressDetailView(
                                         metricMode = metricMode,
                                         selectedIndex = safeIdx,
                                         onSelectIndex = { selectedPointIndex = it },
-                                        chartHeight = 240.dp
+                                        chartHeight = 240.dp,
+                                        trainingMode = trainingMode
                                     )
                                 } else {
                                     Box(
@@ -925,6 +996,7 @@ private fun ExerciseProgressDetailView(
                             session = session,
                             olderSession = olderSession,
                             metricMode = metricMode,
+                            trainingMode = trainingMode,
                             isHighlighted = isSelectedOnChart,
                             onClick = {
                                 selectedPointIndex = chronologicalIdx
@@ -959,6 +1031,7 @@ private fun ExerciseProgressDetailView(
                                 session = session,
                                 olderSession = null,
                                 metricMode = metricMode,
+                                trainingMode = trainingMode,
                                 isHighlighted = chronologicalIdx == selectedPointIndex,
                                 onClick = {
                                     if (chronologicalIdx >= 0) selectedPointIndex = chronologicalIdx
@@ -978,6 +1051,7 @@ private fun ExerciseProgressDetailView(
             allSessions = sessions,
             initialMetricMode = metricMode,
             initialSelectedIndex = selectedPointIndex.coerceIn(0, sessions.size - 1),
+            trainingMode = trainingMode,
             onDismiss = { showFullChartModal = false }
         )
     }
@@ -1119,7 +1193,8 @@ fun InteractiveProgressChart(
     metricMode: ChartMetricMode,
     selectedIndex: Int,
     onSelectIndex: (Int) -> Unit,
-    chartHeight: Dp = 230.dp
+    chartHeight: Dp = 230.dp,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN
 ) {
     val values = remember(sessions, metricMode) {
         sessions.map { it.metricValue(metricMode).toFloat() }
@@ -1252,8 +1327,18 @@ fun InteractiveProgressChart(
                 val p1 = points[i + 1]
                 val v0 = values[i]
                 val v1 = values[i + 1]
+                val expectedCutDip = metricMode != ChartMetricMode.RELATIVE &&
+                    v1 < v0 &&
+                    TrainingModePolicy.isExpectedCutDip(
+                        mode = trainingMode,
+                        currentVal = v1.toDouble(),
+                        prevVal = v0.toDouble(),
+                        currentRel = sessions[i + 1].relativeStrength,
+                        prevRel = sessions[i].relativeStrength
+                    )
                 val segColor = when {
                     v1 > v0 -> IncreaseGreen
+                    expectedCutDip -> BlueAccent
                     v1 < v0 -> DecreaseRed
                     else -> AccentOrange
                 }
@@ -1355,6 +1440,7 @@ private fun SessionHistoryRowCard(
     session: SessionProgressPoint,
     olderSession: SessionProgressPoint?,
     metricMode: ChartMetricMode,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     isHighlighted: Boolean,
     onClick: () -> Unit
 ) {
@@ -1408,12 +1494,34 @@ private fun SessionHistoryRowCard(
                             text = if (session.isE1rmPr) "E1RM PR" else "WT PR",
                             isNewPr = true
                         )
+                    } else if (session.isRelPr && (metricMode == ChartMetricMode.RELATIVE || trainingMode == TrainingMode.CUT)) {
+                        PrTrophyBadge(
+                            text = "REL PR",
+                            isNewPr = true
+                        )
                     }
                     if (delta != null && delta != 0.0) {
                         val sign = if (delta > 0) "+" else ""
+                        val expectedCutDip = metricMode != ChartMetricMode.RELATIVE &&
+                            delta < 0.0 &&
+                            olderSession != null &&
+                            prevVal != null &&
+                            TrainingModePolicy.isExpectedCutDip(
+                                mode = trainingMode,
+                                currentVal = currVal,
+                                prevVal = prevVal,
+                                currentRel = session.relativeStrength,
+                                prevRel = olderSession.relativeStrength
+                            )
+                        val deltaColor = when {
+                            delta > 0 -> IncreaseGreen
+                            expectedCutDip -> BlueAccent
+                            else -> DecreaseRed
+                        }
+                        val baseDeltaText = if (metricMode == ChartMetricMode.RELATIVE) "$sign${"%.2f".format(delta)}×" else "$sign${formatWeightValue(delta)}kg"
                         Text(
-                            text = if (metricMode == ChartMetricMode.RELATIVE) "$sign${"%.2f".format(delta)}×" else "$sign${formatWeightValue(delta)}kg",
-                            color = if (delta > 0) IncreaseGreen else DecreaseRed,
+                            text = if (expectedCutDip) "$baseDeltaText (held)" else baseDeltaText,
+                            color = deltaColor,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1461,6 +1569,7 @@ private fun FullScreenChartInspectorDialog(
     allSessions: List<SessionProgressPoint>,
     initialMetricMode: ChartMetricMode,
     initialSelectedIndex: Int,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     onDismiss: () -> Unit
 ) {
     var metricMode by remember { mutableStateOf(initialMetricMode) }
@@ -1608,7 +1717,8 @@ private fun FullScreenChartInspectorDialog(
                             metricMode = metricMode,
                             selectedIndex = safeIdx,
                             onSelectIndex = { selectedIdx = it },
-                            chartHeight = 290.dp
+                            chartHeight = 290.dp,
+                            trainingMode = trainingMode
                         )
                     }
                 }
@@ -1625,6 +1735,7 @@ private fun FullScreenChartInspectorDialog(
                             session = pt,
                             olderSession = older,
                             metricMode = metricMode,
+                            trainingMode = trainingMode,
                             isHighlighted = origIdx == safeIdx,
                             onClick = { selectedIdx = origIdx }
                         )

@@ -48,8 +48,98 @@ const COLORS = {
   down: css('--down') || '#ff5d73',
   pr: css('--pr') || '#ffd166',
   accent: css('--accent') || '#ff7a45',
+  cutBlue: '#60a5fa',
+  maingainGreen: '#34d399',
   muted: css('--muted') || '#8b93a7',
   border: css('--border') || '#2a2f3a',
+};
+
+const TrainingModeClient = {
+  CUT_RETENTION_FLOOR_RATIO: 0.95,
+  CUT_RETENTION_FLOOR_PCT: 95,
+  MODES: {
+    BULK: {
+      id: 'BULK',
+      label: 'Bulk',
+      shortLabel: 'Bulk',
+      cssClass: 'mode-bulk',
+      color: '#ff7a45',
+      tagline: 'Prioritize absolute strength gains, higher weekly volume & progressive overload',
+      bullets: [
+        'Prioritizes absolute strength & progressive overload',
+        'Higher weekly muscle volume targets (~120%)',
+        'Tracks healthy lean-bulk weight gain (+0.15 to +0.50 kg/wk)',
+        'Suggests 3–4 working sets and brisk weight jumps',
+      ],
+    },
+    MAINGAIN: {
+      id: 'MAINGAIN',
+      label: 'Maingain',
+      shortLabel: 'Maingain',
+      cssClass: 'mode-maingain',
+      color: '#34d399',
+      tagline: 'Maintain strength with steady micro-progression & balanced volume',
+      bullets: [
+        'Balanced strength gains & sustainable recovery',
+        'Standard weekly volume targets (baseline 100%)',
+        'Rewards steady body weight (±0.20 kg/wk) and clean progression',
+        'Even scoring across volume, strength, cadence, and balance',
+      ],
+    },
+    CUT: {
+      id: 'CUT',
+      label: 'Cut',
+      shortLabel: 'Cut',
+      cssClass: 'mode-cut',
+      color: '#60a5fa',
+      tagline: 'Protect strength retention, emphasize relative strength (× BW & DOTS) & manage fatigue',
+      bullets: [
+        'Focuses on strength retention (≥ 95% E1RM) & Relative Strength (× BW)',
+        'Recovery-friendly volume (~75%) to protect muscle without burnout',
+        'Replaces harsh red loss alerts on expected < 5% dips with calm Retention cues',
+        'Celebrates Relative Strength PRs & DOTS gains while weight trends down',
+      ],
+    },
+  },
+  normalize(raw) {
+    const clean = String(raw || '').trim().toUpperCase();
+    return Object.prototype.hasOwnProperty.call(this.MODES, clean) ? clean : 'MAINGAIN';
+  },
+  meta(raw) {
+    return this.MODES[this.normalize(raw)];
+  },
+  weeklyMuscleTargets(raw) {
+    const m = this.normalize(raw);
+    if (m === 'BULK') return { Chest: 12, Back: 14, Legs: 12, Shoulders: 10, Arms: 10, Core: 4 };
+    if (m === 'CUT') return { Chest: 7, Back: 8, Legs: 7, Shoulders: 6, Arms: 6, Core: 4 };
+    return { Chest: 10, Back: 12, Legs: 10, Shoulders: 9, Arms: 9, Core: 4 };
+  },
+  isExpectedCutDip(raw, currVal, prevVal, currRel = 0, prevRel = 0) {
+    if (this.normalize(raw) !== 'CUT') return false;
+    if (!(prevVal > 0 && currVal > 0 && currVal < prevVal)) return false;
+    return currVal >= prevVal * this.CUT_RETENTION_FLOOR_RATIO || (prevRel > 0 && currRel >= prevRel - 0.01);
+  },
+  classifyBodyWeightPace(raw, weeklyRateKg) {
+    const m = this.normalize(raw);
+    const r = Number(weeklyRateKg) || 0;
+    if (m === 'BULK') {
+      if (r >= 0.15 && r <= 0.50) return { status: 'On-pace lean bulk', isOnTarget: true, detail: 'Controlled surplus (+0.15 to +0.50 kg/wk) ideal for strength & growth.' };
+      if (r > 0.75) return { status: 'Fast surplus — watch fat gain', isOnTarget: false, detail: 'Gaining faster than +0.75 kg/wk; consider trimming surplus slightly.' };
+      if (r > 0.50) return { status: 'Brisk surplus', isOnTarget: false, detail: 'Slightly above lean bulk pace (+0.15 to +0.50 kg/wk).' };
+      if (r < -0.10) return { status: 'Weight dropping in Bulk mode', isOnTarget: false, detail: 'Body weight is trending down; fuel recovery to support overload.' };
+      return { status: 'Slow/maintenance surplus', isOnTarget: true, detail: 'Near maintenance; push intake slightly if E1RMs stall.' };
+    }
+    if (m === 'CUT') {
+      if (r >= -0.85 && r <= -0.25) return { status: 'On-pace sustainable cut', isOnTarget: true, detail: 'Steady fat-loss pace (-0.25 to -0.85 kg/wk) ideal for preserving muscle & strength.' };
+      if (r < -1.10) return { status: 'Aggressive deficit — watch recovery', isOnTarget: false, detail: 'Losing faster than -1.1 kg/wk; keep intensity high and manage fatigue.' };
+      if (r < -0.85) return { status: 'Brisk deficit', isOnTarget: true, detail: 'Noticeable deficit (-0.85 to -1.10 kg/wk) — prioritize retention & sleep.' };
+      if (r > 0.15) return { status: 'Weight trending up in Cut mode', isOnTarget: false, detail: 'Scale weight rose slightly over the window; check weekly average trend.' };
+      return { status: 'Mild cut / recomposition pace', isOnTarget: true, detail: 'Slow loss or steady weight — supportive for strength retention and relative ×BW.' };
+    }
+    if (r >= -0.20 && r <= 0.20) return { status: 'Steady maingain weight', isOnTarget: true, detail: 'Holding within ±0.20 kg/wk — ideal for steady recomp and micro-gains.' };
+    if (r > 0.20) return { status: 'Slight surplus drift', isOnTarget: false, detail: 'Trending above +0.20 kg/wk; tighten intake or switch to Bulk.' };
+    return { status: 'Slight deficit drift', isOnTarget: false, detail: 'Trending below -0.20 kg/wk; add recovery calories or switch to Cut.' };
+  },
 };
 
 // ---------------------------------------------------------------- state
@@ -62,6 +152,8 @@ let S = {
   programs: [],
   activeProgramId: null,
   savedSummaries: [],
+  trainingMode: 'MAINGAIN',
+  trainingModeUpdatedAt: 0,
   draft: null,
   storage: {},
 };
@@ -80,10 +172,52 @@ function setState(st) {
     goals: st.goals || [],
     programs: st.programs || [],
     savedSummaries: st.savedSummaries || [],
+    trainingMode: TrainingModeClient.normalize(st.trainingMode),
+    trainingModeUpdatedAt: Number(st.trainingModeUpdatedAt) || 0,
     activeProgramId: st.activeProgramId || (st.programs && st.programs[0] ? st.programs[0].id : null),
   };
   buildIndex();
   renderAll();
+}
+
+async function switchTrainingMode(mode) {
+  const next = TrainingModeClient.normalize(mode);
+  if (next === TrainingModeClient.normalize(S.trainingMode)) return;
+  await busy(async () => {
+    const state = await window.api.setTrainingMode(next);
+    setState(state);
+    toast(`Switched to ${TrainingModeClient.meta(next).label} mode`, 'success');
+  });
+}
+
+function openModePickerModal() {
+  const curr = TrainingModeClient.normalize(S.trainingMode);
+  const { body, close } = openCustomModal({
+    title: 'Select Training Phase',
+    html: `
+      <p class="muted small" style="margin-top:0;">Goals, workout suggestions, progress charts, PR badges, and 14-day summaries adapt immediately.</p>
+      <div id="m-mode-options" style="display:flex;flex-direction:column;gap:8px;">
+        ${['BULK', 'MAINGAIN', 'CUT'].map((k) => {
+          const meta = TrainingModeClient.MODES[k];
+          const active = curr === k;
+          return `
+            <button type="button" class="mode-seg-btn ${active ? 'active' : ''}" data-mode="${k}" style="align-items:flex-start;text-align:left;padding:12px 14px;">
+              <span style="font-size:14px;font-weight:700;">${esc(meta.label)} Mode ${active ? '✓' : ''}</span>
+              <span class="sub" style="font-size:12px;">${esc(meta.tagline)}</span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+    `,
+    cancelText: 'Close',
+  });
+  body.querySelectorAll('[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const m = btn.dataset.mode;
+      close();
+      await switchTrainingMode(m);
+    });
+  });
 }
 
 function buildIndex() {
@@ -225,7 +359,17 @@ function sessionsFor(name, excludeWorkoutId = null) {
       totalReps,
     };
   });
-  return out.sort((a, b) => a.t - b.t);
+  const sorted = out.sort((a, b) => a.t - b.t);
+  let bestE = 0, bestW = 0, bestRel = 0;
+  for (const s of sorted) {
+    s.isE1rmPr = s.e1rm !== null && s.e1rm > bestE + 0.05;
+    s.isWeightPr = s.top !== null && s.top > bestW;
+    s.isRelPr = s.rel !== null && bestRel > 0 && s.rel > bestRel + 0.004;
+    if (s.e1rm !== null && s.e1rm > bestE) bestE = s.e1rm;
+    if (s.top !== null && s.top > bestW) bestW = s.top;
+    if (s.rel !== null && s.rel > bestRel) bestRel = s.rel;
+  }
+  return sorted;
 }
 
 function metricsFor(name) {
@@ -242,8 +386,10 @@ function metricsFor(name) {
 
 function defaultMetric(name, sessions) {
   const m = metricsFor(name);
-  const order = ['e1rm', 'top', 'reps', 'volume'];
-  return order.find((k) => m[k] && sessions.some((s) => m[k].get(s) !== null)) || order[0];
+  const order = TrainingModeClient.normalize(S.trainingMode) === 'CUT'
+    ? ['rel', 'e1rm', 'top', 'reps', 'volume']
+    : ['e1rm', 'top', 'reps', 'volume'];
+  return order.find((k) => m[k] && sessions.some((s) => m[k].get(s) !== null)) || 'e1rm';
 }
 
 // ---------------------------------------------------------------- UI utilities & Modal
@@ -469,6 +615,31 @@ function addExerciseToLog(exerciseName, prefilledSets = null) {
   persistDraft();
 }
 
+function computeSetRadarLabel(exName, workoutDate, w, r, histPeakE1rm, histPeakRel) {
+  if (r === 0 || (r !== null && r <= 0)) {
+    return '<span class="err" style="font-size:10px;margin-left:4px;">FAILED (0r)</span>';
+  }
+  if (!r || w === null || w === undefined) return '';
+  const e1rm = Math.round(BodyWeightUtils.calculateE1rm(exName, workoutDate, w, r) * 10) / 10;
+  if (!(e1rm > 0)) return '';
+  const mode = TrainingModeClient.normalize(S.trainingMode);
+  const hasBw = (S.bodyWeights || []).length > 0;
+  const bwKg = hasBw ? BodyWeightUtils.weightOn(workoutDate) : 0;
+  const rel = bwKg > 0 ? Math.round((e1rm / bwKg) * 100) / 100 : 0;
+
+  if (histPeakE1rm > 0 && e1rm > histPeakE1rm + 0.1) {
+    return '<span class="badge-rel-pr" style="margin-left:4px;">🏆 PR</span>';
+  }
+  if (hasBw && histPeakRel > 0 && rel > histPeakRel + 0.004) {
+    return `<span class="badge-rel-pr" style="margin-left:4px;">🏆 REL PR (${rel.toFixed(2)}×)</span>`;
+  }
+  if (mode === 'CUT' && histPeakE1rm > 0 && e1rm >= histPeakE1rm * TrainingModeClient.CUT_RETENTION_FLOOR_RATIO) {
+    const pct = Math.round((e1rm / histPeakE1rm) * 100);
+    return `<span class="delta-retained" style="font-size:10px;margin-left:4px;">🛡 ${pct}% held</span>`;
+  }
+  return '';
+}
+
 function renderLogExercises() {
   const host = $('#log-exercises');
   if (!logExercises.length) {
@@ -477,29 +648,41 @@ function renderLogExercises() {
   }
 
   const workoutDate = $('#log-date').value || today();
+  const hasBw = (S.bodyWeights || []).length > 0;
+  const bwTodayKg = hasBw ? BodyWeightUtils.weightOn(workoutDate) : 0;
+
   host.innerHTML = logExercises.map((ex, exIdx) => {
     const info = exInfo(ex.name);
     const bw = isBW(ex.name);
     const activeGoal = getActiveGoalForExercise(ex.name);
     const prevSessions = sessionsFor(ex.name);
     const last = prevSessions[prevSessions.length - 1];
+    const histPeakE1rm = prevSessions.reduce((m, s) => Math.max(m, s.e1rm || 0), 0);
+    const histPeakRel = prevSessions.reduce((m, s) => Math.max(m, s.rel || 0), 0);
     const hint = last ? `Last (${shortDate(last.date)}): <b>${summarize(ex.name, last.sets)}</b>` : 'First time logging this lift';
 
+    let bestCardE1rm = 0;
     const setsRows = ex.sets.map((s, sIdx) => {
       const e1rm = (s.reps && s.reps > 0 && s.weight !== null)
         ? Math.round(BodyWeightUtils.calculateE1rm(ex.name, workoutDate, s.weight, s.reps) * 10) / 10
         : null;
+      if (e1rm && e1rm > bestCardE1rm) bestCardE1rm = e1rm;
+      const radar = computeSetRadarLabel(ex.name, workoutDate, s.weight, s.reps, histPeakE1rm, histPeakRel);
 
       return `
-        <tr data-ex="${exIdx}" data-set="${sIdx}">
+        <tr data-ex="${exIdx}" data-set="${sIdx}" data-peak-e1rm="${histPeakE1rm}" data-peak-rel="${histPeakRel}">
           <td class="n">${sIdx + 1}</td>
           <td class="w"><input type="number" step="0.5" class="set-w" value="${s.weight ?? ''}" placeholder="${bw ? '+kg' : 'kg'}" /></td>
           <td class="r"><input type="number" step="1" class="set-r" value="${s.reps ?? ''}" placeholder="reps" /></td>
-          <td class="e1rm">${e1rm ? `${e1rm}k` : '–'}</td>
+          <td class="e1rm">${e1rm ? `${e1rm}k` : '–'}${radar}</td>
           <td class="x"><button class="icon del-set" title="Delete set">✕</button></td>
         </tr>
       `;
     }).join('');
+
+    const bestRelStr = bestCardE1rm > 0 && (hasBw || bw) && bwTodayKg > 0
+      ? ` • ${(bestCardE1rm / bwTodayKg).toFixed(2)}× BW`
+      : (bestCardE1rm > 0 && bw ? ` • ${(bestCardE1rm / BodyWeightUtils.weightOn(workoutDate)).toFixed(2)}× BW` : '');
 
     return `
       <div class="card ex-card" data-ex="${exIdx}">
@@ -524,8 +707,9 @@ function renderLogExercises() {
           </thead>
           <tbody>${setsRows}</tbody>
         </table>
-        <div class="ex-foot">
+        <div class="ex-foot" style="display:flex;justify-content:space-between;align-items:center;">
           <button class="ghost compact add-set">+ Add set</button>
+          ${bestCardE1rm > 0 ? `<span class="muted small">Best E1RM: <b>${bestCardE1rm} kg</b>${bestRelStr}</span>` : ''}
         </div>
       </div>
     `;
@@ -553,12 +737,15 @@ function bindLogEvents() {
       logExercises[exIdx].sets[sIdx].reps = r;
 
       const e1rmEl = tr.querySelector('.e1rm');
+      const peakE = Number(tr.dataset.peakE1rm) || 0;
+      const peakRel = Number(tr.dataset.peakRel) || 0;
+      const dateStr = $('#log-date').value || today();
+      const radar = computeSetRadarLabel(logExercises[exIdx].name, dateStr, w, r, peakE, peakRel);
       if (r && r > 0 && w !== null) {
-        const dateStr = $('#log-date').value || today();
         const eVal = Math.round(BodyWeightUtils.calculateE1rm(logExercises[exIdx].name, dateStr, w, r) * 10) / 10;
-        e1rmEl.textContent = `${eVal}k`;
+        e1rmEl.innerHTML = `${eVal}k${radar}`;
       } else {
-        e1rmEl.textContent = '–';
+        e1rmEl.innerHTML = `–${radar}`;
       }
 
       persistDraft();
@@ -1314,6 +1501,7 @@ function getActiveGoalForExercise(name) {
 }
 
 function evaluateGoalDesktop(goal) {
+  const mode = TrainingModeClient.normalize(S.trainingMode);
   const name = goal.exerciseName || goal.exercise;
   const bw = isBW(name);
   const sessions = sessionsFor(name);
@@ -1327,21 +1515,35 @@ function evaluateGoalDesktop(goal) {
     ? sessions.filter((s) => toSortableIso(s.date) >= createdIso)
     : [];
 
-  // Anchor to sessions logged since goal start, or manual starting baseline, or recent sessions (never 12-month-old PRs)
+  // Anchor to sessions logged since goal start, or manual starting baseline, or recent sessions
   const activeSessions = sessionsSinceStart.length
     ? sessionsSinceStart
     : (goal.baselineE1rmKg > 0 ? [] : recentSessions);
 
   const recentBestE1rm = recentSessions.reduce((m, s) => (s.e1rm && s.e1rm > m ? s.e1rm : m), 0);
   const activeBestE1rm = activeSessions.reduce((m, s) => (s.e1rm && s.e1rm > m ? s.e1rm : m), 0);
+  const latestActive = activeSessions[activeSessions.length - 1] || sessions[sessions.length - 1] || null;
+  const latestE1rm = latestActive?.e1rm || recentBestE1rm;
 
   const currentE1rm = sessionsSinceStart.length
     ? Math.max(activeBestE1rm, goal.baselineE1rmKg || 0)
     : (goal.baselineE1rmKg > 0 ? goal.baselineE1rmKg : recentBestE1rm);
 
-  const targetE1rm = goal.goalType === 'SETS_REPS'
-    ? round(BodyWeightUtils.calculateE1rm(name, today(), goal.targetWeightKg || 0, Math.max(1, goal.targetReps || 8)))
-    : round(goal.targetE1rmKg || 0);
+  const bwKg = BodyWeightUtils.weightOn(today());
+  const currentRelBw = bwKg > 0 && currentE1rm > 0 ? Math.round((currentE1rm / bwKg) * 100) / 100 : 0;
+  const peakAllE1rm = Math.max(recentBestE1rm, goal.baselineE1rmKg || 0, currentE1rm);
+  const retentionPct = peakAllE1rm > 0 && latestE1rm > 0
+    ? Math.min(115, Math.round((latestE1rm / peakAllE1rm) * 100))
+    : 100;
+
+  let targetE1rm;
+  if (goal.goalType === 'SETS_REPS') {
+    targetE1rm = round(BodyWeightUtils.calculateE1rm(name, today(), goal.targetWeightKg || 0, Math.max(1, goal.targetReps || 8)));
+  } else if (goal.goalType === 'RELATIVE_BW') {
+    targetE1rm = round((Number(goal.targetRelativeBw) || 1.25) * bwKg);
+  } else {
+    targetE1rm = round(goal.targetE1rmKg || 0);
+  }
 
   let isAchieved = !!goal.achievedDate;
   if (!isAchieved && activeSessions.length) {
@@ -1353,6 +1555,9 @@ function evaluateGoalDesktop(goal) {
         sess.sets.filter((s) => (s.reps || 0) >= tr && Number(s.weight || 0) >= tw - 0.01).length >= ts
       );
       isAchieved = hitSetsReps || (targetE1rm > 0 && activeBestE1rm >= targetE1rm + 2.5);
+    } else if (goal.goalType === 'RELATIVE_BW') {
+      const tgtRel = Number(goal.targetRelativeBw) || 1.25;
+      isAchieved = activeSessions.some((s) => (s.rel || 0) >= tgtRel - 0.004) || (targetE1rm > 0 && activeBestE1rm >= targetE1rm - 0.05);
     } else {
       isAchieved = targetE1rm > 0 && activeBestE1rm >= targetE1rm - 0.05;
     }
@@ -1363,11 +1568,33 @@ function evaluateGoalDesktop(goal) {
 
   const targetHeadline = goal.goalType === 'SETS_REPS'
     ? `${goal.targetSets || 3} × ${goal.targetReps || 8} @ ${bw ? (goal.targetWeightKg === 0 ? 'BW' : `BW+${fmt(goal.targetWeightKg)}kg`) : `${fmt(goal.targetWeightKg)}kg`}`
-    : `${fmt(targetE1rm)} kg 1RM`;
+    : (goal.goalType === 'RELATIVE_BW'
+      ? `${(Number(goal.targetRelativeBw) || 1.25).toFixed(2)}× BW (${fmt(targetE1rm)}kg)`
+      : `${fmt(targetE1rm)} kg 1RM`);
 
-  // Prescribe weights strictly scaled to current working strength (never inflated by 12-month PRs)
+  let statusLabel;
+  let statusColor;
+  if (isAchieved) {
+    statusLabel = 'Achieved 🏆';
+    statusColor = 'var(--pr)';
+  } else if (mode === 'CUT') {
+    if (retentionPct >= TrainingModeClient.CUT_RETENTION_FLOOR_PCT) {
+      statusLabel = 'Strength Retained 🛡';
+      statusColor = '#60a5fa';
+    } else {
+      statusLabel = 'Retention Watch';
+      statusColor = 'var(--accent-2)';
+    }
+  } else if (progressPct >= 80) {
+    statusLabel = 'On Track';
+    statusColor = 'var(--up)';
+  } else {
+    statusLabel = 'Building';
+    statusColor = '#60a5fa';
+  }
+
+  // Prescribe weights scaled to current working strength & training mode
   const workingBaseE1rm = currentE1rm > 0 ? currentE1rm : Math.max(20, targetE1rm * 0.78);
-  const bwKg = BodyWeightUtils.weightOn(today());
   const step = (exInfo(name).category === 'Arms' || name.toLowerCase().includes('raise') || workingBaseE1rm < 45) ? 1.25 : 2.5;
   const calcLoadFor = (e1rmVal, repsCount) => {
     const total = e1rmVal / (1 + repsCount / 30);
@@ -1375,22 +1602,24 @@ function evaluateGoalDesktop(goal) {
     return bw && ext <= 0 ? 0 : Math.max(step, round(ext, step));
   };
 
-  let nextSets = 3;
-  let nextReps = 5;
-  let nextWeight = calcLoadFor(workingBaseE1rm * 0.96, 5);
+  let nextSets = mode === 'CUT' ? 2 : (mode === 'BULK' ? 4 : 3);
+  let nextReps = mode === 'CUT' ? 5 : 5;
+  const targetFactor = mode === 'CUT' ? 0.94 : (mode === 'BULK' ? 0.98 : 0.96);
+  let nextWeight = calcLoadFor(workingBaseE1rm * targetFactor, nextReps);
   if (goal.goalType === 'SETS_REPS') {
-    nextSets = goal.targetSets || 3;
+    nextSets = goal.targetSets || (mode === 'CUT' ? 2 : 3);
     nextReps = goal.targetReps || 8;
     const wCap = goal.targetWeightKg > 0 ? goal.targetWeightKg : 9999;
     nextWeight = Math.min(wCap, calcLoadFor(workingBaseE1rm, nextReps));
   }
   const nextSessionSummary = `${nextSets} × ${nextReps} @ ${bw && nextWeight === 0 ? 'BW' : `${bw ? 'BW+' : ''}${fmt(nextWeight)}kg`}`;
 
-  // 4-Phase milestones scaled cleanly from current working strength -> target
   const phases = [0.25, 0.5, 0.75, 1.0].map((frac, idx) => {
-    const titles = ['Phase 1: Accumulation', 'Phase 2: Strength Transition', 'Phase 3: Heavy Overload', 'Phase 4: Goal Attempt'];
+    const titles = mode === 'CUT'
+      ? ['Block 1: Anchor Top Sets', 'Block 2: Hold Bar Speed', 'Block 3: Peak Retention', 'Block 4: Target Standard']
+      : ['Phase 1: Accumulation', 'Phase 2: Strength Transition', 'Phase 3: Heavy Overload', 'Phase 4: Goal Attempt'];
     const phaseReps = idx < 3 ? [8, 6, 4][idx] : (goal.goalType === 'SETS_REPS' ? nextReps : 3);
-    const phaseSets = idx === 3 && goal.goalType === 'SETS_REPS' ? nextSets : 3;
+    const phaseSets = idx === 3 && goal.goalType === 'SETS_REPS' ? nextSets : (mode === 'CUT' ? 2 : 3);
     const span = Math.max(2.5, targetE1rm - workingBaseE1rm);
     const phaseE1rm = workingBaseE1rm + span * frac;
     const phaseW = (idx === 3 && goal.goalType === 'SETS_REPS' && goal.targetWeightKg > 0)
@@ -1404,15 +1633,19 @@ function evaluateGoalDesktop(goal) {
 
   return {
     goal,
+    mode,
     name,
     bw,
     category: exInfo(name).category || 'Other',
     bestE1rm: round(currentE1rm),
+    currentRelBw,
+    retentionPct,
     targetE1rm,
     targetHeadline,
     progressPct,
     isAchieved,
-    statusLabel: isAchieved ? 'Achieved 🏆' : (progressPct >= 80 ? 'On Track' : 'Building'),
+    statusLabel,
+    statusColor,
     nextSets,
     nextReps,
     nextWeight,
@@ -1422,6 +1655,7 @@ function evaluateGoalDesktop(goal) {
 }
 
 function renderGoals() {
+  const mode = TrainingModeClient.normalize(S.trainingMode);
   const allGoals = S.goals || [];
   const evals = allGoals.map((g) => evaluateGoalDesktop(g));
 
@@ -1438,17 +1672,25 @@ function renderGoals() {
     return true;
   });
 
+  const bannerHtml = mode === 'MAINGAIN' ? '' : `
+    <div class="mode-banner ${mode === 'CUT' ? 'mode-cut' : 'mode-bulk'}">
+      ${mode === 'CUT'
+        ? '<b>🛡 Cut Phase Lens:</b> Holding ≥95% E1RM counts as <i>Strength Retained</i>. Relative (× BW) goals automatically scale kg targets as your body weight drops.'
+        : '<b>🔥 Bulk Phase Lens:</b> Surplus phase active — pushing progressive overload and peak E1RM PR milestones.'}
+    </div>
+  `;
+
   const host = $('#goals-list');
   if (!filtered.length) {
-    host.innerHTML = `
+    host.innerHTML = `${bannerHtml}
       <div class="empty">
-        ${allGoals.length ? 'No goals match this filter.' : 'No strength goals set yet! Click <b>+ New Goal</b> above to set a 1RM or Sets × Reps target.'}
+        ${allGoals.length ? 'No goals match this filter.' : 'No strength goals set yet! Click <b>+ New Goal</b> above to set a 1RM, Relative ×BW, or Sets × Reps target.'}
       </div>
     `;
     return;
   }
 
-  host.innerHTML = filtered.map((e) => `
+  host.innerHTML = bannerHtml + filtered.map((e) => `
     <div class="goal-card ${e.isAchieved ? 'achieved' : ''}" data-id="${e.goal.id}">
       <div class="goal-card-top">
         <div class="goal-card-name">
@@ -1461,17 +1703,21 @@ function renderGoals() {
 
       <div class="goal-card-meta">
         <div>
-          <span class="goal-pill ${e.isAchieved ? 'achieved' : (e.goal.enabled === false ? 'paused' : '')}">
+          <span class="goal-pill ${e.isAchieved ? 'achieved' : (e.goal.enabled === false ? 'paused' : '')}" style="${!e.isAchieved && e.goal.enabled !== false ? `color:${e.statusColor};border-color:${e.statusColor};` : ''}">
             ${e.goal.enabled === false ? 'Paused' : esc(e.statusLabel)}
           </span>
         </div>
         <div class="muted small font-bold">
-          Current: ${e.bestE1rm}kg • ${e.progressPct}%
+          ${e.goal.goalType === 'RELATIVE_BW' && e.currentRelBw > 0
+            ? `Curr: ${e.currentRelBw.toFixed(2)}× BW • ${e.progressPct}%`
+            : (mode === 'CUT' && e.currentRelBw > 0
+              ? `${e.currentRelBw.toFixed(2)}× BW • ${e.retentionPct}% held`
+              : `Current: ${e.bestE1rm}kg • ${e.progressPct}%`)}
         </div>
       </div>
 
       <div class="goal-progress-bar">
-        <div class="goal-progress-fill ${e.isAchieved ? 'achieved' : ''}" style="width:${e.progressPct}%;"></div>
+        <div class="goal-progress-fill ${e.isAchieved ? 'achieved' : ''}" style="width:${e.progressPct}%;${!e.isAchieved && mode === 'CUT' ? 'background:linear-gradient(90deg,#60a5fa,#3ddc97);' : ''}"></div>
       </div>
 
       <div class="goal-card-foot">
@@ -1483,7 +1729,7 @@ function renderGoals() {
       </div>
 
       <div class="goal-expanded-body hidden">
-        <div class="small font-bold uppercase muted">Prescribed Working Sets</div>
+        <div class="small font-bold uppercase muted">Prescribed Working Sets (${esc(TrainingModeClient.meta(mode).shortLabel)})</div>
         <div style="font-size:13px;color:var(--text);">${e.nextSets} sets × ${e.nextReps} reps @ ${e.bw && e.nextWeight === 0 ? 'BW' : `${fmt(e.nextWeight)}kg`}</div>
 
         <div class="small font-bold uppercase muted" style="margin-top:6px;">Milestones</div>
@@ -1593,11 +1839,15 @@ function initGoalsModule() {
 }
 
 async function openGoalModal(existingGoal = null) {
+  const activePhase = TrainingModeClient.normalize(S.trainingMode);
   const exercises = S.exercises || [];
   const exNames = exercises.map((e) => e.name).sort();
 
-  const isSetsReps = existingGoal?.goalType === 'SETS_REPS';
+  const initModeType = existingGoal?.goalType === 'SETS_REPS'
+    ? 'SETS_REPS'
+    : (existingGoal?.goalType === 'RELATIVE_BW' ? 'RELATIVE_BW' : 'E1RM');
   const defaultEx = existingGoal?.exerciseName || exNames[0] || 'Bench Press';
+  const currBwKg = BodyWeightUtils.weightOn(today());
 
   const recentBaselineFor = (exName) => {
     const sess = sessionsFor(exName);
@@ -1612,19 +1862,24 @@ async function openGoalModal(existingGoal = null) {
   const initCurrW = existingGoal?.baselineWeightKg > 0 ? existingGoal.baselineWeightKg : initRec.w;
   const initCurrR = existingGoal?.baselineReps > 0 ? existingGoal.baselineReps : initRec.r;
   const initCurrE = existingGoal?.baselineE1rmKg > 0 ? existingGoal.baselineE1rmKg : initRec.e1rm;
+  const initMult = activePhase === 'CUT' ? 1.0 : (activePhase === 'BULK' ? 1.1 : 1.075);
+  const initRel = existingGoal?.targetRelativeBw > 0
+    ? existingGoal.targetRelativeBw
+    : (initCurrE > 0 && currBwKg > 0 ? Math.round(((initCurrE / currBwKg) * (activePhase === 'CUT' ? 1.05 : 1.12)) * 20) / 20 : 1.25);
 
   const pModal = modal({
-    title: existingGoal ? 'Edit Strength Goal' : 'Create Strength Goal',
+    title: existingGoal ? 'Edit Strength Goal' : `Create Strength Goal (${TrainingModeClient.meta(activePhase).shortLabel})`,
     wide: true,
     html: `
       <div style="display:flex;gap:12px;margin-bottom:12px;">
         <label style="flex:1;">Exercise
           <input type="text" id="m-goal-ex" list="exercise-list" value="${esc(defaultEx)}" ${existingGoal ? 'disabled' : ''} />
         </label>
-        <label style="width:190px;">Goal Mode
+        <label style="width:210px;">Goal Mode
           <select id="m-goal-mode">
-            <option value="E1RM" ${!isSetsReps ? 'selected' : ''}>Estimated 1RM</option>
-            <option value="SETS_REPS" ${isSetsReps ? 'selected' : ''}>Sets × Reps @ Weight</option>
+            <option value="E1RM" ${initModeType === 'E1RM' ? 'selected' : ''}>Estimated 1RM (kg)</option>
+            <option value="RELATIVE_BW" ${initModeType === 'RELATIVE_BW' ? 'selected' : ''}>Relative Strength (× BW)</option>
+            <option value="SETS_REPS" ${initModeType === 'SETS_REPS' ? 'selected' : ''}>Sets × Reps @ Weight</option>
           </select>
         </label>
       </div>
@@ -1641,20 +1896,27 @@ async function openGoalModal(existingGoal = null) {
         </div>
       </div>
 
-      <div id="m-mode-1rm" style="display:${isSetsReps ? 'none' : 'block'};">
+      <div id="m-mode-1rm" style="display:${initModeType === 'E1RM' ? 'block' : 'none'};">
         <label>Target 1-Rep Max (kg)
-          <input type="number" step="0.5" id="m-goal-1rm" value="${existingGoal?.targetE1rmKg || (initCurrE ? round(initCurrE * 1.075, 2.5) : 100)}" />
+          <input type="number" step="0.5" id="m-goal-1rm" value="${existingGoal?.targetE1rmKg || (initCurrE ? round(initCurrE * initMult, 2.5) : 100)}" />
         </label>
       </div>
 
-      <div id="m-mode-sets-reps" style="display:${isSetsReps ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1.4fr;gap:10px;">
-        <label>Target Sets<input type="number" id="m-goal-sets" value="${existingGoal?.targetSets || 3}" min="1" max="15" /></label>
-        <label>Target Reps<input type="number" id="m-goal-reps" value="${existingGoal?.targetReps || 8}" min="1" max="50" /></label>
-        <label>Target Weight (kg)<input type="number" step="0.5" id="m-goal-weight" value="${existingGoal?.targetWeightKg || (initCurrW ? round(initCurrW + 5, 2.5) : 80)}" /></label>
+      <div id="m-mode-rel" style="display:${initModeType === 'RELATIVE_BW' ? 'block' : 'none'};">
+        <label>Target Multiple (× Body Weight)
+          <input type="number" step="0.05" min="0.2" max="5" id="m-goal-rel-bw" value="${Number(initRel).toFixed(2)}" />
+        </label>
+        <div class="muted small" style="margin-top:4px;">Scales automatically with your logged body weight (currently ${f1(currBwKg)} kg → ~<b id="m-goal-rel-kg">${round(initRel * currBwKg, 0.5)} kg</b>).</div>
+      </div>
+
+      <div id="m-mode-sets-reps" style="display:${initModeType === 'SETS_REPS' ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1.4fr;gap:10px;">
+        <label>Target Sets<input type="number" id="m-goal-sets" value="${existingGoal?.targetSets || (activePhase === 'CUT' ? 2 : 3)}" min="1" max="15" /></label>
+        <label>Target Reps<input type="number" id="m-goal-reps" value="${existingGoal?.targetReps || (activePhase === 'CUT' ? 5 : 8)}" min="1" max="50" /></label>
+        <label>Target Weight (kg)<input type="number" step="0.5" id="m-goal-weight" value="${existingGoal?.targetWeightKg || (initCurrW ? round(initCurrW + (activePhase === 'CUT' ? 0 : 5), 2.5) : 80)}" /></label>
       </div>
 
       <label style="margin-top:12px;">Notes / Focus (Optional)
-        <input type="text" id="m-goal-notes" value="${esc(existingGoal?.notes || '')}" placeholder="e.g. Pause bench at bottom, rebuild strength" />
+        <input type="text" id="m-goal-notes" value="${esc(existingGoal?.notes || '')}" placeholder="e.g. Hold top-set bar speed during cut" />
       </label>
     `,
     okText: existingGoal ? 'Save Goal' : 'Create Goal',
@@ -1681,10 +1943,16 @@ async function openGoalModal(existingGoal = null) {
 
   $('#m-goal-curr-w')?.addEventListener('input', recalcCurrE1rm);
   $('#m-goal-curr-r')?.addEventListener('input', recalcCurrE1rm);
+  $('#m-goal-rel-bw')?.addEventListener('input', (e) => {
+    const mult = Number(e.target.value) || 0;
+    const lbl = $('#m-goal-rel-kg');
+    if (lbl) lbl.textContent = `${round(mult * currBwKg, 0.5)} kg`;
+  });
   $('#m-goal-mode')?.addEventListener('change', (e) => {
-    const sr = e.target.value === 'SETS_REPS';
-    $('#m-mode-1rm').style.display = sr ? 'none' : 'block';
-    $('#m-mode-sets-reps').style.display = sr ? 'grid' : 'none';
+    const v = e.target.value;
+    $('#m-mode-1rm').style.display = v === 'E1RM' ? 'block' : 'none';
+    $('#m-mode-rel').style.display = v === 'RELATIVE_BW' ? 'block' : 'none';
+    $('#m-mode-sets-reps').style.display = v === 'SETS_REPS' ? 'grid' : 'none';
   });
 
   if (!existingGoal) {
@@ -1695,8 +1963,8 @@ async function openGoalModal(existingGoal = null) {
       $('#m-goal-curr-w').value = rec.w || '';
       $('#m-goal-curr-r').value = rec.r || 5;
       $('#m-goal-curr-e1rm').value = rec.e1rm ? round(rec.e1rm) : '';
-      if (rec.e1rm > 0) $('#m-goal-1rm').value = round(rec.e1rm * 1.075, 2.5);
-      if (rec.w > 0) $('#m-goal-weight').value = round(rec.w + 5, 2.5);
+      if (rec.e1rm > 0) $('#m-goal-1rm').value = round(rec.e1rm * initMult, 2.5);
+      if (rec.w > 0) $('#m-goal-weight').value = round(rec.w + (activePhase === 'CUT' ? 0 : 5), 2.5);
     });
   }
 
@@ -1715,6 +1983,7 @@ async function openGoalModal(existingGoal = null) {
       : (baselineWeightKg > 0 ? round(BodyWeightUtils.calculateE1rm(exName, today(), baselineWeightKg, baselineReps)) : 0);
 
     const targetE1rmKg = Number(res.querySelector('#m-goal-1rm').value) || 0;
+    const targetRelativeBw = Number(res.querySelector('#m-goal-rel-bw').value) || 1.25;
     const targetSets = Number(res.querySelector('#m-goal-sets').value) || 3;
     const targetReps = Number(res.querySelector('#m-goal-reps').value) || 8;
     const targetWeightKg = Number(res.querySelector('#m-goal-weight').value) || 0;
@@ -1723,7 +1992,9 @@ async function openGoalModal(existingGoal = null) {
       existingGoal.goalType !== mode
       || (mode === 'E1RM'
         ? Number(existingGoal.targetE1rmKg) !== targetE1rmKg
-        : (Number(existingGoal.targetSets) !== targetSets || Number(existingGoal.targetReps) !== targetReps || Number(existingGoal.targetWeightKg) !== targetWeightKg))
+        : (mode === 'RELATIVE_BW'
+          ? Number(existingGoal.targetRelativeBw) !== targetRelativeBw
+          : (Number(existingGoal.targetSets) !== targetSets || Number(existingGoal.targetReps) !== targetReps || Number(existingGoal.targetWeightKg) !== targetWeightKg)))
     );
 
     const goalObj = {
@@ -1731,6 +2002,7 @@ async function openGoalModal(existingGoal = null) {
       exerciseName: exName,
       goalType: mode,
       targetE1rmKg,
+      targetRelativeBw,
       targetSets,
       targetReps,
       targetWeightKg,
@@ -1748,6 +2020,41 @@ async function openGoalModal(existingGoal = null) {
     renderGoals();
     toast('Goal saved!', 'success');
   }
+}
+
+function openGoalProgressModal(g) {
+  if (!g) return;
+  const ev = evaluateGoalDesktop(g);
+  const meta = TrainingModeClient.meta(ev.mode);
+  const { body, close } = openCustomModal({
+    title: `🎯 ${ev.name} • Live Goal Progress`,
+    large: true,
+    cancelText: 'Close',
+    html: `
+      <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
+        <div class="stat"><div class="lbl">Phase Lens</div><div class="val" style="color:${meta.color};font-size:17px;">${esc(meta.shortLabel)}</div></div>
+        <div class="stat"><div class="lbl">Target</div><div class="val" style="color:var(--accent);font-size:16px;">${esc(ev.targetHeadline)}</div></div>
+        <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Retention' : 'Progress'}</div><div class="val" style="color:${esc(ev.statusColor)};font-size:17px;">${ev.mode === 'CUT' ? `${ev.retentionPct}% held` : `${ev.progressPct}%`}</div></div>
+        <div class="stat"><div class="lbl">Rel. Strength</div><div class="val">${ev.currentRelBw > 0 ? `${ev.currentRelBw.toFixed(2)}× BW` : '–'}</div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px;">
+        <div class="small font-bold uppercase muted" style="margin-bottom:6px;">Recommended Today (${esc(meta.shortLabel)} Phase)</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);">${esc(ev.nextSessionSummary)}</div>
+        <div class="muted small" style="margin-top:6px;">${ev.mode === 'CUT'
+          ? 'Keep top-set intensity sharp and stop 1–2 reps shy of failure to protect strength without extra fatigue.'
+          : (ev.mode === 'BULK'
+            ? 'Push top sets with controlled form and aim for progressive weight or rep overload.'
+            : 'Match or add 1 clean rep over your previous session while maintaining crisp bar speed.')}</div>
+      </div>
+      <div class="btn-row" style="justify-content:flex-end;">
+        <button type="button" id="m-gp-full" class="primary compact">📊 View Full Goal History</button>
+      </div>
+    `,
+  });
+  body.querySelector('#m-gp-full')?.addEventListener('click', () => {
+    close();
+    openExerciseGoalReportModal(g.id);
+  });
 }
 
 function openExerciseGoalReportModal(goalId) {
@@ -1773,9 +2080,9 @@ function openExerciseGoalReportModal(goalId) {
     html: `
       <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
         <div class="stat"><div class="lbl">Target</div><div class="val" style="color:var(--accent);font-size:17px;">${esc(ev.targetHeadline)}</div></div>
-        <div class="stat"><div class="lbl">Current Best</div><div class="val">${ev.bestE1rm}kg</div></div>
-        <div class="stat"><div class="lbl">Progress</div><div class="val" style="color:${ev.isAchieved ? 'var(--pr)' : 'var(--up)'}">${ev.progressPct}%</div></div>
-        <div class="stat"><div class="lbl">Status</div><div class="val" style="font-size:17px;">${esc(ev.statusLabel)}</div></div>
+        <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Rel. Strength' : 'Current Best'}</div><div class="val">${ev.mode === 'CUT' && ev.currentRelBw > 0 ? `${ev.currentRelBw.toFixed(2)}× BW` : `${ev.bestE1rm}kg`}</div></div>
+        <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Retention' : 'Progress'}</div><div class="val" style="color:${ev.isAchieved ? 'var(--pr)' : esc(ev.statusColor)}">${ev.mode === 'CUT' ? `${ev.retentionPct}% held` : `${ev.progressPct}%`}</div></div>
+        <div class="stat"><div class="lbl">Status</div><div class="val" style="font-size:16px;color:${esc(ev.statusColor)};">${esc(ev.statusLabel)}</div></div>
       </div>
 
       <div class="card" style="margin-bottom:14px;">
@@ -1809,7 +2116,7 @@ function openAllGoalsMasterReportModal() {
         <span class="tag" style="margin-left:8px;">${esc(e.targetHeadline)}</span>
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
-        <span class="goal-pill ${e.isAchieved ? 'achieved' : ''}">${esc(e.statusLabel)}</span>
+        <span class="goal-pill ${e.isAchieved ? 'achieved' : ''}" style="${!e.isAchieved ? `color:${e.statusColor};border-color:${e.statusColor};` : ''}">${esc(e.statusLabel)}</span>
         <span style="font-weight:700;color:var(--accent);">${e.progressPct}%</span>
         <button class="ghost compact m-view-single-report" data-id="${e.goal.id}">View Report</button>
       </div>
@@ -1977,6 +2284,25 @@ async function openEditExerciseModal(exerciseName) {
 
 // ---------------------------------------------------------------- SETTINGS & BODY WEIGHT
 function renderSettings() {
+  // Training Phase Mode
+  const mode = TrainingModeClient.normalize(S.trainingMode);
+  const meta = TrainingModeClient.meta(mode);
+  const pill = $('#settings-mode-pill');
+  if (pill) {
+    pill.textContent = meta.shortLabel;
+    pill.className = `mode-pill ${meta.cssClass}`;
+  }
+  $$('#settings-mode-seg button[data-mode]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  const detailsEl = $('#settings-mode-details');
+  if (detailsEl) {
+    detailsEl.innerHTML = `
+      <div class="tagline" style="color:${meta.color};">${esc(meta.tagline)}</div>
+      <ul>${meta.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>
+    `;
+  }
+
   // Google Sheets info
   const cfg = S.storage || {};
   const statusEl = $('#sheets-status');
@@ -2028,6 +2354,11 @@ function renderSettings() {
 }
 
 function initSettingsModule() {
+  $('#sidebar-mode-badge')?.addEventListener('click', openModePickerModal);
+  $$('#settings-mode-seg button[data-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => switchTrainingMode(btn.dataset.mode));
+  });
+
   $('#bw-log-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const dVal = $('#bw-input-date').value;
@@ -2173,7 +2504,8 @@ let suggestShuffleSeed = 0;
 let suggestSlotOffsets = {};
 
 function analyzeMuscleVolume() {
-  const targets = { Chest: 10, Back: 12, Shoulders: 9, Legs: 10, Arms: 9, Core: 4 };
+  const mode = TrainingModeClient.normalize(S.trainingMode);
+  const targets = TrainingModeClient.weeklyMuscleTargets(mode);
   const validSets = S.sets.filter((s) => (s.reps || 0) > 0);
   let latestMs = Date.now();
   for (const s of validSets) {
@@ -2205,10 +2537,11 @@ function analyzeMuscleVolume() {
     };
   });
   const byCat = Object.fromEntries(list.map((m) => [m.category, m]));
-  return { list, byCat, refMs: latestMs };
+  return { list, byCat, refMs: latestMs, mode };
 }
 
-function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volumeInfo) {
+function buildSuggestedExerciseItem(slot, slotIndex, candidateOffset, alreadyPicked, volumeInfo) {
+  const mode = volumeInfo.mode || TrainingModeClient.normalize(S.trainingMode);
   const available = slot.candidates.filter((n) => !alreadyPicked.has(n.toLowerCase()));
   const pool = available.length ? available : slot.candidates;
 
@@ -2216,7 +2549,8 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
 
   function scoreCandidate(name) {
     const cat = exInfo(name).category || slot.categoryHint;
-    const volDeficitBonus = (volumeInfo.byCat[cat]?.deficitRatio ?? 0.5) * 10;
+    const volScale = mode === 'BULK' ? 11.5 : 10;
+    const volDeficitBonus = (volumeInfo.byCat[cat]?.deficitRatio ?? 0.5) * volScale;
     const benefitBonus = EXERCISE_BENEFITS[name] ? 4.0 : 0.0;
     const pts = sessionsFor(name);
     if (!pts.length) return 8.0 + volDeficitBonus + benefitBonus;
@@ -2225,11 +2559,12 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
     const peakE1rm = Math.max(...pts.map((p) => p.e1rm || 0));
     const currE1rm = lastPt?.e1rm || 0;
     const daysSince = lastPt ? Math.max(0, Math.min(60, (volumeInfo.refMs - lastPt.t) / 86400000)) : 30;
-    const plateauGapBonus = peakE1rm > 0 && currE1rm < peakE1rm
-      ? Math.min(15, ((peakE1rm - currE1rm) / peakE1rm) * 25)
-      : 5.0;
+    const plateauGapBonus = mode === 'CUT'
+      ? (peakE1rm > 0 && currE1rm >= peakE1rm * TrainingModeClient.CUT_RETENTION_FLOOR_RATIO ? 6.0 : 3.0)
+      : (peakE1rm > 0 && currE1rm < peakE1rm ? Math.min(15, ((peakE1rm - currE1rm) / peakE1rm) * 25) : 5.0);
     const recencyBonus = daysSince < 2 ? -20 : (daysSince >= 3 && daysSince <= 18 ? 12 : 6);
-    return (Math.min(25, pts.length) * 0.8) + plateauGapBonus + recencyBonus + volDeficitBonus + benefitBonus;
+    const relBonus = mode === 'CUT' && isBW(name) ? 2.0 : 0;
+    return (Math.min(25, pts.length) * 0.8) + plateauGapBonus + recencyBonus + volDeficitBonus + benefitBonus + relBonus;
   }
 
   const chosenName = ranked[candidateOffset % ranked.length];
@@ -2240,6 +2575,10 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
   const prevSession = sessions.length >= 2 ? sessions[sessions.length - 2] : null;
   const benefitText = EXERCISE_BENEFITS[chosenName] || exInfo(chosenName).description || '';
 
+  const numSets = mode === 'CUT'
+    ? (slotIndex >= 3 ? 2 : 3)
+    : (mode === 'BULK' ? (slotIndex < 3 ? 4 : 3) : 3);
+
   if (!lastSession) {
     return {
       slotTitle: slot.name,
@@ -2248,9 +2587,9 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
       isBodyweight: bw,
       lastSummary: 'No prior sessions logged',
       lastDate: 'First Time',
-      targetSummary: `${slot.defaultSets} × ${slot.defaultReps} reps`,
-      reasonTag: benefitText ? `✨ New Exercise Suggestion: ${benefitText}` : `🎯 New stimulus for ${cat} (${slot.defaultSets} × ${slot.defaultReps})`,
-      prescribedSets: Array.from({ length: slot.defaultSets }, () => ({ weight: bw ? 0 : '', reps: slot.defaultReps, notes: '' })),
+      targetSummary: `${numSets} × ${slot.defaultReps} reps`,
+      reasonTag: benefitText ? `✨ New Exercise Suggestion: ${benefitText}` : `🎯 New stimulus for ${cat} (${numSets} × ${slot.defaultReps})`,
+      prescribedSets: Array.from({ length: numSets }, () => ({ weight: bw ? 0 : '', reps: slot.defaultReps, notes: '' })),
     };
   }
 
@@ -2260,23 +2599,30 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
   if (lastSession.best && lastSession.best.reps) baseReps = lastSession.best.reps;
   else if (validLastSets.length) baseReps = validLastSets[0].reps || slot.defaultReps;
 
-  const numSets = Math.max(3, Math.min(4, validLastSets.length || slot.defaultSets));
   const readyForJump = baseWeight > 0 && (
-    (baseReps >= 8 && slot.defaultReps <= 6) ||
-    (baseReps >= 12) ||
-    (prevSession && (lastSession.e1rm || 0) > (prevSession.e1rm || 0) && baseReps >= slot.defaultReps + 1)
+    mode === 'CUT'
+      ? (baseReps >= 12)
+      : (mode === 'BULK'
+        ? ((baseReps >= 8) || (prevSession && (lastSession.e1rm || 0) >= (prevSession.e1rm || 0) && baseReps >= slot.defaultReps))
+        : ((baseReps >= 8 && slot.defaultReps <= 6) || (baseReps >= 12) || (prevSession && (lastSession.e1rm || 0) > (prevSession.e1rm || 0) && baseReps >= slot.defaultReps + 1)))
   );
 
   let targetWeight, targetReps, overloadNote;
   if (bw && baseWeight <= 0) {
     targetWeight = 0;
-    targetReps = Math.max(slot.defaultReps, baseReps + 1);
-    overloadNote = `Aim for +1 rep per set over last session (${baseReps} → ${targetReps} reps)`;
+    targetReps = mode === 'CUT' ? Math.max(slot.defaultReps, baseReps) : Math.max(slot.defaultReps, baseReps + 1);
+    overloadNote = mode === 'CUT'
+      ? `Cut Retain: Match ${targetReps} clean reps across ${numSets} sets`
+      : `Aim for +1 rep per set over last session (${baseReps} → ${targetReps} reps)`;
   } else if (readyForJump) {
     const inc = (cat === 'Arms' || (cat === 'Shoulders' && chosenName.toLowerCase().includes('raise'))) ? 1.25 : 2.5;
     targetWeight = Math.round((baseWeight + inc) * 2) / 2;
     targetReps = Math.max(slot.defaultReps, baseReps - 2);
-    overloadNote = `Weight progression: +${fmt(targetWeight - baseWeight)}kg (${numSets} × ${targetReps} @ ${fmt(targetWeight)}kg)`;
+    overloadNote = `${mode === 'CUT' ? 'Cut micro-jump' : 'Weight progression'}: +${fmt(targetWeight - baseWeight)}kg (${numSets} × ${targetReps} @ ${fmt(targetWeight)}kg)`;
+  } else if (mode === 'CUT') {
+    targetWeight = baseWeight;
+    targetReps = Math.max(slot.defaultReps, baseReps);
+    overloadNote = `Cut Retain: Hold ${fmt(targetWeight)}kg × ${targetReps}`;
   } else {
     targetWeight = baseWeight;
     targetReps = Math.min(15, baseReps + 1);
@@ -2290,14 +2636,32 @@ function buildSuggestedExerciseItem(slot, candidateOffset, alreadyPicked, volume
   const benefitSuffix = benefitText ? ` • Benefit: ${benefitText}` : '';
 
   let reasonTag;
-  if (peakE1rm > 0 && currE1rm < peakE1rm * 0.94) {
-    reasonTag = `🔧 Needs Improvement: Current E1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
-  } else if (targetE1rm > peakE1rm && peakE1rm > 0) {
-    reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
-  } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets / 2) {
-    reasonTag = `📊 Weekly Volume Gap: ${cat} has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
+  if (mode === 'CUT') {
+    if (slotIndex >= 3) {
+      reasonTag = `🛡 Low-Fatigue Volume: ${numSets} clean sets for ${cat} to protect recovery (${overloadNote})${benefitSuffix}`;
+    } else if (bw || (targetE1rm > peakE1rm && peakE1rm > 0)) {
+      reasonTag = `🏆 Rel. Strength Builder: ${overloadNote} — high payoff during weight loss${benefitSuffix}`;
+    } else {
+      reasonTag = `🛡 Strength Retention: ${overloadNote} to hold ≥95% E1RM${benefitSuffix}`;
+    }
+  } else if (mode === 'BULK') {
+    if (targetE1rm > peakE1rm && peakE1rm > 0) {
+      reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
+    } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets * 0.7) {
+      reasonTag = `💪 Hypertrophy Volume: ${cat} has ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets this week — ${numSets} sets scheduled${benefitSuffix}`;
+    } else {
+      reasonTag = `🔥 Surplus Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+    }
   } else {
-    reasonTag = `📈 Progressive Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+    if (peakE1rm > 0 && currE1rm < peakE1rm * 0.94) {
+      reasonTag = `🔧 Needs Improvement: Current E1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
+    } else if (targetE1rm > peakE1rm && peakE1rm > 0) {
+      reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
+    } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets / 2) {
+      reasonTag = `📊 Weekly Volume Gap: ${cat} has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
+    } else {
+      reasonTag = `📈 Progressive Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+    }
   }
 
   const targetSummary = bw && targetWeight === 0
@@ -2330,7 +2694,8 @@ function renderSuggest() {
   if (legsDeficit >= pushDeficit && legsDeficit >= pullDeficit) recommendedSplit = 'FB';
   else if (pullDeficit >= pushDeficit) recommendedSplit = 'PULL';
 
-  $('#suggest-sub').textContent = `Recommended today: ${SUGGEST_SPLITS[recommendedSplit].title} • Based on 7-day muscle volume & PR/plateau analysis.`;
+  const phaseMeta = TrainingModeClient.meta(volumeInfo.mode);
+  $('#suggest-sub').textContent = `Recommended today: ${SUGGEST_SPLITS[recommendedSplit].title} • ${phaseMeta.shortLabel} targets (${phaseMeta.tagline})`;
 
   // 1. Controls bar: Split Selector + 4 / 5 Exercises Selector
   const ctrlHost = $('#suggest-controls');
@@ -2376,7 +2741,7 @@ function renderSuggest() {
   const volHost = $('#suggest-volume');
   volHost.innerHTML = `
     <div class="suggest-vol-head">
-      <span class="muted small font-bold uppercase">7-Day Muscle Volume Targets</span>
+      <span class="muted small font-bold uppercase">7-Day Muscle Volume Targets (${esc(phaseMeta.shortLabel)})</span>
       <span class="muted small">Working sets completed in last 7 days</span>
     </div>
     <div class="suggest-vol-grid">
@@ -2410,7 +2775,7 @@ function renderSuggest() {
   const picked = new Set();
   const generatedExercises = activeSlots.map((slot, sIdx) => {
     const offset = (suggestSlotOffsets[sIdx] || 0) + suggestShuffleSeed;
-    const item = buildSuggestedExerciseItem(slot, offset, picked, volumeInfo);
+    const item = buildSuggestedExerciseItem(slot, sIdx, offset, picked, volumeInfo);
     picked.add(item.exerciseName.toLowerCase());
     return item;
   });
@@ -2582,8 +2947,25 @@ function renderWorkoutDetail(workoutId) {
     <div class="stat"><div class="lbl">Total Volume</div><div class="val">${Math.round(totalVol)} kg</div></div>
   `;
 
+  const mode = TrainingModeClient.normalize(S.trainingMode);
   $('#workout-detail-exercises').innerHTML = [...grouped.entries()].map(([name, sList]) => {
     const bw = isBW(name);
+    const allSessions = sessionsFor(name);
+    const sessIdx = allSessions.findIndex((x) => x.workoutId === w.id);
+    const currSess = sessIdx >= 0 ? allSessions[sessIdx] : null;
+    const prevSess = sessIdx > 0 ? allSessions[sessIdx - 1] : null;
+    const e1rmDelta = currSess && prevSess && currSess.e1rm && prevSess.e1rm
+      ? Math.round((currSess.e1rm - prevSess.e1rm) * 10) / 10
+      : null;
+    const isPr = currSess && (currSess.isE1rmPr || currSess.isWeightPr);
+    const isRelPr = currSess && currSess.isRelPr && !isPr;
+    const isHeldDip = e1rmDelta !== null && e1rmDelta < 0 && prevSess && TrainingModeClient.isExpectedCutDip(
+      mode, currSess.e1rm, prevSess.e1rm, currSess.rel || 0, prevSess.rel || 0
+    );
+    const deltaHtml = e1rmDelta && e1rmDelta !== 0
+      ? `<span class="delta ${e1rmDelta > 0 ? 'up' : (isHeldDip ? 'delta-retained' : 'down')}" style="margin-left:6px;">${e1rmDelta > 0 ? '+' : ''}${e1rmDelta}kg${isHeldDip ? ' (held)' : ''}</span>`
+      : '';
+
     const tableRows = sList.map((s) => {
       const eVal = (s.weight !== null && s.reps)
         ? Math.round(BodyWeightUtils.calculateE1rm(name, w.date, s.weight, s.reps) * 10) / 10
@@ -2606,8 +2988,9 @@ function renderWorkoutDetail(workoutId) {
             <span class="ex-name" data-jump-progress="${esc(name)}">${esc(name)}</span>
             <span class="tag">${esc(exInfo(name).category)}</span>
             ${bw ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
+            ${isPr ? '<span class="badge-rel-pr">🏆 PR</span>' : (isRelPr && mode === 'CUT' ? '<span class="badge-rel-pr">🏆 REL PR</span>' : '')}
           </div>
-          <div class="detail-summary-badge">${summarize(name, sList)}</div>
+          <div class="detail-summary-badge">${summarize(name, sList)}${deltaHtml}</div>
         </div>
         <table class="detail-sets-table">
           <thead><tr><th>Set</th><th>Weight</th><th>Reps</th><th>Est 1RM</th><th>Notes</th></tr></thead>
@@ -2649,9 +3032,15 @@ let progressChartInstance = null;
 const progressState = { exercise: null, metric: null, range: 0 };
 
 function renderProgressOverview() {
+  const mode = TrainingModeClient.normalize(S.trainingMode);
+  const meta = TrainingModeClient.meta(mode);
   progressState.exercise = null;
   $('#progress-heading').textContent = 'Progress';
-  $('#progress-sub').textContent = 'Track strength curves and estimated 1RMs over time.';
+  $('#progress-sub').textContent = mode === 'CUT'
+    ? 'Cut Phase: highlighting Relative Strength (× BW) and ≥95% E1RM retention.'
+    : (mode === 'BULK'
+      ? 'Bulk Phase: tracking peak E1RM gains and progressive overload.'
+      : 'Track strength curves and estimated 1RMs over time.');
   $('#progress-back').classList.add('hidden');
   $('#progress-detail').classList.add('hidden');
   $('#progress-overview').classList.remove('hidden');
@@ -2660,7 +3049,8 @@ function renderProgressOverview() {
   const withSessions = exList.map((e) => {
     const sess = sessionsFor(e.name);
     const best = sess.reduce((m, s) => (s.e1rm && (!m || s.e1rm > m.e1rm) ? s : m), null);
-    return { ...e, sessionsCount: sess.length, bestE1rm: best?.e1rm || 0 };
+    const bestRel = sess.reduce((m, s) => (s.rel && s.rel > m ? s.rel : m), 0);
+    return { ...e, sessionsCount: sess.length, bestE1rm: best?.e1rm || 0, bestRel };
   }).filter((e) => e.sessionsCount > 0)
     .sort((a, b) => b.sessionsCount - a.sessionsCount);
 
@@ -2672,8 +3062,12 @@ function renderProgressOverview() {
             <span class="nm">${esc(e.name)}</span>
             <span class="tag">${esc(e.category)}</span>
           </div>
-          <div class="big">${e.bestE1rm ? `${e.bestE1rm}<small>kg 1RM</small>` : `${e.sessionsCount}<small>sessions</small>`}</div>
-          <div class="muted small" style="margin-top:4px;">${e.sessionsCount} session${e.sessionsCount === 1 ? '' : 's'} logged</div>
+          <div class="big" style="${mode === 'CUT' && e.bestRel > 0 ? `color:${meta.color};` : ''}">
+            ${mode === 'CUT' && e.bestRel > 0
+              ? `${e.bestRel.toFixed(2)}<small>× BW</small>`
+              : (e.bestE1rm ? `${e.bestE1rm}<small>kg 1RM</small>` : `${e.sessionsCount}<small>sessions</small>`)}
+          </div>
+          <div class="muted small" style="margin-top:4px;">${e.sessionsCount} session${e.sessionsCount === 1 ? '' : 's'} logged${mode === 'CUT' && e.bestE1rm ? ` • Peak ${e.bestE1rm} kg` : ''}</div>
         </div>
       `).join('')}
     </div>
@@ -2698,15 +3092,19 @@ function renderProgressDetail(exerciseName) {
   $('#progress-heading').textContent = ex.name;
   $('#progress-sub').textContent = `${ex.category} • ${ex.bodyweight ? 'Bodyweight (Total Load Calculated)' : 'Barbell / Dumbbell Lift'}`;
 
+  const mode = TrainingModeClient.normalize(S.trainingMode);
   const sess = sessionsFor(ex.name);
   const bestE1rm = sess.reduce((m, s) => Math.max(m, s.e1rm || 0), 0);
   const bestW = sess.reduce((m, s) => Math.max(m, s.top || 0), 0);
+  const bestRel = sess.reduce((m, s) => Math.max(m, s.rel || 0), 0);
+  const latestE1rm = sess.length ? (sess[sess.length - 1].e1rm || 0) : 0;
   const totalVol = sess.reduce((m, s) => m + (s.volume || 0), 0);
+  const retPct = bestE1rm > 0 && latestE1rm > 0 ? Math.min(115, Math.round((latestE1rm / bestE1rm) * 100)) : 0;
 
   $('#progress-stats').innerHTML = `
     <div class="stat"><div class="lbl">Best Est. 1RM</div><div class="val" style="color:var(--pr);">${bestE1rm ? `${bestE1rm} kg` : '–'}</div></div>
-    <div class="stat"><div class="lbl">Top Weight</div><div class="val">${bestW ? `${bestW} kg` : '–'}</div></div>
-    <div class="stat"><div class="lbl">Total Sessions</div><div class="val">${sess.length}</div></div>
+    <div class="stat"><div class="lbl">${mode === 'CUT' && bestRel > 0 ? 'Peak Rel. ×BW' : 'Top Weight'}</div><div class="val" style="${mode === 'CUT' && bestRel > 0 ? 'color:#60a5fa;' : ''}">${mode === 'CUT' && bestRel > 0 ? `${bestRel.toFixed(2)}× BW` : (bestW ? `${bestW} kg` : '–')}</div></div>
+    <div class="stat"><div class="lbl">${mode === 'CUT' && bestE1rm > 0 ? 'Strength Held' : 'Total Sessions'}</div><div class="val" style="${mode === 'CUT' && bestE1rm > 0 ? `color:${retPct >= 95 ? 'var(--up)' : '#60a5fa'};` : ''}">${mode === 'CUT' && bestE1rm > 0 ? `${retPct}%` : sess.length}</div></div>
     <div class="stat"><div class="lbl">${ex.bodyweight ? 'Total Reps' : 'Total Volume'}</div><div class="val">${Math.round(totalVol)} ${ex.bodyweight ? 'reps' : 'kg'}</div></div>
   `;
 
@@ -2745,16 +3143,30 @@ function renderProgressDetail(exerciseName) {
   renderProgressChart(ex.name, chartSessions, progressState.metric, sess);
 
   const showRelCol = sess.some((s) => s.rel !== null);
-  const tableRows = [...sess].reverse().map((s) => `
-    <tr>
-      <td>${shortDate(s.date)}</td>
-      <td>${summarize(ex.name, s.sets)}</td>
-      <td>${s.e1rm ? `${s.e1rm} kg` : '–'}</td>
-      <td>${s.top !== null ? `${s.top} kg` : '–'}</td>
-      ${showRelCol ? `<td>${s.rel !== null ? `${s.rel.toFixed(2)}×` : '–'}</td>` : ''}
-      <td>${s.volume ? `${Math.round(s.volume)} ${ex.bodyweight ? 'reps' : 'kg'}` : '–'}</td>
-    </tr>
-  `).join('');
+  const revSess = [...sess].reverse();
+  const tableRows = revSess.map((s, rIdx) => {
+    const older = revSess[rIdx + 1] || null;
+    const eDelta = older && s.e1rm && older.e1rm ? Math.round((s.e1rm - older.e1rm) * 10) / 10 : null;
+    const heldDip = eDelta !== null && eDelta < 0 && older && TrainingModeClient.isExpectedCutDip(
+      mode, s.e1rm, older.e1rm, s.rel || 0, older.rel || 0
+    );
+    const prBadge = (s.isE1rmPr || s.isWeightPr)
+      ? '<span class="badge-rel-pr">PR</span>'
+      : (s.isRelPr && (mode === 'CUT' || progressState.metric === 'rel') ? '<span class="badge-rel-pr">REL PR</span>' : '');
+    const eDeltaHtml = eDelta !== null && eDelta !== 0
+      ? ` <span class="delta ${eDelta > 0 ? 'up' : (heldDip ? 'delta-retained' : 'down')}">${eDelta > 0 ? '+' : ''}${eDelta}k${heldDip ? ' (held)' : ''}</span>`
+      : '';
+    return `
+      <tr>
+        <td>${shortDate(s.date)} ${prBadge}</td>
+        <td>${summarize(ex.name, s.sets)}</td>
+        <td>${s.e1rm ? `${s.e1rm} kg` : '–'}${eDeltaHtml}</td>
+        <td>${s.top !== null ? `${s.top} kg` : '–'}</td>
+        ${showRelCol ? `<td>${s.rel !== null ? `${s.rel.toFixed(2)}×` : '–'}</td>` : ''}
+        <td>${s.volume ? `${Math.round(s.volume)} ${ex.bodyweight ? 'reps' : 'kg'}` : '–'}</td>
+      </tr>
+    `;
+  }).join('');
 
   $('#progress-table').innerHTML = `
     <thead><tr><th>Date</th><th>Sets Summary</th><th>Est 1RM</th><th>Top W</th>${showRelCol ? '<th>Rel. ×BW</th>' : ''}<th>${ex.bodyweight ? 'Reps' : 'Volume'}</th></tr></thead>
@@ -2781,6 +3193,7 @@ function renderProgressChart(exerciseName, sessions, metricKey = 'e1rm', allSess
     }
   }
 
+  const mode = TrainingModeClient.normalize(S.trainingMode);
   const pts = sessions.filter((s) => mDef.get(s) !== null);
   const labels = pts.map((s) => shortDate(s.date));
   const dataPoints = pts.map((s) => mDef.get(s));
@@ -2789,7 +3202,12 @@ function renderProgressChart(exerciseName, sessions, metricKey = 'e1rm', allSess
     if (i > 0) {
       const prev = dataPoints[i - 1];
       if (dataPoints[i] > prev) return COLORS.up;
-      if (dataPoints[i] < prev) return COLORS.down;
+      if (dataPoints[i] < prev) {
+        const expectedCutDip = metricKey !== 'rel' && TrainingModeClient.isExpectedCutDip(
+          mode, dataPoints[i], prev, s.rel || 0, pts[i - 1].rel || 0
+        );
+        return expectedCutDip ? COLORS.cutBlue : COLORS.down;
+      }
     }
     return COLORS.accent;
   });
@@ -2804,13 +3222,29 @@ function renderProgressChart(exerciseName, sessions, metricKey = 'e1rm', allSess
         label: `${mDef.label} (${mDef.unit})`,
         data: dataPoints,
         borderColor: COLORS.accent,
-        backgroundColor: 'rgba(255, 122, 69, 0.1)',
+        backgroundColor: mode === 'CUT' ? 'rgba(96, 165, 250, 0.10)' : 'rgba(255, 122, 69, 0.1)',
         borderWidth: 2.5,
         pointBackgroundColor: pointColors,
         pointBorderColor: pointColors,
         pointRadius: pts.length > 60 ? 2.5 : 4,
         tension: 0.25,
         fill: true,
+        segment: {
+          borderColor: (ctx) => {
+            const i0 = ctx.p0DataIndex;
+            const i1 = ctx.p1DataIndex;
+            const v0 = dataPoints[i0];
+            const v1 = dataPoints[i1];
+            if (v1 > v0) return COLORS.up;
+            if (v1 < v0) {
+              const heldDip = !isRel && TrainingModeClient.isExpectedCutDip(
+                mode, v1, v0, pts[i1]?.rel || 0, pts[i0]?.rel || 0
+              );
+              return heldDip ? COLORS.cutBlue : COLORS.down;
+            }
+            return COLORS.accent;
+          },
+        },
       }],
     },
     options: {
@@ -3005,16 +3439,21 @@ function renderBodyWeightDashboard() {
   const peakDots = dots.reduce((m, d) => (!m || d.dots > m.dots ? d : m), null);
 
   // KPIs
+  const mode = TrainingModeClient.normalize(S.trainingMode);
   const last = series[series.length - 1];
   const first = visible[0];
   const lastVis = visible[visible.length - 1];
   const delta = first && lastVis && visible.length >= 2 ? lastVis.kg - first.kg : null;
   const spanDays = first && lastVis ? lastVis.day - first.day : 0;
   const rate = delta !== null && spanDays >= 7 ? delta / (spanDays / 7) : null;
+  const pace = rate !== null ? TrainingModeClient.classifyBodyWeightPace(mode, rate) : null;
+  const changeColor = pace
+    ? (pace.isOnTarget ? 'var(--up)' : (mode === 'CUT' && (delta || 0) <= 0 ? '#60a5fa' : 'var(--accent-2)'))
+    : 'var(--text)';
   const sign = (n) => (n > 0 ? '+' : '');
   $('#bwd-kpis').innerHTML = `
     <div class="stat"><div class="lbl">Current</div><div class="val" style="color:var(--accent);">${last ? `${f1(bwdDisp(last.kg))} ${unit}` : '–'}</div><div class="sub">${last ? `7-day avg ${f1(bwdDisp(last.avg7))} ${unit}` : 'No readings yet'}</div></div>
-    <div class="stat"><div class="lbl">Change</div><div class="val">${delta !== null ? `${sign(delta)}${f1(bwdDisp(delta))} ${unit}` : '–'}</div><div class="sub">${rate !== null ? `${sign(rate)}${f2(bwdDisp(rate))} ${unit}/week` : 'Needs 7+ days of data'}</div></div>
+    <div class="stat"><div class="lbl">Change</div><div class="val" style="color:${changeColor};">${delta !== null ? `${sign(delta)}${f1(bwdDisp(delta))} ${unit}` : '–'}</div><div class="sub">${rate !== null ? `${sign(rate)}${f2(bwdDisp(rate))} ${unit}/wk${pace ? ` • ${pace.status}` : ''}` : 'Needs 7+ days of data'}</div></div>
     <div class="stat"><div class="lbl">${peakDots ? 'Peak DOTS' : 'DOTS'}</div><div class="val" style="color:var(--pr);">${peakDots ? f1(peakDots.dots) : '–'}</div><div class="sub">${peakDots ? `Total ${f1(bwdDisp(peakDots.total))} ${unit}` : 'Needs squat + bench + deadlift'}</div></div>
   `;
 
@@ -3167,6 +3606,14 @@ function renderAll() {
     c.onclick = () => addExerciseToLog(c.dataset.name);
   });
 
+  // Training mode pill in sidebar
+  const modePill = $('#sidebar-mode-badge');
+  if (modePill) {
+    const meta = TrainingModeClient.meta(S.trainingMode);
+    modePill.className = `mode-pill ${meta.cssClass}`;
+    modePill.textContent = `${meta.shortLabel} Mode ⇄`;
+  }
+
   // Storage badge
   const b = $('#storage-badge');
   if (S.storage.kind === 'sheets') {
@@ -3237,6 +3684,8 @@ async function open14DaySummaryModal(initialTab = 'live') {
   };
 
   function renderLiveTab() {
+    const sumMode = TrainingModeClient.normalize(summary.trainingMode || S.trainingMode);
+    const sumMeta = TrainingModeClient.meta(sumMode);
     const color = summaryScoreColor(summary.overallScore);
     const volStr = fmtTonnage(summary.totalVolumeKg);
     const volSub = summary.volumeDeltaPct !== null && summary.volumeDeltaPct !== undefined
@@ -3260,13 +3709,16 @@ async function open14DaySummaryModal(initialTab = 'live') {
     } else {
       bwParts.push(summary.hasBodyWeightData ? 'Steady' : 'No readings');
     }
-    if (summary.dotsScore !== null && summary.dotsScore !== undefined) {
+    if (summary.bwPaceAssessment) {
+      bwParts.push(summary.bwPaceAssessment);
+    } else if (summary.dotsScore !== null && summary.dotsScore !== undefined) {
       bwParts.push(`DOTS ${summary.dotsScore}`);
     }
 
+    const strengthLabel = sumMode === 'CUT' ? 'Retention & Rel.' : (sumMode === 'BULK' ? 'Strength Gains' : 'Strength');
     const subScoresHtml = [
       ['Volume', summary.volumeScore],
-      ['Strength', summary.strengthScore],
+      [strengthLabel, summary.strengthScore],
       ['Cadence', summary.consistencyScore],
       ['Balance', summary.balanceScore],
     ].map(([lbl, val]) => {
@@ -3299,22 +3751,32 @@ async function open14DaySummaryModal(initialTab = 'live') {
       const delta = item.e1rmDeltaKg !== null && item.e1rmDeltaKg !== undefined
         ? item.e1rmDeltaKg
         : item.withinPeriodE1rmDeltaKg;
+      const isCutHeldDip = sumMode === 'CUT' && delta !== null && delta < -0.5 && (item.retentionPct === null || item.retentionPct === undefined || item.retentionPct >= TrainingModeClient.CUT_RETENTION_FLOOR_PCT);
       let deltaText = `${item.workingSets14d} sets`;
       let deltaCls = 'flat';
       if (item.isAllTimePr) {
         deltaText = delta !== null && delta > 0 ? `PR +${delta} kg` : 'All-time PR';
         deltaCls = 'up';
+      } else if (item.isAllTimeRelPr) {
+        deltaText = 'REL PR';
+        deltaCls = 'up';
+      } else if (isCutHeldDip && item.retentionPct) {
+        deltaText = `${Math.round(item.retentionPct)}% held`;
+        deltaCls = 'delta-retained';
       } else if (delta !== null && delta !== undefined) {
         deltaText = `${delta > 0 ? '+' : ''}${delta} kg`;
         deltaCls = delta > 0.5 ? 'up' : (delta < -0.5 ? 'down' : 'flat');
       }
+      const relDeltaHint = item.relBwDelta && Math.abs(item.relBwDelta) >= 0.01
+        ? ` <span class="muted small">(${item.relBwDelta > 0 ? '+' : ''}${item.relBwDelta.toFixed(2)}×)</span>`
+        : '';
       return `
         <tr>
           <td><b>${esc(item.exerciseName)}</b></td>
           <td>${esc(item.bestSet14d)}</td>
           <td>${item.bestE1rm14dKg} kg</td>
-          <td>${item.relativeStrengthBw !== null && item.relativeStrengthBw !== undefined ? `${item.relativeStrengthBw.toFixed(2)}×` : '—'}</td>
-          <td><span class="delta ${deltaCls}" style="${item.isAllTimePr ? 'color:var(--pr);' : ''}">${esc(deltaText)}</span></td>
+          <td>${item.relativeStrengthBw !== null && item.relativeStrengthBw !== undefined ? `${item.relativeStrengthBw.toFixed(2)}×${relDeltaHint}` : '—'}</td>
+          <td><span class="delta ${deltaCls}" style="${(item.isAllTimePr || item.isAllTimeRelPr) ? 'color:var(--pr);' : ''}">${esc(deltaText)}</span></td>
         </tr>
       `;
     }).join('');
@@ -3339,7 +3801,10 @@ async function open14DaySummaryModal(initialTab = 'live') {
     ` : '';
 
     contentEl.innerHTML = `
-      <div class="muted small" style="margin-bottom:10px;">Window: <b>${esc(summary.startDate)} – ${esc(summary.endDate)}</b></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div class="muted small">Window: <b>${esc(summary.startDate)} – ${esc(summary.endDate)}</b></div>
+        <span class="mode-pill ${sumMeta.cssClass}">${esc(sumMeta.shortLabel)} Mode</span>
+      </div>
 
       <div class="summary-save-bar">
         <input type="text" id="m-sum-title" placeholder="Label this 14-day block (e.g. Week 4 Accumulation)" style="flex:1;" />
@@ -3366,7 +3831,7 @@ async function open14DaySummaryModal(initialTab = 'live') {
 
       <div class="summary-section-card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <h4 style="margin:0;">Muscle Volume (14d vs Target)</h4>
+          <h4 style="margin:0;">Muscle Volume (14d vs ${esc(sumMeta.shortLabel)} Target)</h4>
           <span class="muted small">${summary.pushToPullRatio !== null ? `Push:Pull ${summary.pushToPullRatio}:1 • ` : ''}Upper/Lower ${summary.upperSharePct}%/${100 - summary.upperSharePct}%</span>
         </div>
         ${musclesHtml}
@@ -3376,8 +3841,10 @@ async function open14DaySummaryModal(initialTab = 'live') {
       ${liftsRows ? `
         <div class="summary-section-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <h4 style="margin:0;">Strength Progression</h4>
-            <span class="muted small">${summary.prsCount} PR • ${summary.progressingCount} up • ${summary.holdingCount} steady • ${summary.regressingCount} down</span>
+            <h4 style="margin:0;">${sumMode === 'CUT' ? 'Retention & Strength' : 'Strength Progression'}</h4>
+            <span class="muted small">${sumMode === 'CUT'
+              ? `${summary.prsCount} PR • ${summary.relPrsCount || 0} rel PR • ${(summary.holdingCount || 0) + (summary.retainedCount || 0)} held`
+              : `${summary.prsCount} PR • ${summary.progressingCount} up • ${summary.holdingCount} steady • ${summary.regressingCount} down`}</span>
           </div>
           <table class="table">
             <thead><tr><th>Exercise</th><th>Best Set</th><th>Est. 1RM</th><th>Rel BW</th><th>14d Change</th></tr></thead>
@@ -3430,13 +3897,15 @@ async function open14DaySummaryModal(initialTab = 'live') {
       const oldest = entries[entries.length - 1];
       const sDiff = newest.overallScore - oldest.overallScore;
       const vDiff = newest.totalVolumeKg - oldest.totalVolumeKg;
+      const newestCut = TrainingModeClient.normalize(newest.trainingMode) === 'CUT';
+      const volColor = vDiff >= 0 ? 'var(--up)' : (newestCut ? '#60a5fa' : 'var(--down)');
       const bwDiff = (newest.endBodyWeightKg !== null && oldest.endBodyWeightKg !== null)
         ? round(newest.endBodyWeightKg - oldest.endBodyWeightKg, 0.1)
         : null;
       trendHtml = `
         <div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px;">
           <div class="stat"><div class="lbl">Score Trend</div><div class="val" style="color:${sDiff >= 0 ? 'var(--up)' : 'var(--down)'};">${sDiff > 0 ? '+' : ''}${sDiff} pts</div><div class="sub">Across ${entries.length} saved blocks</div></div>
-          <div class="stat"><div class="lbl">Volume Trend</div><div class="val" style="color:${vDiff >= 0 ? 'var(--up)' : 'var(--down)'};">${vDiff > 0 ? '+' : ''}${fmtTonnage(vDiff)}</div><div class="sub">Latest vs earliest</div></div>
+          <div class="stat"><div class="lbl">Volume Trend</div><div class="val" style="color:${volColor};">${vDiff > 0 ? '+' : ''}${fmtTonnage(vDiff)}</div><div class="sub">Latest vs earliest</div></div>
           <div class="stat"><div class="lbl">Weight Trend</div><div class="val">${bwDiff !== null ? `${bwDiff > 0 ? '+' : ''}${bwDiff} kg` : '—'}</div><div class="sub">Latest vs earliest</div></div>
         </div>
       `;
@@ -3447,11 +3916,15 @@ async function open14DaySummaryModal(initialTab = 'live') {
       const scoreDelta = prev ? entry.overallScore - prev.overallScore : 0;
       const isExpanded = expandedSavedId === entry.id;
       const color = summaryScoreColor(entry.overallScore);
+      const entryMeta = TrainingModeClient.meta(entry.trainingMode || 'MAINGAIN');
       return `
         <div class="saved-summary-card" data-entry-id="${esc(entry.id)}">
           <div class="saved-summary-head">
             <div>
-              <div style="font-weight:600;font-size:14px;">${esc(entry.title || `${entry.startDate} – ${entry.endDate}`)}</div>
+              <div style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;">
+                <span>${esc(entry.title || `${entry.startDate} – ${entry.endDate}`)}</span>
+                <span class="mode-pill ${entryMeta.cssClass}" style="padding:2px 7px;font-size:10px;">${esc(entryMeta.shortLabel)}</span>
+              </div>
               <div class="muted small">${esc(entry.startDate)} – ${esc(entry.endDate)} • Saved ${esc(entry.savedAt)}</div>
               <div class="muted small" style="margin-top:4px;">${entry.workoutsCount} sessions • ${entry.workingSetsCount} sets • ${fmtTonnage(entry.totalVolumeKg)}${entry.endBodyWeightKg !== null ? ` • ${entry.endBodyWeightKg} kg BW` : ''}</div>
               ${entry.notes ? `<div class="small" style="color:var(--accent-2);margin-top:4px;">${esc(entry.notes)}</div>` : ''}

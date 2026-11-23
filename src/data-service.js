@@ -6,6 +6,7 @@ const { LocalStore } = require('./stores/local-store');
 const { SheetsStore } = require('./stores/sheets-store');
 const SyncMerge = require('./sync-merge');
 const SummaryEngine = require('./summary-engine');
+const TrainingMode = require('./training-mode');
 const DEFAULT_EXERCISES = require('../data/exercises.json');
 
 class DataService {
@@ -23,6 +24,8 @@ class DataService {
       programs: [],
       activeProgramId: null,
       savedSummaries: [],
+      trainingMode: 'MAINGAIN',
+      trainingModeUpdatedAt: 0,
       draft: null,
     };
     this.lastError = null;
@@ -73,6 +76,8 @@ class DataService {
           workouts: this.cache.workouts.length ? this.cache.workouts : localData.workouts,
           sets: this.cache.sets.length ? this.cache.sets : localData.sets,
           exercises: this.cache.exercises.length ? this.cache.exercises : localData.exercises,
+          trainingMode: this.cache.trainingMode || localData.trainingMode || 'MAINGAIN',
+          trainingModeUpdatedAt: this.cache.trainingModeUpdatedAt || localData.trainingModeUpdatedAt || 0,
         };
       }
     }
@@ -81,6 +86,8 @@ class DataService {
       goals: localData.goals || [],
       programs: localData.programs || [],
       activeProgramId: localData.activeProgramId || null,
+      trainingMode: TrainingMode.normalizeTrainingMode(localData.trainingMode),
+      trainingModeUpdatedAt: Number(localData.trainingModeUpdatedAt) || 0,
     };
     if (this.store.kind === 'sheets' && loadOk) {
       try {
@@ -100,6 +107,8 @@ class DataService {
       programs: meta.programs,
       activeProgramId: meta.activeProgramId || (meta.programs && meta.programs[0] ? meta.programs[0].id : null),
       savedSummaries: localData.savedSummaries || [],
+      trainingMode: TrainingMode.normalizeTrainingMode(meta.trainingMode),
+      trainingModeUpdatedAt: Number(meta.trainingModeUpdatedAt) || 0,
       draft: localData.draft || null,
     };
   }
@@ -136,9 +145,24 @@ class DataService {
       await this.store.overwritePrograms(programs, activeProgramId);
     }
 
+    const resolvedMode = SyncMerge.resolveTrainingMode(
+      local.trainingMode,
+      local.trainingModeUpdatedAt,
+      remote.trainingMode,
+      remote.trainingModeUpdatedAt
+    );
+    if (
+      (resolvedMode.mode !== (remote.trainingMode ? TrainingMode.normalizeTrainingMode(remote.trainingMode) : '')
+        || resolvedMode.updatedAt !== (Number(remote.trainingModeUpdatedAt) || 0))
+      && typeof this.store.overwriteSettings === 'function'
+    ) {
+      await this.store.overwriteSettings(resolvedMode.mode, resolvedMode.updatedAt);
+    }
+
     await this.local.saveBodyWeights(bw);
     await this.local.saveGoals(goals);
     await this.local.savePrograms(programs, activeProgramId);
+    await this.local.saveTrainingMode(resolvedMode.mode, resolvedMode.updatedAt);
     await this.local.saveSync({
       spreadsheetId: this.store.spreadsheetId,
       pendingBodyWeights: [], pendingGoals: [], pendingPrograms: [],
@@ -146,7 +170,14 @@ class DataService {
       syncedGoals: goals.map((g) => g.id),
       syncedPrograms: programs.map((p) => p.id),
     });
-    return { bodyWeights: bw, goals, programs, activeProgramId };
+    return {
+      bodyWeights: bw,
+      goals,
+      programs,
+      activeProgramId,
+      trainingMode: resolvedMode.mode,
+      trainingModeUpdatedAt: resolvedMode.updatedAt,
+    };
   }
 
   serviceAccountEmail(keyFile) {
@@ -184,15 +215,36 @@ class DataService {
       programs: this.cache.programs || [],
       activeProgramId: this.cache.activeProgramId,
       savedSummaries: [...(this.cache.savedSummaries || [])].sort((a, b) => (b.savedEpochMs || 0) - (a.savedEpochMs || 0)),
+      trainingMode: TrainingMode.normalizeTrainingMode(this.cache.trainingMode),
+      trainingModeUpdatedAt: Number(this.cache.trainingModeUpdatedAt) || 0,
       draft: this.cache.draft,
     };
   }
 
+  async setTrainingMode(mode) {
+    const clean = TrainingMode.normalizeTrainingMode(mode);
+    const now = Date.now();
+    this.cache.trainingMode = clean;
+    this.cache.trainingModeUpdatedAt = now;
+    await this.local.saveTrainingMode(clean, now);
+    if (this.store.kind === 'sheets' && typeof this.store.overwriteSettings === 'function') {
+      try {
+        await this.store.overwriteSettings(clean, now);
+        this.lastError = null;
+      } catch (err) {
+        console.error('[sync] setTrainingMode', err);
+        this.lastError = `Saved training mode locally, but failed to sync: ${err.message}`;
+      }
+    }
+    return this.state();
+  }
+
   // ---------------- 14-Day Summary & Saved Log ----------------
 
-  get14DaySummary({ isMale = true, referenceDate = null } = {}) {
+  get14DaySummary({ isMale = true, referenceDate = null, trainingMode = null } = {}) {
     const programs = this.cache.programs || [];
     const activeProgram = programs.find((p) => p.id === this.cache.activeProgramId) || programs[0] || null;
+    const mode = TrainingMode.normalizeTrainingMode(trainingMode || this.cache.trainingMode);
     return SummaryEngine.build14DaySummary({
       workouts: this.cache.workouts,
       sets: this.cache.sets,
@@ -202,6 +254,7 @@ class DataService {
       activeProgram,
       isMale,
       referenceDate,
+      trainingMode: mode,
     });
   }
 
@@ -465,6 +518,25 @@ class DataService {
     const goals = [...(this.cache.goals || [])];
     if (!goals.length) return [];
 
+    const mode = TrainingMode.normalizeTrainingMode(this.cache.trainingMode);
+    const catalog = this.exercises();
+    const isBwExercise = (name) => {
+      const ex = catalog.find((e) => e.name.toLowerCase() === String(name || '').toLowerCase());
+      return !!(ex && ex.bodyweight);
+    };
+    const sortedBw = [...(this.cache.bodyWeights || [])]
+      .sort((a, b) => SyncMerge.isoKey(a.date).localeCompare(SyncMerge.isoKey(b.date)));
+    const bwOnDate = (() => {
+      if (!sortedBw.length) return 80.0;
+      const targetIso = SyncMerge.isoKey(workout.date);
+      let chosen = sortedBw[0].weightKg;
+      for (const b of sortedBw) {
+        if (SyncMerge.isoKey(b.date) <= targetIso) chosen = Number(b.weightKg);
+        else break;
+      }
+      return chosen > 0 ? chosen : 80.0;
+    })();
+
     const setsByEx = new Map();
     for (const s of sets) {
       if ((s.reps ?? 0) <= 0) continue;
@@ -480,12 +552,14 @@ class DataService {
       const logged = setsByEx.get(g.exerciseName.toLowerCase());
       if (!logged || !logged.length) continue;
 
+      const exIsBw = isBwExercise(g.exerciseName);
       let topW = 0, topR = 0, topE1rm = 0, vol = 0;
       for (const s of logged) {
         const w = Number(s.weight || 0);
         const r = Number(s.reps || 0);
-        vol += w * r;
-        const e = w * (1 + r / 30);
+        const load = exIsBw ? bwOnDate + w : w;
+        vol += load * r;
+        const e = load > 0 ? load * (1 + r / 30) : 0;
         if (e > topE1rm) {
           topE1rm = e;
           topW = w;
@@ -493,15 +567,26 @@ class DataService {
         }
       }
 
+      const targetE1rm = g.goalType === 'SETS_REPS'
+        ? (() => {
+            const tw = Number(g.targetWeightKg || 0);
+            const tload = exIsBw ? bwOnDate + tw : tw;
+            return tload * (1 + (g.targetReps || 8) / 30);
+          })()
+        : g.goalType === 'RELATIVE_BW'
+          ? (Number(g.targetRelativeBw || 1.25) * bwOnDate)
+          : (Number(g.targetE1rmKg) || 0);
+
       const isAchieved = g.goalType === 'SETS_REPS'
         ? logged.filter((s) => Number(s.weight || 0) >= (g.targetWeightKg || 0) && Number(s.reps || 0) >= (g.targetReps || 0)).length >= (g.targetSets || 3)
-        : topE1rm >= (g.targetE1rmKg || 0);
-
-      const targetE1rm = g.goalType === 'SETS_REPS'
-        ? (g.targetWeightKg || 0) * (1 + (g.targetReps || 8) / 30)
-        : (g.targetE1rmKg || 0);
+        : (targetE1rm > 0 && topE1rm >= targetE1rm);
 
       const progressPct = targetE1rm > 0 ? Math.min(100, Math.round((topE1rm / targetE1rm) * 100)) : 0;
+      const refPeak = Number(g.baselineE1rmKg || 0) || targetE1rm;
+      const retentionNote = mode === 'CUT' && !isAchieved && refPeak > 0 && topE1rm >= refPeak * TrainingMode.CUT_RETENTION_FLOOR_RATIO
+        ? ` • Cut retention (${Math.round((topE1rm / refPeak) * 100)}%)`
+        : '';
+      const relStr = sortedBw.length ? ` • ${(topE1rm / bwOnDate).toFixed(2)}× BW` : '';
 
       const report = {
         workoutId: workout.id,
@@ -514,7 +599,7 @@ class DataService {
         progressPct,
         deltaE1rmKg: 0,
         achievedGoal: isAchieved,
-        summaryNote: `${topW}kg × ${topR} reps (E1RM: ${Math.round(topE1rm * 10) / 10}kg)`,
+        summaryNote: `${topW}kg × ${topR} reps (E1RM: ${Math.round(topE1rm * 10) / 10}kg${relStr})${retentionNote}`,
       };
 
       const reports = [...(g.sessionReports || []), report];

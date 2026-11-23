@@ -19,6 +19,8 @@ class LocalStore {
         programs: [],
         activeProgramId: null,
         savedSummaries: [],
+        trainingMode: 'MAINGAIN',
+        trainingModeUpdatedAt: 0,
         draft: null,
         sync: {},
       });
@@ -41,6 +43,10 @@ class LocalStore {
         data.savedSummaries = [];
         changed = true;
       }
+      if (!data.trainingMode) {
+        data.trainingMode = 'MAINGAIN';
+        changed = true;
+      }
       if (changed) this._write(data);
     }
   }
@@ -57,6 +63,8 @@ class LocalStore {
         programs: Array.isArray(parsed.programs) ? parsed.programs : [],
         activeProgramId: parsed.activeProgramId || null,
         savedSummaries: Array.isArray(parsed.savedSummaries) ? parsed.savedSummaries : [],
+        trainingMode: parsed.trainingMode || 'MAINGAIN',
+        trainingModeUpdatedAt: Number(parsed.trainingModeUpdatedAt) || 0,
         draft: parsed.draft || null,
         sync: parsed.sync && typeof parsed.sync === 'object' ? parsed.sync : {},
       };
@@ -70,6 +78,8 @@ class LocalStore {
         programs: [],
         activeProgramId: null,
         savedSummaries: [],
+        trainingMode: 'MAINGAIN',
+        trainingModeUpdatedAt: 0,
         draft: null,
         sync: {},
       };
@@ -206,6 +216,13 @@ class LocalStore {
     }
   }
 
+  async saveTrainingMode(trainingMode, trainingModeUpdatedAt) {
+    const data = this._read();
+    data.trainingMode = trainingMode || 'MAINGAIN';
+    data.trainingModeUpdatedAt = Number(trainingModeUpdatedAt) || 0;
+    this._write(data);
+  }
+
   async saveDraft(draft) {
     const data = this._read();
     data.draft = draft;
@@ -229,6 +246,8 @@ class LocalStore {
       programs: current.programs,
       activeProgramId: current.activeProgramId,
       savedSummaries: current.savedSummaries || [],
+      trainingMode: current.trainingMode || 'MAINGAIN',
+      trainingModeUpdatedAt: current.trainingModeUpdatedAt || 0,
       draft: null,
       sync: current.sync,
     });

@@ -2,6 +2,7 @@ package com.strengthlogz.mobile.util
 
 import com.strengthlogz.mobile.model.BodyWeightEntry
 import com.strengthlogz.mobile.model.ExerciseGoal
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.model.WorkoutProgram
 
 /**
@@ -88,4 +89,30 @@ object SyncMerge {
         lastSyncedKeys: Set<String>
     ): List<WorkoutProgram> =
         mergeByKey(local, remote, { it.id }, deletedLocally, lastSyncedKeys, ::resolveProgram)
+
+    private val VALID_MODES = setOf("BULK", "MAINGAIN", "CUT")
+
+    private fun isValidMode(raw: String?): Boolean =
+        raw != null && raw.trim().uppercase() in VALID_MODES
+
+    fun resolveTrainingMode(
+        localMode: String?,
+        localUpdatedAt: Long,
+        remoteMode: String?,
+        remoteUpdatedAt: Long
+    ): Pair<String, Long> {
+        val localValid = isValidMode(localMode)
+        val remoteValid = isValidMode(remoteMode)
+        val lNorm = TrainingMode.fromString(localMode).id
+        val rNorm = TrainingMode.fromString(remoteMode).id
+        return when {
+            remoteValid && remoteUpdatedAt > localUpdatedAt -> rNorm to remoteUpdatedAt
+            localValid && localUpdatedAt > remoteUpdatedAt -> lNorm to localUpdatedAt
+            localValid && localUpdatedAt == remoteUpdatedAt && localUpdatedAt > 0L -> lNorm to localUpdatedAt
+            localValid && !remoteValid -> lNorm to localUpdatedAt
+            remoteValid && !localValid -> rNorm to remoteUpdatedAt
+            localValid && remoteValid -> lNorm to localUpdatedAt
+            else -> TrainingMode.MAINGAIN.id to 0L
+        }
+    }
 }

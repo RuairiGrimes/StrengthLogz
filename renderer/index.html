@@ -27,6 +27,7 @@
       <button class="nav-btn" data-view="settings"><span class="ico">⚙</span>Settings <kbd>Ctrl 8</kbd></button>
     </nav>
     <div class="sidebar-foot">
+      <button id="sidebar-mode-badge" class="mode-pill mode-maingain" title="Switch Training Phase">Maingain</button>
       <div id="storage-badge" class="storage-badge">…</div>
     </div>
   </aside>
@@ -336,9 +337,26 @@
       <header class="view-head">
         <div>
           <h1>Settings</h1>
-          <p class="muted">Storage, Cloud Sync &amp; Body Weight</p>
+          <p class="muted">Training Phase, Storage, Cloud Sync &amp; Body Weight</p>
         </div>
       </header>
+
+      <!-- Training Phase Mode -->
+      <div class="card">
+        <div class="card-head-row">
+          <div>
+            <h3>Training Phase Mode</h3>
+            <p class="muted small">Adapts goals, workouts, PR detection, progress charts, and 14-day summaries to your current phase.</p>
+          </div>
+          <span id="settings-mode-pill" class="mode-pill mode-maingain">Maingain</span>
+        </div>
+        <div id="settings-mode-seg" class="mode-seg" role="group" aria-label="Training Phase Mode">
+          <button type="button" class="mode-seg-btn" data-mode="BULK">Bulk<span class="sub">Gain Strength</span></button>
+          <button type="button" class="mode-seg-btn active" data-mode="MAINGAIN">Maingain<span class="sub">Balanced</span></button>
+          <button type="button" class="mode-seg-btn" data-mode="CUT">Cut<span class="sub">Retain &amp; Rel.</span></button>
+        </div>
+        <div id="settings-mode-details" class="mode-details"></div>
+      </div>
 
       <!-- Body Weight Tracker -->
       <div class="card">
@@ -397,7 +415,7 @@
             <li>Enable the <a href="#" data-ext="https://console.cloud.google.com/apis/library/sheets.googleapis.com">Google Sheets API</a> for that project.</li>
             <li>Go to <a href="#" data-ext="https://console.cloud.google.com/iam-admin/serviceaccounts">IAM → Service Accounts</a>, create one, then <b>Keys → Add key → JSON</b>. Save the file somewhere safe.</li>
             <li>Create a blank Google Sheet and <b>Share</b> it with the service account's email (shown above once you pick the key) as <b>Editor</b>.</li>
-            <li>Paste the sheet URL here, pick the key file and press <b>Connect</b>. Tabs <code>Workouts</code>, <code>Sets</code>, <code>Exercises</code>, <code>BodyWeights</code>, <code>Goals</code> and <code>Programs</code> are created automatically.</li>
+            <li>Paste the sheet URL here, pick the key file and press <b>Connect</b>. Tabs <code>Workouts</code>, <code>Sets</code>, <code>Exercises</code>, <code>BodyWeights</code>, <code>Goals</code>, <code>Programs</code> and <code>Settings</code> are created automatically.</li>
           </ol>
         </details>
       </div>

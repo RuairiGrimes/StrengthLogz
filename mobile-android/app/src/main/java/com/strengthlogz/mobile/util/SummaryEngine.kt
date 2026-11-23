@@ -7,6 +7,8 @@ import com.strengthlogz.mobile.model.ExerciseGoal
 import com.strengthlogz.mobile.model.SavedSummaryEntry
 import com.strengthlogz.mobile.model.SavedSummaryLiftItem
 import com.strengthlogz.mobile.model.SavedSummaryMuscleItem
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutProgram
 import com.strengthlogz.mobile.model.WorkoutSet
@@ -44,6 +46,7 @@ data class FourteenDaySummary(
     val endDate: String,
     val priorStartDate: String,
     val priorEndDate: String,
+    val trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     val latestLoggedWorkoutDate: String?,
     val daysSinceLastWorkout: Int?,
     val overallScore: Int,
@@ -88,9 +91,12 @@ data class FourteenDaySummary(
     val bodyWeightDeltaKg: Double?,
     val avg7BodyWeightKg: Double?,
     val bwWeeklyRateKg: Double?,
+    val bwPaceAssessment: String? = null,
     val dotsScore: Double?,
     val dotsDelta: Double?,
     val prsCount: Int,
+    val relPrsCount: Int = 0,
+    val retainedCount: Int = 0,
     val progressingCount: Int,
     val holdingCount: Int,
     val regressingCount: Int,
@@ -136,9 +142,12 @@ data class FourteenDaySummary(
             avg7BodyWeightKg = avg7BodyWeightKg,
             dotsScore = dotsScore,
             prsCount = prsCount,
+            relPrsCount = relPrsCount,
+            retainedCount = retainedCount,
             progressingCount = progressingCount,
             holdingCount = holdingCount,
             regressingCount = regressingCount,
+            trainingMode = trainingMode.id,
             pushToPullRatio = pushToPullRatio,
             upperSharePct = upperSharePct,
             heavySets = heavySets,
@@ -154,15 +163,6 @@ data class FourteenDaySummary(
 }
 
 object SummaryEngine {
-    private val WEEKLY_MUSCLE_TARGETS = linkedMapOf(
-        "Chest" to 10,
-        "Back" to 12,
-        "Legs" to 10,
-        "Shoulders" to 9,
-        "Arms" to 9,
-        "Core" to 4
-    )
-
     private fun round1(v: Double): Double = (v * 10.0).roundToInt() / 10.0
     private fun round2(v: Double): Double = (v * 100.0).roundToInt() / 100.0
 
@@ -181,6 +181,7 @@ object SummaryEngine {
         goals: List<ExerciseGoal>,
         activeProgram: WorkoutProgram? = null,
         isMale: Boolean = true,
+        trainingMode: TrainingMode = TrainingMode.MAINGAIN,
         referenceDateDdMonYyyy: String = DateUtils.todayDdMonYyyy()
     ): FourteenDaySummary {
         val endIso = DateUtils.toSortableIso(referenceDateDdMonYyyy).ifBlank {
@@ -347,7 +348,8 @@ object SummaryEngine {
             val cat = resolveCategory(s.exercise)
             priorSetsByCat[cat] = (priorSetsByCat[cat] ?: 0) + 1
         }
-        val muscleItems = WEEKLY_MUSCLE_TARGETS.map { (cat, wkTarget) ->
+        val weeklyMuscleTargets = TrainingModePolicy.weeklyMuscleTargets(trainingMode)
+        val muscleItems = weeklyMuscleTargets.map { (cat, wkTarget) ->
             SavedSummaryMuscleItem(
                 category = cat,
                 workingSets14d = sets14ByCat[cat] ?: 0,
@@ -377,6 +379,7 @@ object SummaryEngine {
             val spanDays = (bwInPeriod.last().epochDay - bwInPeriod.first().epochDay).coerceAtLeast(1L)
             if (spanDays >= 4L) round2((bwInPeriod.last().weightKg - bwInPeriod.first().weightKg) / (spanDays / 7.0)) else null
         } else null
+        val bwPaceFeedback = bwWeeklyRate?.let { TrainingModePolicy.classifyBodyWeightPace(trainingMode, it) }
 
         val dotsTimeline = if (hasBwData) StrengthAnalytics.buildDotsTimeline(workouts, sets, bodyWeights, isMale) else emptyList()
         val latestDots = dotsTimeline.lastOrNull { it.isoDate <= endIso }?.let { round1(it.dots) }
@@ -387,7 +390,17 @@ object SummaryEngine {
         val sets14ByEx = validSets14d.groupBy { it.exercise.trim().lowercase() }
         val priorByEx = validSetsBeforeWindow.groupBy { it.exercise.trim().lowercase() }
 
+        fun relForSet(s: WorkoutSet): Double? {
+            if (!hasBwData) return null
+            val e = e1rmForSet(s)
+            if (e <= 0.0) return null
+            val bw = BodyWeightUtils.weightOn(setDateStr(s), bodyWeights)
+            return if (bw > 0.0) round2(e / bw) else null
+        }
+
         var prsCount = 0
+        var relPrsCount = 0
+        var retainedCount = 0
         var progressingCount = 0
         var holdingCount = 0
         var regressingCount = 0
@@ -413,6 +426,7 @@ object SummaryEngine {
 
             var bestSet: WorkoutSet? = null
             var bestE1rm14 = 0.0
+            var bestRel14: Double? = null
             var exVol14 = 0.0
             for (s in exSets14) {
                 val w = s.weight ?: 0.0
@@ -423,6 +437,10 @@ object SummaryEngine {
                     bestE1rm14 = e
                     bestSet = s
                 }
+                val sr = relForSet(s)
+                if (sr != null && (bestRel14 == null || sr > bestRel14)) {
+                    bestRel14 = sr
+                }
             }
 
             val priorSets = priorByEx[exName.lowercase()].orEmpty()
@@ -430,22 +448,20 @@ object SummaryEngine {
             val recentPriorSets = priorSets.filter { setEpochDay(it) >= priorStartDay - 28L }.ifEmpty { priorSets }
             val recentBaselineE1rm = recentPriorSets.maxOfOrNull { e1rmForSet(it) }?.takeIf { it > 0.0 }
 
+            val priorAllBestRel = priorSets.mapNotNull { relForSet(it) }.maxOrNull()
+            val recentBaselineRel = recentPriorSets.mapNotNull { relForSet(it) }.maxOrNull()
+
             val e1rmDelta = if (recentBaselineE1rm != null && bestE1rm14 > 0.0) {
                 round1(bestE1rm14 - recentBaselineE1rm)
             } else null
             val e1rmDeltaPct = if (recentBaselineE1rm != null && recentBaselineE1rm > 0.0 && e1rmDelta != null) {
                 round1((e1rmDelta / recentBaselineE1rm) * 100.0)
             } else null
+            val retentionPct = if (recentBaselineE1rm != null && recentBaselineE1rm > 0.0 && bestE1rm14 > 0.0) {
+                round1((bestE1rm14 / recentBaselineE1rm) * 100.0)
+            } else null
 
             val isAllTimePr = bestE1rm14 > 0.0 && priorBestE1rm != null && bestE1rm14 > priorBestE1rm
-
-            val trendDelta = e1rmDelta ?: withinDelta
-            if (isAllTimePr) prsCount++
-            when {
-                trendDelta != null && trendDelta > 0.5 -> progressingCount++
-                trendDelta != null && trendDelta < -0.5 -> regressingCount++
-                else -> holdingCount++
-            }
 
             val bestSetStr = if (bestSet != null) {
                 val w = bestSet.weight ?: 0.0
@@ -457,9 +473,44 @@ object SummaryEngine {
                 "$wPart x ${bestSet.reps ?: 0}"
             } else "-"
 
-            val relBw = if (endBw != null && endBw > 0.0 && bestE1rm14 > 0.0) {
+            val relBw = bestRel14 ?: if (endBw != null && endBw > 0.0 && bestE1rm14 > 0.0) {
                 round2(bestE1rm14 / endBw)
             } else null
+            val relBwDelta = if (relBw != null && recentBaselineRel != null) {
+                round2(relBw - recentBaselineRel)
+            } else null
+            val isAllTimeRelPr = hasBwData && relBw != null && priorAllBestRel != null && relBw > priorAllBestRel + 0.005
+
+            val trendDelta = e1rmDelta ?: withinDelta
+            if (isAllTimePr) prsCount++
+            if (isAllTimeRelPr) relPrsCount++
+
+            when (trainingMode) {
+                TrainingMode.BULK -> when {
+                    trendDelta != null && trendDelta > 0.5 -> progressingCount++
+                    trendDelta != null && trendDelta < -0.5 -> regressingCount++
+                    else -> holdingCount++
+                }
+                TrainingMode.MAINGAIN -> when {
+                    trendDelta != null && trendDelta > 0.5 -> progressingCount++
+                    (e1rmDeltaPct != null && e1rmDeltaPct < -1.5 && (relBwDelta == null || relBwDelta <= 0.01)) ||
+                        (e1rmDeltaPct == null && trendDelta != null && trendDelta < -0.5) -> regressingCount++
+                    else -> holdingCount++
+                }
+                TrainingMode.CUT -> when {
+                    (trendDelta != null && trendDelta > 0.5) ||
+                        (relBwDelta != null && relBwDelta > 0.01) ||
+                        isAllTimeRelPr -> progressingCount++
+                    retentionPct != null && retentionPct < TrainingModePolicy.CUT_RETENTION_FLOOR_PCT &&
+                        (relBwDelta == null || relBwDelta < 0.0) -> regressingCount++
+                    else -> {
+                        holdingCount++
+                        if (retentionPct == null || retentionPct >= TrainingModePolicy.CUT_RETENTION_FLOOR_PCT) {
+                            retainedCount++
+                        }
+                    }
+                }
+            }
 
             SavedSummaryLiftItem(
                 exerciseName = exName,
@@ -475,13 +526,28 @@ object SummaryEngine {
                 e1rmDeltaPct = e1rmDeltaPct,
                 withinPeriodE1rmDeltaKg = withinDelta,
                 relativeStrengthBw = relBw,
-                isAllTimePr = isAllTimePr
+                priorRelativeStrengthBw = recentBaselineRel,
+                relBwDelta = relBwDelta,
+                retentionPct = retentionPct,
+                isAllTimePr = isAllTimePr,
+                isAllTimeRelPr = isAllTimeRelPr
             )
-        }.sortedWith(
-            compareByDescending<SavedSummaryLiftItem> { it.isAllTimePr }
-                .thenByDescending { it.e1rmDeltaKg ?: it.withinPeriodE1rmDeltaKg ?: 0.0 }
-                .thenByDescending { it.workingSets14d }
-        )
+        }.let { items ->
+            if (trainingMode == TrainingMode.CUT) {
+                items.sortedWith(
+                    compareByDescending<SavedSummaryLiftItem> { it.isAllTimePr || it.isAllTimeRelPr }
+                        .thenByDescending { it.relBwDelta ?: 0.0 }
+                        .thenByDescending { it.retentionPct ?: 100.0 }
+                        .thenByDescending { it.workingSets14d }
+                )
+            } else {
+                items.sortedWith(
+                    compareByDescending<SavedSummaryLiftItem> { it.isAllTimePr }
+                        .thenByDescending { it.e1rmDeltaKg ?: it.withinPeriodE1rmDeltaKg ?: 0.0 }
+                        .thenByDescending { it.workingSets14d }
+                )
+            }
+        }
 
         // Sessions list
         val sets14ByWorkoutId = validSets14d.groupBy { it.workoutId }
@@ -508,13 +574,14 @@ object SummaryEngine {
                 exerciseSets = exSets,
                 allSets = sets,
                 exercisesCatalog = exercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
             val trainedRecently = sets14ByEx.containsKey(g.exerciseName.trim().lowercase())
-            val targetStr = if (g.isSetsRepsGoal) {
-                "${g.targetSets}x${g.targetReps} @ ${formatWeightValue(g.targetWeightKg)}kg"
-            } else {
-                "${formatWeightValue(g.targetE1rmKg)}kg 1RM"
+            val targetStr = when {
+                g.isRelativeBwGoal -> "${"%.2f".format(g.targetRelativeBw)}× BW"
+                g.isSetsRepsGoal -> "${g.targetSets}x${g.targetReps} @ ${formatWeightValue(g.targetWeightKg)}kg"
+                else -> "${formatWeightValue(g.targetE1rmKg)}kg 1RM"
             }
             SummaryGoalStatusItem(
                 exerciseName = g.exerciseName,
@@ -527,6 +594,7 @@ object SummaryEngine {
 
         // Deterministic 0-100 Scoring
         val (overallScore, volScore, strScore, conScore, balScore, tierLabel) = computeDeterministicScores(
+            trainingMode = trainingMode,
             workoutsCount = workoutsCount,
             programTarget14d = programTarget14d,
             longestRestGapDays = longestRestGapDays,
@@ -535,14 +603,18 @@ object SummaryEngine {
             muscleItems = muscleItems,
             lifts = lifts,
             prsCount = prsCount,
+            relPrsCount = relPrsCount,
             progressingCount = progressingCount,
+            holdingCount = holdingCount,
             regressingCount = regressingCount,
+            dotsDelta = dotsDelta,
             pushToPullRatio = pushToPullRatio,
             upperSets = upperSets,
             lowerSets = lowerSets
         )
 
         val (highlights, recommendations) = buildInsights(
+            trainingMode = trainingMode,
             workoutsCount = workoutsCount,
             priorWorkoutsCount = priorWorkoutsCount,
             totalVolumeKg = totalVolumeKg,
@@ -554,9 +626,14 @@ object SummaryEngine {
             muscleItems = muscleItems,
             lifts = lifts,
             prsCount = prsCount,
+            relPrsCount = relPrsCount,
+            progressingCount = progressingCount,
+            holdingCount = holdingCount,
+            retainedCount = retainedCount,
             hasBodyWeightData = hasBwData,
             bodyWeightDeltaKg = bwDelta,
             bwWeeklyRateKg = bwWeeklyRate,
+            bwPaceFeedback = bwPaceFeedback,
             dotsScore = latestDots,
             dotsDelta = dotsDelta,
             pushToPullRatio = pushToPullRatio,
@@ -571,6 +648,7 @@ object SummaryEngine {
             endDate = endDateStr,
             priorStartDate = priorStartStr,
             priorEndDate = priorEndStr,
+            trainingMode = trainingMode,
             latestLoggedWorkoutDate = latestLoggedWorkoutDate,
             daysSinceLastWorkout = daysSinceLastWorkout,
             overallScore = overallScore,
@@ -615,9 +693,12 @@ object SummaryEngine {
             bodyWeightDeltaKg = bwDelta,
             avg7BodyWeightKg = avg7Bw,
             bwWeeklyRateKg = bwWeeklyRate,
+            bwPaceAssessment = bwPaceFeedback?.status,
             dotsScore = latestDots,
             dotsDelta = dotsDelta,
             prsCount = prsCount,
+            relPrsCount = relPrsCount,
+            retainedCount = retainedCount,
             progressingCount = progressingCount,
             holdingCount = holdingCount,
             regressingCount = regressingCount,
@@ -640,6 +721,7 @@ object SummaryEngine {
     )
 
     private fun computeDeterministicScores(
+        trainingMode: TrainingMode,
         workoutsCount: Int,
         programTarget14d: Int?,
         longestRestGapDays: Int,
@@ -648,8 +730,11 @@ object SummaryEngine {
         muscleItems: List<SavedSummaryMuscleItem>,
         lifts: List<SavedSummaryLiftItem>,
         prsCount: Int,
+        relPrsCount: Int,
         progressingCount: Int,
+        holdingCount: Int,
         regressingCount: Int,
+        dotsDelta: Double?,
         pushToPullRatio: Double?,
         upperSets: Int,
         lowerSets: Int
@@ -665,29 +750,67 @@ object SummaryEngine {
         val consistencyScore = ((freqRatio * 90.0) + if (longestRestGapDays <= 3) 10.0 else 0.0 - gapPenalty)
             .roundToInt().coerceIn(10, 100)
 
-        // 2. Volume (0-100): avg target attainment across main muscle groups + continuity
+        // 2. Volume (0-100): avg target attainment across mode-scaled muscle targets + continuity
         val primaryMuscles = muscleItems.filter { it.category != "Core" }
         val avgMuscleCoverage = primaryMuscles.map {
             (it.workingSets14d.toDouble() / it.target14dSets.coerceAtLeast(1)).coerceAtMost(1.1)
         }.average().let { if (it.isNaN()) 0.0 else it }
-        val continuityAdj = when {
-            volumeDeltaPct == null -> 5.0
-            volumeDeltaPct in -15.0..25.0 -> 8.0
-            volumeDeltaPct > 25.0 -> 4.0
-            else -> -6.0
+        val continuityAdj = when (trainingMode) {
+            TrainingMode.BULK -> when {
+                volumeDeltaPct == null -> 5.0
+                volumeDeltaPct in 0.0..25.0 -> 8.0
+                volumeDeltaPct > 25.0 -> 4.0
+                volumeDeltaPct in -10.0..0.0 -> 2.0
+                else -> -6.0
+            }
+            TrainingMode.MAINGAIN -> when {
+                volumeDeltaPct == null -> 5.0
+                volumeDeltaPct in -15.0..20.0 -> 8.0
+                volumeDeltaPct > 20.0 -> 4.0
+                volumeDeltaPct < -20.0 -> -5.0
+                else -> 2.0
+            }
+            TrainingMode.CUT -> when {
+                volumeDeltaPct == null -> 6.0
+                volumeDeltaPct in -30.0..15.0 -> 8.0
+                volumeDeltaPct in 15.0..25.0 -> 4.0
+                volumeDeltaPct > 25.0 -> 2.0
+                volumeDeltaPct < -40.0 -> -4.0
+                else -> 4.0
+            }
         }
         val volumeScore = ((avgMuscleCoverage * 88.0) + continuityAdj).roundToInt().coerceIn(10, 100)
 
-        // 3. Strength (0-100): ratio of progressing/holding lifts, average E1RM delta, and PR bonus
+        // 3. Strength (0-100): tailored to phase (gains & PRs in Bulk; retention & rel ×BW in Cut)
         val trackedWithBaseline = lifts.filter { (it.e1rmDeltaPct ?: it.withinPeriodE1rmDeltaKg) != null }
         val strengthScore = if (lifts.isEmpty()) {
             0
         } else {
-            val netPositiveRatio = (progressingCount + 0.5 * (lifts.size - progressingCount - regressingCount)) / lifts.size.toDouble()
-            val avgDeltaPct = trackedWithBaseline.mapNotNull { it.e1rmDeltaPct }.average().let { if (it.isNaN()) 0.0 else it }
-            val prBonus = (prsCount * 6).coerceAtMost(18)
-            val raw = 45.0 + (netPositiveRatio * 35.0) + (avgDeltaPct.coerceIn(-10.0, 10.0) * 1.5) + prBonus
-            raw.roundToInt().coerceIn(15, 100)
+            when (trainingMode) {
+                TrainingMode.BULK -> {
+                    val netRatio = (progressingCount + 0.45 * holdingCount) / lifts.size.toDouble()
+                    val avgDeltaPct = trackedWithBaseline.mapNotNull { it.e1rmDeltaPct }.average().let { if (it.isNaN()) 0.0 else it }
+                    val prBonus = (prsCount * 6).coerceAtMost(18)
+                    val raw = 43.0 + (netRatio * 35.0) + (avgDeltaPct.coerceIn(-10.0, 10.0) * 1.6) + prBonus
+                    raw.roundToInt().coerceIn(15, 100)
+                }
+                TrainingMode.MAINGAIN -> {
+                    val netRatio = (progressingCount + 0.70 * holdingCount) / lifts.size.toDouble()
+                    val avgDeltaPct = trackedWithBaseline.mapNotNull { it.e1rmDeltaPct }.average().let { if (it.isNaN()) 0.0 else it }
+                    val prBonus = ((prsCount + relPrsCount) * 6).coerceAtMost(18)
+                    val raw = 46.0 + (netRatio * 36.0) + (avgDeltaPct.coerceIn(-8.0, 8.0) * 1.4) + prBonus
+                    raw.roundToInt().coerceIn(15, 100)
+                }
+                TrainingMode.CUT -> {
+                    val retentionRatio = (progressingCount + 0.90 * holdingCount) / lifts.size.toDouble()
+                    val avgRelDelta = lifts.mapNotNull { it.relBwDelta }.average().let { if (it.isNaN()) 0.0 else it }
+                    val relBonus = (avgRelDelta * 120.0).coerceIn(-6.0, 12.0)
+                    val dotsBonus = if (dotsDelta != null && dotsDelta > 0.0) 5.0 else 0.0
+                    val prBonus = ((prsCount + relPrsCount) * 6).coerceAtMost(18)
+                    val raw = 48.0 + (retentionRatio * 36.0) + relBonus + dotsBonus + prBonus
+                    raw.roundToInt().coerceIn(20, 100)
+                }
+            }
         }
 
         // 4. Balance (0-100): muscle coverage count + push:pull symmetry + lower body presence
@@ -707,21 +830,17 @@ object SummaryEngine {
         }
         val balanceScore = (coveragePts + pushPullPts + lowerPts).roundToInt().coerceIn(10, 100)
 
-        val overall = (consistencyScore * 0.25 + volumeScore * 0.25 + strengthScore * 0.30 + balanceScore * 0.20)
+        val w = TrainingModePolicy.scoreWeights(trainingMode)
+        val overall = (consistencyScore * w.consistency + volumeScore * w.volume + strengthScore * w.strength + balanceScore * w.balance)
             .roundToInt().coerceIn(0, 100)
 
-        val tier = when {
-            overall >= 88 -> "Peak Block"
-            overall >= 74 -> "Strong Momentum"
-            overall >= 58 -> "Steady Progress"
-            overall >= 40 -> "Building Base"
-            else -> "Low Stimulus"
-        }
+        val tier = TrainingModePolicy.tierLabel(trainingMode, overall)
 
         return ScoreBundle(overall, volumeScore, strengthScore, consistencyScore, balanceScore, tier)
     }
 
     private fun buildInsights(
+        trainingMode: TrainingMode,
         workoutsCount: Int,
         priorWorkoutsCount: Int,
         totalVolumeKg: Double,
@@ -733,9 +852,14 @@ object SummaryEngine {
         muscleItems: List<SavedSummaryMuscleItem>,
         lifts: List<SavedSummaryLiftItem>,
         prsCount: Int,
+        relPrsCount: Int,
+        progressingCount: Int,
+        holdingCount: Int,
+        retainedCount: Int,
         hasBodyWeightData: Boolean,
         bodyWeightDeltaKg: Double?,
         bwWeeklyRateKg: Double?,
+        bwPaceFeedback: com.strengthlogz.mobile.model.BwPaceFeedback?,
         dotsScore: Double?,
         dotsDelta: Double?,
         pushToPullRatio: Double?,
@@ -750,28 +874,47 @@ object SummaryEngine {
         if (workoutsCount == 0) {
             val lastInfo = if (daysSinceLastWorkout != null) "Last recorded session was $daysSinceLastWorkout days ago." else "No sessions logged yet."
             highlights.add("Zero working sessions recorded in the trailing 14-day window. $lastInfo")
-            recommendations.add("Log a baseline Push, Pull, or Full Body session to re-establish training momentum.")
+            recommendations.add("Log a baseline Push, Pull, or Full Body session to re-establish ${trainingMode.label} momentum.")
             return highlights to recommendations
         }
 
         // Volume highlight
         if (volumeDeltaPct != null) {
             val dir = if (volumeDeltaPct >= 0) "+${formatWeightValue(volumeDeltaPct)}%" else "${formatWeightValue(volumeDeltaPct)}%"
-            highlights.add("Volume totaled ${formatWeightValue(totalVolumeKg)} kg across $workoutsCount sessions ($dir vs prior 14 days, $priorWorkoutsCount sessions).")
+            val volTail = if (trainingMode == TrainingMode.CUT && volumeDeltaPct in -30.0..-5.0) " (controlled cut taper)" else ""
+            highlights.add("Volume totaled ${formatWeightValue(totalVolumeKg)} kg across $workoutsCount sessions ($dir vs prior 14 days$volTail, $priorWorkoutsCount sessions).")
         } else {
             highlights.add("Logged $workoutsCount sessions totaling ${formatWeightValue(totalVolumeKg)} kg of external workload.")
         }
 
-        // Top strength progression / PRs
-        if (prsCount > 0) {
-            val topPr = lifts.firstOrNull { it.isAllTimePr }
-            if (topPr != null) {
-                highlights.add("$prsCount all-time E1RM PR${if (prsCount > 1) "s" else ""} set, led by ${topPr.exerciseName} at ${formatWeightValue(topPr.bestE1rm14dKg)} kg (${topPr.bestSet14d}).")
+        // Mode-specific strength highlight
+        if (trainingMode == TrainingMode.CUT) {
+            if (relPrsCount > 0) {
+                val topRelPr = lifts.firstOrNull { it.isAllTimeRelPr } ?: lifts.firstOrNull()
+                if (topRelPr != null && topRelPr.relativeStrengthBw != null) {
+                    highlights.add("$relPrsCount relative strength PR${if (relPrsCount > 1) "s" else ""} in Cut mode, led by ${topRelPr.exerciseName} at ${"%.2f".format(topRelPr.relativeStrengthBw)}× BW!")
+                }
+            } else if (prsCount > 0) {
+                val topPr = lifts.firstOrNull { it.isAllTimePr }
+                if (topPr != null) {
+                    highlights.add("$prsCount all-time E1RM PR${if (prsCount > 1) "s" else ""} set during your cut, led by ${topPr.exerciseName} (${topPr.bestSet14d}).")
+                }
+            } else if (lifts.isNotEmpty()) {
+                val heldTotal = progressingCount + holdingCount
+                val pctHeld = ((heldTotal.toDouble() / lifts.size.toDouble()) * 100.0).roundToInt()
+                highlights.add("Strength retention: $heldTotal/${lifts.size} lifts ($pctHeld%) held ≥95% baseline or gained relative × BW.")
             }
         } else {
-            val bestGain = lifts.filter { (it.e1rmDeltaKg ?: 0.0) > 0.0 }.maxByOrNull { it.e1rmDeltaKg ?: 0.0 }
-            if (bestGain != null) {
-                highlights.add("Top strength gain on ${bestGain.exerciseName}: +${formatWeightValue(bestGain.e1rmDeltaKg)} kg est. 1RM (${bestGain.bestSet14d}).")
+            if (prsCount > 0) {
+                val topPr = lifts.firstOrNull { it.isAllTimePr }
+                if (topPr != null) {
+                    highlights.add("$prsCount all-time E1RM PR${if (prsCount > 1) "s" else ""} set, led by ${topPr.exerciseName} at ${formatWeightValue(topPr.bestE1rm14dKg)} kg (${topPr.bestSet14d}).")
+                }
+            } else {
+                val bestGain = lifts.filter { (it.e1rmDeltaKg ?: 0.0) > 0.0 }.maxByOrNull { it.e1rmDeltaKg ?: 0.0 }
+                if (bestGain != null) {
+                    highlights.add("Top strength gain on ${bestGain.exerciseName}: +${formatWeightValue(bestGain.e1rmDeltaKg)} kg est. 1RM (${bestGain.bestSet14d}).")
+                }
             }
         }
 
@@ -779,11 +922,12 @@ object SummaryEngine {
         if (hasBodyWeightData && bodyWeightDeltaKg != null) {
             val sign = if (bodyWeightDeltaKg > 0) "+" else ""
             val rateStr = bwWeeklyRateKg?.let { " (${if (it > 0) "+" else ""}${formatWeightValue(it)} kg/wk)" } ?: ""
+            val paceStr = bwPaceFeedback?.let { " — ${it.status}" } ?: ""
             val dotsStr = dotsScore?.let {
                 val dDelta = dotsDelta?.let { dd -> " (${if (dd > 0) "+" else ""}${formatWeightValue(dd)})" } ?: ""
                 " • DOTS ${formatWeightValue(it)}$dDelta"
             } ?: ""
-            highlights.add("Body weight moved $sign${formatWeightValue(bodyWeightDeltaKg)} kg over 14 days$rateStr$dotsStr.")
+            highlights.add("Body weight moved $sign${formatWeightValue(bodyWeightDeltaKg)} kg over 14 days$rateStr$paceStr$dotsStr.")
         }
 
         // Program adherence
@@ -792,12 +936,16 @@ object SummaryEngine {
         }
 
         // Recommendations
+        if (bwPaceFeedback != null && !bwPaceFeedback.isOnTarget) {
+            recommendations.add("${bwPaceFeedback.status}: ${bwPaceFeedback.detail}")
+        }
+
         val underTrained = muscleItems
             .filter { it.category != "Core" && it.workingSets14d < it.target14dSets * 0.5 }
             .sortedBy { it.workingSets14d.toDouble() / it.target14dSets.coerceAtLeast(1) }
         if (underTrained.isNotEmpty()) {
             val names = underTrained.take(2).joinToString(" and ") { "${it.category} (${it.workingSets14d}/${it.target14dSets} sets)" }
-            recommendations.add("Prioritize $names in the upcoming block to close 14-day volume deficits.")
+            recommendations.add("Prioritize $names to hit your ${trainingMode.label} 14-day muscle targets.")
         }
 
         if (pushToPullRatio != null && pushToPullRatio > 1.4) {
@@ -828,7 +976,12 @@ object SummaryEngine {
         }
 
         if (recommendations.isEmpty()) {
-            recommendations.add("Volume, cadence, and strength trends are balanced; hold current split and progress loads by 1.25-2.5 kg on top-rep hits.")
+            val fallbackRec = when (trainingMode) {
+                TrainingMode.CUT -> "Strength retention and cut pace are right on target; keep top sets heavy with controlled low-fatigue volume."
+                TrainingMode.MAINGAIN -> "Volume, cadence, and relative strength are balanced; hold current split and chase +1 rep or +1.25 kg micro-gains."
+                TrainingMode.BULK -> "Volume, cadence, and strength trends are balanced; hold current split and progress loads by 1.25-2.5 kg on top-rep hits."
+            }
+            recommendations.add(fallbackRec)
         }
 
         return highlights.take(4) to recommendations.take(4)

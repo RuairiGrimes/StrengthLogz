@@ -199,7 +199,8 @@ class GoogleSheetsClient(
             "Exercises" to listOf("Name", "Category", "Bodyweight", "Description"),
             "BodyWeights" to listOf("Date", "WeightKg", "Source", "UpdatedAt"),
             "Goals" to listOf("Id", "ExerciseName", "PayloadJson", "UpdatedAt"),
-            "Programs" to listOf("Id", "ProgramName", "IsActive", "PayloadJson", "UpdatedAt")
+            "Programs" to listOf("Id", "ProgramName", "IsActive", "PayloadJson", "UpdatedAt"),
+            "Settings" to listOf("Key", "Value", "UpdatedAt")
         )
 
         val missing = requiredTabs.keys.filter { it !in existing }
@@ -253,7 +254,7 @@ class GoogleSheetsClient(
         ensureTabs(spreadsheetId)
 
         val url = "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values:batchGet" +
-            "?ranges=Workouts!A2:D&ranges=Sets!A2:H&ranges=Exercises!A2:D&ranges=BodyWeights!A2:D&ranges=Goals!A2:D&ranges=Programs!A2:E&valueRenderOption=UNFORMATTED_VALUE"
+            "?ranges=Workouts!A2:D&ranges=Sets!A2:H&ranges=Exercises!A2:D&ranges=BodyWeights!A2:D&ranges=Goals!A2:D&ranges=Programs!A2:E&ranges=Settings!A2:C&valueRenderOption=UNFORMATTED_VALUE"
 
         val res = requestJson("GET", url)
         val valueRanges = res.getAsJsonArray("valueRanges")
@@ -284,6 +285,7 @@ class GoogleSheetsClient(
         val bwRows = getRows(3)
         val gRows = getRows(4)
         val pRows = getRows(5)
+        val settingsRows = getRows(6)
 
         val workouts = wRows
             .filter { it.firstOrNull()?.isNotBlank() == true }
@@ -368,6 +370,19 @@ class GoogleSheetsClient(
             }
             .toMutableList()
 
+        var remoteTrainingMode: String? = null
+        var remoteTrainingModeUpdatedAt = 0L
+        for (r in settingsRows) {
+            val key = r.getOrElse(0) { "" }.trim()
+            if (key.equals("trainingMode", ignoreCase = true)) {
+                val value = r.getOrElse(1) { "" }.trim()
+                if (value.isNotEmpty()) {
+                    remoteTrainingMode = com.strengthlogz.mobile.model.TrainingMode.fromString(value).id
+                }
+                remoteTrainingModeUpdatedAt = r.getOrElse(2) { "" }.toDoubleOrNull()?.toLong() ?: 0L
+            }
+        }
+
         return AppData(
             workouts = workouts,
             sets = sets,
@@ -375,7 +390,9 @@ class GoogleSheetsClient(
             bodyWeights = bodyWeights,
             goals = goals,
             programs = programs,
-            activeProgramId = remoteActiveId
+            activeProgramId = remoteActiveId,
+            trainingMode = remoteTrainingMode,
+            trainingModeUpdatedAt = remoteTrainingModeUpdatedAt
         )
     }
 
@@ -425,6 +442,12 @@ class GoogleSheetsClient(
             listOf<Any>(it.id, it.safeProgramName, it.id == activeProgramId, gson.toJson(it), it.updatedAt)
         }
         overwriteTab(id, "Programs", listOf("Id", "ProgramName", "IsActive", "PayloadJson", "UpdatedAt"), rows)
+    }
+
+    fun overwriteSettings(rawSpreadsheetId: String, trainingMode: String, updatedAt: Long) {
+        val id = extractSheetId(rawSpreadsheetId)
+        val rows = listOf(listOf<Any>("trainingMode", trainingMode, updatedAt))
+        overwriteTab(id, "Settings", listOf("Key", "Value", "UpdatedAt"), rows)
     }
 
     private fun appendRows(spreadsheetId: String, tab: String, rows: List<List<Any>>) {

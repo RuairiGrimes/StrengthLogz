@@ -6,6 +6,7 @@
 //   BodyWeights: Date | WeightKg | Source | UpdatedAt
 //   Goals    : Id | ExerciseName | PayloadJson | UpdatedAt
 //   Programs : Id | ProgramName | IsActive | PayloadJson | UpdatedAt
+//   Settings : Key | Value | UpdatedAt
 const { google } = require('googleapis');
 
 const TABS = {
@@ -15,6 +16,7 @@ const TABS = {
   BodyWeights: ['Date', 'WeightKg', 'Source', 'UpdatedAt'],
   Goals: ['Id', 'ExerciseName', 'PayloadJson', 'UpdatedAt'],
   Programs: ['Id', 'ProgramName', 'IsActive', 'PayloadJson', 'UpdatedAt'],
+  Settings: ['Key', 'Value', 'UpdatedAt'],
 };
 
 const colLetter = (n) => String.fromCharCode(64 + n);
@@ -81,7 +83,7 @@ class SheetsStore {
       valueRenderOption: 'UNFORMATTED_VALUE',
     });
     const num = (v) => (v === '' || v === undefined || v === null ? null : Number(v));
-    const [w, s, e, bw, g, p] = res.data.valueRanges.map((vr) => vr.values || []);
+    const [w, s, e, bw, g, p, settingsRows = []] = res.data.valueRanges.map((vr) => vr.values || []);
     const parseJson = (str) => { try { return JSON.parse(str); } catch { return null; } };
     let activeProgramId = null;
     const programs = p.filter((r) => r[0]).map((r) => {
@@ -97,6 +99,15 @@ class SheetsStore {
     const bodyWeights = bw.filter((r) => r[0] && num(r[1]) !== null).map((r) => ({
       date: String(r[0]), weightKg: num(r[1]), source: r[2] || 'manual', updatedAt: num(r[3]) || 0,
     }));
+    let trainingMode = null;
+    let trainingModeUpdatedAt = 0;
+    for (const r of settingsRows) {
+      if (String(r[0] || '').trim().toLowerCase() === 'trainingmode') {
+        const val = String(r[1] || '').trim().toUpperCase();
+        if (val === 'BULK' || val === 'MAINGAIN' || val === 'CUT') trainingMode = val;
+        trainingModeUpdatedAt = num(r[2]) || 0;
+      }
+    }
     return {
       workouts: w.filter((r) => r[0]).map((r) => ({
         id: String(r[0]), date: String(r[1] || ''), title: r[2] || '', notes: r[3] || '',
@@ -113,6 +124,8 @@ class SheetsStore {
       goals,
       programs,
       activeProgramId,
+      trainingMode,
+      trainingModeUpdatedAt,
     };
   }
 
@@ -149,6 +162,10 @@ class SheetsStore {
     await this._overwriteTab('Programs', list.map((p) => [
       p.id, p.programName || '', p.id === activeProgramId, JSON.stringify(p), p.updatedAt || 0,
     ]));
+  }
+
+  async overwriteSettings(trainingMode, updatedAt) {
+    await this._overwriteTab('Settings', [['trainingMode', trainingMode || 'MAINGAIN', Number(updatedAt) || 0]]);
   }
 
   async _append(tab, rows) {

@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.strengthlogz.mobile.model.BodyWeightEntry
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.theme.*
@@ -55,6 +57,8 @@ fun BodyWeightScreen(
     distinctExercises: List<String>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
     isMale: Boolean,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     onSetMale: (Boolean) -> Unit,
     useLbs: Boolean,
     onSetUseLbs: (Boolean) -> Unit,
@@ -133,7 +137,13 @@ fun BodyWeightScreen(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Body Weight & Strength", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Trends, relative strength & DOTS", fontSize = 12.sp, color = TextSecondary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Trends, relative strength & DOTS", fontSize = 12.sp, color = TextSecondary)
+                        TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
+                    }
                 }
                 SegChips(listOf("kg", "lb"), if (useLbs) 1 else 0) { onSetUseLbs(it == 1) }
             }
@@ -147,30 +157,64 @@ fun BodyWeightScreen(
             val delta = if (first != null && lastVis != null && visible.size >= 2) lastVis.weightKg - first.weightKg else null
             val spanDays = if (first != null && lastVis != null) lastVis.epochDay - first.epochDay else 0L
             val rate = if (delta != null && spanDays >= 7) delta / (spanDays / 7.0) else null
+            val pace = rate?.let { TrainingModePolicy.classifyBodyWeightPace(trainingMode, it) }
+            val changeColor = when {
+                pace == null -> TextPrimary
+                pace.isOnTarget -> IncreaseGreen
+                trainingMode == TrainingMode.CUT && (delta ?: 0.0) <= 0.0 -> BlueAccent
+                trainingMode == TrainingMode.BULK && (delta ?: 0.0) >= 0.0 -> AccentPeach
+                else -> AccentPeach
+            }
             val peakDots = dotsAll.maxByOrNull { it.dots }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CompactKpiCard(
-                    label = "CURRENT",
-                    value = last?.let { "${f1(disp(it.weightKg))} $unit" } ?: "–",
-                    caption = last?.let { "7d avg ${f1(disp(it.avg7Kg))}" } ?: "No readings",
-                    valueColor = AccentOrange,
-                    modifier = Modifier.weight(1f)
-                )
-                CompactKpiCard(
-                    label = "CHANGE (${range.label})",
-                    value = delta?.let { (if (it > 0) "+" else "") + f1(disp(it)) + " $unit" } ?: "–",
-                    caption = rate?.let { (if (it > 0) "+" else "") + f2(disp(it)) + " $unit/wk" } ?: "Need 7+ days",
-                    valueColor = TextPrimary,
-                    modifier = Modifier.weight(1f)
-                )
-                CompactKpiCard(
-                    label = if (peakDots != null) "PEAK DOTS" else "DOTS",
-                    value = peakDots?.let { f1(it.dots) } ?: "–",
-                    caption = peakDots?.let { "Total ${f1(disp(it.totalKg))} $unit" } ?: "Needs S+B+D",
-                    valueColor = GoldPR,
-                    modifier = Modifier.weight(1f)
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CompactKpiCard(
+                        label = "CURRENT",
+                        value = last?.let { "${f1(disp(it.weightKg))} $unit" } ?: "–",
+                        caption = last?.let { "7d avg ${f1(disp(it.avg7Kg))}" } ?: "No readings",
+                        valueColor = AccentOrange,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CompactKpiCard(
+                        label = "CHANGE (${range.label})",
+                        value = delta?.let { (if (it > 0) "+" else "") + f1(disp(it)) + " $unit" } ?: "–",
+                        caption = rate?.let { (if (it > 0) "+" else "") + f2(disp(it)) + " $unit/wk" } ?: "Need 7+ days",
+                        valueColor = changeColor,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CompactKpiCard(
+                        label = if (peakDots != null) "PEAK DOTS" else "DOTS",
+                        value = peakDots?.let { f1(it.dots) } ?: "–",
+                        caption = peakDots?.let { "Total ${f1(disp(it.totalKg))} $unit" } ?: "Needs S+B+D",
+                        valueColor = GoldPR,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                if (pace != null) {
+                    val paceColor = if (pace.isOnTarget) IncreaseGreen else trainingModeColor(trainingMode)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = paceColor.copy(alpha = 0.10f),
+                        border = BorderStroke(0.8.dp, paceColor.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                            Text(
+                                text = "${trainingMode.shortLabel} Pace • ${pace.status}",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = paceColor
+                            )
+                            Text(
+                                text = pace.detail,
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
             }
         }
 

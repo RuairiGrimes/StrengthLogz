@@ -19,6 +19,8 @@ function makeMockSheets(spreadsheetId = 'sheet-1') {
     goals: [],
     programs: [],
     activeProgramId: null,
+    trainingMode: null,
+    trainingModeUpdatedAt: 0,
   };
   const calls = [];
   const store = {
@@ -41,6 +43,11 @@ function makeMockSheets(spreadsheetId = 'sheet-1') {
       calls.push(['overwritePrograms', list.length, activeId]);
       remote.programs = JSON.parse(JSON.stringify(list));
       remote.activeProgramId = activeId || null;
+    },
+    async overwriteSettings(trainingMode, updatedAt) {
+      calls.push(['overwriteSettings', trainingMode, updatedAt]);
+      remote.trainingMode = trainingMode;
+      remote.trainingModeUpdatedAt = updatedAt;
     },
     async overwriteExercises(list) {
       calls.push(['overwriteExercises', list.length]);
@@ -330,6 +337,79 @@ test('DataService 14-day summary computes metrics deterministically and persists
     // Delete entry -> removed cleanly
     const afterDel = await ds2.deleteSummaryEntry(saved.entry.id);
     assert.strictEqual(afterDel.savedSummaries.length, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('TrainingMode persists locally, syncs via Settings tab, adapts 14-day summary & evaluates RELATIVE_BW goals', async () => {
+  const dir = makeTempDir();
+  try {
+    const ds = new DataService(dir);
+    await ds.init();
+    assert.strictEqual(ds.state().trainingMode, 'MAINGAIN');
+
+    const { remote, store } = makeMockSheets('sheet-Mode');
+    ds.store = store;
+
+    // 1. Switching to CUT persists locally and pushes Settings tab
+    let st = await ds.setTrainingMode('CUT');
+    assert.strictEqual(st.trainingMode, 'CUT');
+    assert.strictEqual(remote.trainingMode, 'CUT');
+    assert.ok(remote.trainingModeUpdatedAt > 0);
+
+    // Reloading offline still restores CUT
+    const dsOffline = new DataService(dir);
+    await dsOffline.init();
+    assert.strictEqual(dsOffline.state().trainingMode, 'CUT');
+
+    // Remote newer BULK wins on Sheets sync
+    remote.trainingMode = 'BULK';
+    remote.trainingModeUpdatedAt = Date.now() + 5000;
+    await ds.reload();
+    assert.strictEqual(ds.state().trainingMode, 'BULK');
+
+    // 2. Cut summary recognizes mild <5% dip as retention & rewards Rel PR
+    await ds.setTrainingMode('CUT');
+    await ds.addBodyWeight({ date: '01-NOV-2026', weightKg: 90.0, source: 'manual' });
+    await ds.addBodyWeight({ date: '15-NOV-2026', weightKg: 84.0, source: 'manual' });
+    await ds.saveWorkout({
+      workout: { date: '01-NOV-2026', title: 'Prior Cut Upper' },
+      sets: [{ exercise: 'Bench Press', setNo: 1, weight: 100, reps: 5 }], // E1RM ~116.5kg (1.29x BW @ 90kg)
+    });
+    await ds.saveWorkout({
+      workout: { date: '15-NOV-2026', title: 'Cut Upper' },
+      sets: [{ exercise: 'Bench Press', setNo: 1, weight: 97.5, reps: 5 }], // E1RM ~113.5kg (~97% held, 1.35x BW -> REL PR)
+    });
+
+    const cutSummary = ds.get14DaySummary({ referenceDate: '17-NOV-2026', trainingMode: 'CUT' });
+    assert.strictEqual(cutSummary.trainingMode, 'CUT');
+    assert.strictEqual(cutSummary.regressingCount, 0);
+    assert.strictEqual(cutSummary.retainedCount, 1);
+    assert.strictEqual(cutSummary.relPrsCount, 1);
+    assert.ok(cutSummary.lifts[0].retentionPct >= 95);
+    assert.strictEqual(cutSummary.lifts[0].isAllTimeRelPr, true);
+
+    const bulkSummary = ds.get14DaySummary({ referenceDate: '17-NOV-2026', trainingMode: 'BULK' });
+    assert.strictEqual(bulkSummary.trainingMode, 'BULK');
+    assert.strictEqual(bulkSummary.regressingCount, 1);
+
+    // 3. RELATIVE_BW goal updates dynamically against bodyweight on workout save
+    await ds.saveGoal({
+      id: 'g-rel-bench',
+      exerciseName: 'Bench Press',
+      goalType: 'RELATIVE_BW',
+      targetRelativeBw: 1.40, // @ 84kg -> 117.6kg target
+      baselineE1rmKg: 113.5,
+      enabled: true,
+    });
+    const saveRes = await ds.saveWorkout({
+      workout: { date: '16-NOV-2026', title: 'Bench PR' },
+      sets: [{ exercise: 'Bench Press', setNo: 1, weight: 102.5, reps: 5 }], // E1RM ~119.5kg >= 117.6 -> achieved!
+    });
+    const savedGoal = saveRes.state.goals.find((g) => g.id === 'g-rel-bench');
+    assert.ok(savedGoal.achievedDate);
+    assert.strictEqual(savedGoal.sessionReports.at(-1).achievedGoal, true);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

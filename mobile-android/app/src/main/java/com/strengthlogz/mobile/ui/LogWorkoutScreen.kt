@@ -52,6 +52,8 @@ import com.strengthlogz.mobile.model.DraftExerciseLog
 import com.strengthlogz.mobile.model.DraftSetInput
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ExerciseGoal
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.theme.*
@@ -63,6 +65,7 @@ import com.strengthlogz.mobile.util.SetUtils.formatWeightValue
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlin.math.roundToInt
 
 @Stable
 class SetInputState(
@@ -129,6 +132,29 @@ class ExerciseLogState(
             .map { it.weight!! }
             .maxOrNull() ?: 0.0
     }
+
+    // Historical peak Relative Strength (E1RM / BW) for PR Radar
+    val peakRelStrength: Double by lazy {
+        allTimeSets.filter { (it.reps ?: 0) > 0 }
+            .map { s ->
+                val bw = BodyWeightUtils.weightOn(s.date)
+                val load = BodyWeightUtils.totalLoad(isBodyweight, s.weight, if (isBodyweight) bw else 0.0)
+                val e1rm = if (load > 0.0) computeEpley(load, s.reps!!) else 0.0
+                BodyWeightUtils.relativeStrength(e1rm, bw)
+            }
+            .maxOrNull() ?: 0.0
+    }
+
+    fun peakRelativeStrength(bodyWeightKg: Double): Double {
+        if (bodyWeightKg <= 0.0) return 0.0
+        val bestCardE1rm = sets.maxOfOrNull { s ->
+            val w = s.weight.trim().toDoubleOrNull() ?: 0.0
+            val r = s.reps.trim().toIntOrNull() ?: 0
+            val load = BodyWeightUtils.totalLoad(isBodyweight, w, if (isBodyweight) bodyWeightKg else 0.0)
+            if (load > 0.0 && r > 0) computeEpley(load, r) else 0.0
+        } ?: 0.0
+        return BodyWeightUtils.relativeStrength(bestCardE1rm, bodyWeightKg)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -153,7 +179,9 @@ fun LogWorkoutScreen(
     onConsumeSuggestedPlan: () -> Unit = {},
     initialDraft: ActiveWorkoutDraft? = null,
     onDraftChanged: (ActiveWorkoutDraft) -> Unit = {},
-    onDiscardDraft: () -> Unit = {}
+    onDiscardDraft: () -> Unit = {},
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {}
 ) {
     var workoutDate by remember {
         mutableStateOf(initialDraft?.date?.ifBlank { DateUtils.todayDdMonYyyy() } ?: DateUtils.todayDdMonYyyy())
@@ -494,17 +522,27 @@ fun LogWorkoutScreen(
                 title = "Log Workout",
                 badgeText = if (loggedExercises.isNotEmpty()) "${loggedExercises.size} lifts" else null,
                 action = {
-                    if (loggedExercises.isNotEmpty() || workoutTitle.isNotBlank()) {
-                        IconButton(
-                            onClick = { showDiscardConfirm = true },
-                            modifier = Modifier.size(34.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Discard Draft",
-                                tint = DecreaseRed.copy(alpha = 0.8f),
-                                modifier = Modifier.size(19.dp)
-                            )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        TrainingModePill(
+                            mode = trainingMode,
+                            compact = true,
+                            onClick = onOpenModePicker
+                        )
+                        if (loggedExercises.isNotEmpty() || workoutTitle.isNotBlank()) {
+                            IconButton(
+                                onClick = { showDiscardConfirm = true },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Discard Draft",
+                                    tint = DecreaseRed.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1164,9 +1202,16 @@ fun LogWorkoutScreen(
                         Spacer(Modifier.height(4.dp))
 
                         // SET ROWS
-                        val cardBwKg = remember(workoutDate, exLog.isBodyweight) {
-                            if (exLog.isBodyweight) BodyWeightUtils.weightOn(workoutDate) else 0.0
+                        val hasBwData = remember(bodyWeights) {
+                            bodyWeights.isNotEmpty() || BodyWeightUtils.hasEntries()
                         }
+                        val cardBwKg = remember(workoutDate, bodyWeights, exLog.isBodyweight, hasBwData) {
+                            if (exLog.isBodyweight || hasBwData) {
+                                if (bodyWeights.isNotEmpty()) BodyWeightUtils.weightOn(workoutDate, bodyWeights)
+                                else BodyWeightUtils.weightOn(workoutDate)
+                            } else 0.0
+                        }
+                        val totalLoadBwKg = if (exLog.isBodyweight) cardBwKg else 0.0
                         exLog.sets.forEachIndexed { setIdx, sState ->
                             val prevSetMatch = exLog.previousSets.getOrNull(setIdx)
                             val prevString = if (prevSetMatch != null && (prevSetMatch.reps ?: 0) > 0) {
@@ -1176,12 +1221,21 @@ fun LogWorkoutScreen(
                             val wVal = sState.weight.trim().toDoubleOrNull() ?: 0.0
                             val rVal = sState.reps.trim().toIntOrNull() ?: 0
                             val isFailedAttempt = sState.reps.isNotBlank() && rVal <= 0
-                            val liveLoad = BodyWeightUtils.totalLoad(exLog.isBodyweight, wVal, cardBwKg)
+                            val liveLoad = BodyWeightUtils.totalLoad(exLog.isBodyweight, wVal, totalLoadBwKg)
                             val liveE1rm = if (liveLoad > 0.0 && rVal > 0) computeEpley(liveLoad, rVal) else 0.0
+                            val liveRelBw = if (hasBwData && cardBwKg > 0.0 && liveE1rm > 0.0) {
+                                BodyWeightUtils.relativeStrength(liveE1rm, cardBwKg)
+                            } else 0.0
 
                             // PR Radar Detection (strictly invalidated if rVal <= 0)
                             val isE1rmPr = rVal > 0 && exLog.peakE1rm > 0.0 && liveE1rm > (exLog.peakE1rm + 0.1)
                             val isWeightPr = rVal > 0 && exLog.peakWeight > 0.0 && wVal > exLog.peakWeight
+                            val isRelPr = rVal > 0 && hasBwData && liveRelBw > 0.0 && exLog.peakRelStrength > 0.0 &&
+                                liveRelBw > (exLog.peakRelStrength + 0.004)
+                            val isCutHeld = trainingMode == TrainingMode.CUT &&
+                                !isE1rmPr && !isWeightPr && !isRelPr &&
+                                rVal > 0 && liveE1rm > 0.0 && exLog.peakE1rm > 0.0 &&
+                                liveE1rm >= exLog.peakE1rm * TrainingModePolicy.CUT_RETENTION_FLOOR_RATIO
 
                             Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                                 Row(
@@ -1314,6 +1368,41 @@ fun LogWorkoutScreen(
                                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                         )
                                     }
+                                } else if (isRelPr) {
+                                    Surface(
+                                        color = GoldPR.copy(alpha = 0.16f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = BorderStroke(1.dp, GoldPR.copy(alpha = 0.55f)),
+                                        modifier = Modifier
+                                            .padding(start = 36.dp, top = 2.dp)
+                                            .fillMaxWidth(0.85f)
+                                    ) {
+                                        Text(
+                                            text = "🏆 NEW RELATIVE PR! ${"%.2f".format(liveRelBw)}× BW (+${"%.2f".format(liveRelBw - exLog.peakRelStrength)}×)",
+                                            color = GoldPR,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                } else if (isCutHeld) {
+                                    val heldPct = ((liveE1rm / exLog.peakE1rm) * 100.0).roundToInt()
+                                    Surface(
+                                        color = BlueAccent.copy(alpha = 0.14f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = BorderStroke(1.dp, BlueAccent.copy(alpha = 0.45f)),
+                                        modifier = Modifier
+                                            .padding(start = 36.dp, top = 2.dp)
+                                            .fillMaxWidth(0.85f)
+                                    ) {
+                                        Text(
+                                            text = "🛡 Strength Held (${heldPct}% of peak)",
+                                            color = BlueAccent,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1322,14 +1411,24 @@ fun LogWorkoutScreen(
                         val bestCardE1rm = exLog.sets.maxOfOrNull { s ->
                             val w = s.weight.trim().toDoubleOrNull() ?: 0.0
                             val r = s.reps.trim().toIntOrNull() ?: 0
-                            val load = BodyWeightUtils.totalLoad(exLog.isBodyweight, w, cardBwKg)
+                            val load = BodyWeightUtils.totalLoad(exLog.isBodyweight, w, totalLoadBwKg)
                             if (load > 0.0 && r > 0) computeEpley(load, r) else 0.0
                         } ?: 0.0
                         if (bestCardE1rm > 0.0) {
+                            val bestCardRel = if (hasBwData && cardBwKg > 0.0) {
+                                exLog.peakRelativeStrength(cardBwKg)
+                            } else 0.0
+                            val footerStr = buildString {
+                                append("Best Est. 1RM: ${formatWeightValue(bestCardE1rm)} kg")
+                                if (bestCardRel > 0.0) {
+                                    append(" • ${"%.2f".format(bestCardRel)}× BW")
+                                }
+                                if (exLog.isBodyweight && cardBwKg > 0.0) {
+                                    append(" (BW ${formatWeightValue(cardBwKg)}kg)")
+                                }
+                            }
                             Text(
-                                text = if (exLog.isBodyweight)
-                                    "Best Est. 1RM: ${formatWeightValue(bestCardE1rm)} kg • ${"%.2f".format(BodyWeightUtils.relativeStrength(bestCardE1rm, cardBwKg))}× BW (BW ${formatWeightValue(cardBwKg)}kg)"
-                                else "Best Est. 1RM: ${formatWeightValue(bestCardE1rm)} kg",
+                                text = footerStr,
                                 fontSize = 11.sp,
                                 color = TextSecondary,
                                 modifier = Modifier.padding(top = 6.dp)
@@ -1338,14 +1437,15 @@ fun LogWorkoutScreen(
 
                         // LIVE GOAL PROGRESS BANNER WHEN SETS ARE LOGGED FOR AN EXERCISE WITH AN ACTIVE GOAL
                         if (activeExGoal != null) {
-                            val liveEval = remember(activeExGoal, workouts, exLog.allTimeSets, availableExercises, bodyWeights) {
+                            val liveEval = remember(activeExGoal, workouts, exLog.allTimeSets, availableExercises, bodyWeights, trainingMode) {
                                 GoalEngine.evaluateGoal(
                                     goal = activeExGoal,
                                     workouts = workouts,
                                     exerciseSets = exLog.allTimeSets,
                                     allSets = allSets.ifEmpty { exLog.allTimeSets },
                                     exercisesCatalog = availableExercises,
-                                    bodyWeights = bodyWeights
+                                    bodyWeights = bodyWeights,
+                                    trainingMode = trainingMode
                                 )
                             }
                             val liveSetTriples = exLog.sets.map { s ->
@@ -1361,12 +1461,21 @@ fun LogWorkoutScreen(
                                 sessionDate = workoutDate
                             )
 
+                            val isCutRetainedGrade = liveSessionAnalysis.sessionGrade.contains("RETAIN", ignoreCase = true)
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (liveSessionAnalysis.achievedGoalToday) GoldPR.copy(alpha = 0.16f) else BgDark,
+                                color = when {
+                                    liveSessionAnalysis.achievedGoalToday -> GoldPR.copy(alpha = 0.16f)
+                                    isCutRetainedGrade -> BlueAccent.copy(alpha = 0.12f)
+                                    else -> BgDark
+                                },
                                 border = BorderStroke(
                                     0.8.dp,
-                                    if (liveSessionAnalysis.achievedGoalToday) GoldPR else AccentOrange.copy(alpha = 0.45f)
+                                    when {
+                                        liveSessionAnalysis.achievedGoalToday -> GoldPR
+                                        isCutRetainedGrade -> BlueAccent.copy(alpha = 0.55f)
+                                        else -> AccentOrange.copy(alpha = 0.45f)
+                                    }
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1661,7 +1770,8 @@ fun LogWorkoutScreen(
                 exerciseSets = targetExLog.allTimeSets,
                 allSets = allSets.ifEmpty { targetExLog.allTimeSets },
                 exercisesCatalog = availableExercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
             val liveAnalysis = GoalEngine.evaluateLiveSession(
                 evaluation = baseEval,
@@ -1676,7 +1786,8 @@ fun LogWorkoutScreen(
                 exerciseSets = previewExSets,
                 allSets = allSets + liveWorkSets,
                 exercisesCatalog = availableExercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
 
             GoalProgressSessionDialog(
@@ -1715,7 +1826,8 @@ fun LogWorkoutScreen(
                 exerciseSets = savedExSets,
                 allSets = allSets.ifEmpty { savedExSets },
                 exercisesCatalog = availableExercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
             ExerciseGoalReportDialog(
                 report = report,

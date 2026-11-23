@@ -35,6 +35,8 @@ import com.strengthlogz.mobile.model.ExerciseGoal
 import com.strengthlogz.mobile.model.SavedSummaryEntry
 import com.strengthlogz.mobile.model.SavedSummaryLiftItem
 import com.strengthlogz.mobile.model.SavedSummaryMuscleItem
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutProgram
 import com.strengthlogz.mobile.model.WorkoutSet
@@ -54,12 +56,14 @@ fun FourteenDaySummaryDialog(
     goals: List<ExerciseGoal>,
     activeProgram: WorkoutProgram?,
     isMale: Boolean,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     savedSummaries: List<SavedSummaryEntry>,
     onSaveSummary: (SavedSummaryEntry) -> Unit,
     onDeleteSummary: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val summary = remember(workouts, sets, exercises, bodyWeights, goals, activeProgram, isMale) {
+    val summary = remember(workouts, sets, exercises, bodyWeights, goals, activeProgram, isMale, trainingMode) {
         SummaryEngine.build14DaySummary(
             workouts = workouts,
             sets = sets,
@@ -67,7 +71,8 @@ fun FourteenDaySummaryDialog(
             bodyWeights = bodyWeights,
             goals = goals,
             activeProgram = activeProgram,
-            isMale = isMale
+            isMale = isMale,
+            trainingMode = trainingMode
         )
     }
 
@@ -121,16 +126,26 @@ fun FourteenDaySummaryDialog(
                                 )
                             }
 
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.size(32.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(18.dp)
+                                TrainingModePill(
+                                    mode = trainingMode,
+                                    compact = true,
+                                    onClick = onOpenModePicker
                                 )
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -303,7 +318,8 @@ fun FourteenDaySummaryDialog(
                             volumeScore = summary.volumeScore,
                             strengthScore = summary.strengthScore,
                             consistencyScore = summary.consistencyScore,
-                            balanceScore = summary.balanceScore
+                            balanceScore = summary.balanceScore,
+                            trainingMode = summary.trainingMode
                         )
 
                         // 2x2 Telemetry Strip
@@ -335,7 +351,9 @@ fun FourteenDaySummaryDialog(
                             } else {
                                 append("No readings")
                             }
-                            if (summary.dotsScore != null) {
+                            if (!summary.bwPaceAssessment.isNullOrBlank()) {
+                                append(" • ${summary.bwPaceAssessment}")
+                            } else if (summary.dotsScore != null) {
                                 append(" • DOTS ${formatWeightValue(summary.dotsScore)}")
                             }
                         }
@@ -374,9 +392,12 @@ fun FourteenDaySummaryDialog(
                             LiftsProgressionCard(
                                 lifts = summary.lifts,
                                 prsCount = summary.prsCount,
+                                relPrsCount = summary.relPrsCount,
+                                retainedCount = summary.retainedCount,
                                 progressingCount = summary.progressingCount,
                                 holdingCount = summary.holdingCount,
-                                regressingCount = summary.regressingCount
+                                regressingCount = summary.regressingCount,
+                                trainingMode = summary.trainingMode
                             )
                         }
 
@@ -493,7 +514,8 @@ private fun ScoreBreakdownCard(
     volumeScore: Int,
     strengthScore: Int,
     consistencyScore: Int,
-    balanceScore: Int
+    balanceScore: Int,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN
 ) {
     val scoreColor = scoreColorFor(overallScore)
     Surface(
@@ -566,12 +588,17 @@ private fun ScoreBreakdownCard(
                 )
             }
 
+            val strengthBarLabel = when (trainingMode) {
+                TrainingMode.CUT -> "Retention & Rel."
+                TrainingMode.BULK -> "Strength Gains"
+                TrainingMode.MAINGAIN -> "Strength"
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 SubScoreBarItem("Volume", volumeScore, Modifier.weight(1f))
-                SubScoreBarItem("Strength", strengthScore, Modifier.weight(1f))
+                SubScoreBarItem(strengthBarLabel, strengthScore, Modifier.weight(1f))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -773,9 +800,12 @@ private fun MuscleAndBalanceCard(
 private fun LiftsProgressionCard(
     lifts: List<SavedSummaryLiftItem>,
     prsCount: Int,
+    relPrsCount: Int = 0,
+    retainedCount: Int = 0,
     progressingCount: Int,
     holdingCount: Int,
-    regressingCount: Int
+    regressingCount: Int,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN
 ) {
     var showAll by remember { mutableStateOf(false) }
     val visibleLifts = if (showAll) lifts else lifts.take(8)
@@ -796,13 +826,17 @@ private fun LiftsProgressionCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Strength Progression",
+                    text = if (trainingMode == TrainingMode.CUT) "Retention & Strength" else "Strength Progression",
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = TextPrimary
                 )
                 Text(
-                    text = "$prsCount PR • $progressingCount up • $holdingCount steady • $regressingCount down",
+                    text = if (trainingMode == TrainingMode.CUT) {
+                        "$prsCount PR • $relPrsCount rel PR • ${holdingCount + retainedCount} held"
+                    } else {
+                        "$prsCount PR • $progressingCount up • $holdingCount steady • $regressingCount down"
+                    },
                     fontSize = 11.sp,
                     color = TextSecondary,
                     style = TextStyle(fontFeatureSettings = "tnum")
@@ -811,15 +845,23 @@ private fun LiftsProgressionCard(
 
             visibleLifts.forEach { item ->
                 val delta = item.e1rmDeltaKg ?: item.withinPeriodE1rmDeltaKg
+                val retPct = item.retentionPct
+                val isCutHeldDip = trainingMode == TrainingMode.CUT &&
+                    delta != null && delta < -0.5 &&
+                    (retPct == null || retPct >= TrainingModePolicy.CUT_RETENTION_FLOOR_PCT)
+
                 val deltaLabel = when {
                     item.isAllTimePr && delta != null && delta > 0 -> "PR +${formatWeightValue(delta)} kg"
                     item.isAllTimePr -> "All-time PR"
+                    item.isAllTimeRelPr -> "REL PR"
+                    isCutHeldDip && retPct != null -> "${retPct.roundToInt()}% held"
                     delta != null -> "${if (delta > 0) "+" else ""}${formatWeightValue(delta)} kg"
                     else -> "${item.workingSets14d} sets"
                 }
                 val deltaColor = when {
-                    item.isAllTimePr -> GoldPR
+                    item.isAllTimePr || item.isAllTimeRelPr -> GoldPR
                     delta != null && delta > 0.5 -> IncreaseGreen
+                    isCutHeldDip -> BlueAccent
                     delta != null && delta < -0.5 -> DecreaseRed
                     else -> TextSecondary
                 }
@@ -842,7 +884,12 @@ private fun LiftsProgressionCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        val relStr = item.relativeStrengthBw?.let { " • ${"%.2f".format(it)}× BW" } ?: ""
+                        val relStr = item.relativeStrengthBw?.let { rel ->
+                            val relDeltaStr = item.relBwDelta?.takeIf { kotlin.math.abs(it) >= 0.01 }?.let { rd ->
+                                " (${if (rd > 0) "+" else ""}${"%.2f".format(rd)}×)"
+                            } ?: ""
+                            " • ${"%.2f".format(rel)}× BW$relDeltaStr"
+                        } ?: ""
                         Text(
                             text = "${item.bestSet14d} • E1RM ${formatWeightValue(item.bestE1rm14dKg)} kg$relStr",
                             fontSize = 11.sp,
@@ -982,7 +1029,12 @@ private fun SavedSummariesListSection(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 SavedTrendStat("Score trend", "${if (scoreDiff > 0) "+" else ""}$scoreDiff pts", if (scoreDiff >= 0) IncreaseGreen else DecreaseRed)
-                SavedTrendStat("Volume trend", "${if (volDiff > 0) "+" else ""}${formatTonnage(volDiff)}", if (volDiff >= 0) IncreaseGreen else DecreaseRed)
+                val volTrendColor = when {
+                    volDiff >= 0 -> IncreaseGreen
+                    newest.safeTrainingMode == TrainingMode.CUT -> BlueAccent
+                    else -> DecreaseRed
+                }
+                SavedTrendStat("Volume trend", "${if (volDiff > 0) "+" else ""}${formatTonnage(volDiff)}", volTrendColor)
                 SavedTrendStat(
                     "Weight trend",
                     bwDiff?.let { "${if (it > 0) "+" else ""}${formatWeightValue(it)} kg" } ?: "—",
@@ -1038,6 +1090,10 @@ private fun SavedSummariesListSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        TrainingModePill(
+                            mode = entry.safeTrainingMode,
+                            compact = true
+                        )
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = "${entry.overallScore}/100",

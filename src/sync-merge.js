@@ -76,6 +76,27 @@ function mergePrograms(local, remote, deletedLocally, lastSynced) {
   return mergeByKey({ local, remote, key: (p) => p.id, deletedLocally, lastSynced, resolve: resolveProgram });
 }
 
+const VALID_MODES = new Set(['BULK', 'MAINGAIN', 'CUT']);
+
+function isValidMode(raw) {
+  return typeof raw === 'string' && VALID_MODES.has(raw.trim().toUpperCase());
+}
+
+function resolveTrainingMode(localMode, localUpdatedAt, remoteMode, remoteUpdatedAt) {
+  const lValid = isValidMode(localMode);
+  const rValid = isValidMode(remoteMode);
+  const lClean = lValid ? localMode.trim().toUpperCase() : 'MAINGAIN';
+  const rClean = rValid ? remoteMode.trim().toUpperCase() : 'MAINGAIN';
+  const lStamp = Number(localUpdatedAt) || 0;
+  const rStamp = Number(remoteUpdatedAt) || 0;
+
+  if (!rValid && lValid) return { mode: lClean, updatedAt: lStamp };
+  if (!lValid && rValid) return { mode: rClean, updatedAt: rStamp };
+  if (!lValid && !rValid) return { mode: 'MAINGAIN', updatedAt: 0 };
+  if (rStamp > lStamp) return { mode: rClean, updatedAt: rStamp };
+  return { mode: lClean, updatedAt: lStamp };
+}
+
 /** JSON with sorted keys so equal objects compare equal regardless of property order. */
 function stable(value) {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -87,5 +108,5 @@ function stable(value) {
 
 module.exports = {
   isoKey, mergeByKey, mergeBodyWeights, mergeGoals, mergePrograms,
-  resolveBodyWeight, resolveGoal, resolveProgram, stable,
+  resolveBodyWeight, resolveGoal, resolveProgram, resolveTrainingMode, stable,
 };

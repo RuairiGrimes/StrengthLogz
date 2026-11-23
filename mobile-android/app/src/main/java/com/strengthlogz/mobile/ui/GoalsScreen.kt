@@ -55,6 +55,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.strengthlogz.mobile.model.BodyWeightEntry
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ExerciseGoal
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.theme.*
@@ -84,6 +85,8 @@ fun GoalsScreen(
     availableExercises: List<Exercise>,
     bodyWeights: List<BodyWeightEntry>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     initialExerciseForGoal: String? = null,
     onConsumeInitialExercise: () -> Unit = {},
     onSaveGoal: (ExerciseGoal) -> Unit,
@@ -118,7 +121,7 @@ fun GoalsScreen(
         }
     }
 
-    val evaluations = remember(goals, workouts, allSets, availableExercises, bodyWeights) {
+    val evaluations = remember(goals, workouts, allSets, availableExercises, bodyWeights, trainingMode) {
         goals.map { g ->
             GoalEngine.evaluateGoal(
                 goal = g,
@@ -126,7 +129,8 @@ fun GoalsScreen(
                 exerciseSets = getSetsForExercise(g.exerciseName),
                 allSets = allSets,
                 exercisesCatalog = availableExercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
         }
     }
@@ -188,8 +192,36 @@ fun GoalsScreen(
                         text = "Strength Goals",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
                     )
+                    TrainingModePill(
+                        mode = trainingMode,
+                        compact = true,
+                        onClick = onOpenModePicker
+                    )
+                }
+
+                if (trainingMode != TrainingMode.MAINGAIN) {
+                    val modeColor = trainingModeColor(trainingMode)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = modeColor.copy(alpha = 0.10f),
+                        border = BorderStroke(0.8.dp, modeColor.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (trainingMode == TrainingMode.CUT) {
+                                "🛡 Cut Mode: Holding ≥95% E1RM is marked Strength Retained. Rel. ×BW goals scale automatically as body weight drops."
+                            } else {
+                                "🔥 Bulk Mode: Surplus phase — favoring progressive E1RM PRs and higher-volume hypertrophy targets."
+                            },
+                            fontSize = 11.5.sp,
+                            color = TextSecondary,
+                            lineHeight = 16.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
                 }
 
                 Row(
@@ -501,6 +533,7 @@ fun GoalsScreen(
             workouts = workouts,
             getSetsForExercise = getSetsForExercise,
             currentBodyWeightKg = latestBwKg,
+            trainingMode = trainingMode,
             onDismiss = { showCreateEditDialog = false },
             onSave = { newGoal ->
                 onSaveGoal(newGoal)
@@ -512,14 +545,15 @@ fun GoalsScreen(
 
     // Single-Exercise Goal Report Dialog
     reportGoalTarget?.let { targetGoal ->
-        val report = remember(targetGoal, workouts, allSets, availableExercises, bodyWeights) {
+        val report = remember(targetGoal, workouts, allSets, availableExercises, bodyWeights, trainingMode) {
             GoalEngine.generateExerciseReport(
                 goal = targetGoal,
                 workouts = workouts,
                 exerciseSets = getSetsForExercise(targetGoal.exerciseName),
                 allSets = allSets,
                 exercisesCatalog = availableExercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
         }
         ExerciseGoalReportDialog(
@@ -530,13 +564,14 @@ fun GoalsScreen(
 
     // Master All-Goals Report Dialog
     if (showAllGoalsMasterReport) {
-        val masterReport = remember(goals, workouts, allSets, availableExercises, bodyWeights) {
+        val masterReport = remember(goals, workouts, allSets, availableExercises, bodyWeights, trainingMode) {
             GoalEngine.generateAllGoalsReport(
                 goals = goals,
                 workouts = workouts,
                 allSets = allSets,
                 exercisesCatalog = availableExercises,
-                bodyWeights = bodyWeights
+                bodyWeights = bodyWeights,
+                trainingMode = trainingMode
             )
         }
         AllGoalsReportDialog(
@@ -611,18 +646,23 @@ private fun GoalProgrammingCard(
     val statusColor = when (evaluation.status) {
         GoalStatus.ACHIEVED -> GoldPR
         GoalStatus.ON_TRACK -> IncreaseGreen
+        GoalStatus.RETAINING -> BlueAccent
+        GoalStatus.RETENTION_WATCH -> AccentPeach
         GoalStatus.PLATEAU_ALERT -> DecreaseRed
         GoalStatus.NEEDS_FREQUENCY -> AccentPeach
         GoalStatus.BUILDING -> BlueAccent
     }
 
-    val targetHeadline = if (goal.isSetsRepsGoal) {
-        val wStr = if (evaluation.isBodyweight) {
-            if (goal.targetWeightKg <= 0.0) "BW" else "BW+${formatWeightValue(goal.targetWeightKg)}kg"
-        } else "${formatWeightValue(goal.targetWeightKg)}kg"
-        "${goal.targetSets} × ${goal.targetReps} @ $wStr"
-    } else {
-        "${formatWeightValue(evaluation.effectiveTargetE1rm)} kg 1RM"
+    val targetHeadline = when {
+        goal.isRelativeBwGoal ->
+            "${"%.2f".format(goal.targetRelativeBw)}× BW (${formatWeightValue(evaluation.effectiveTargetE1rm)}kg)"
+        goal.isSetsRepsGoal -> {
+            val wStr = if (evaluation.isBodyweight) {
+                if (goal.targetWeightKg <= 0.0) "BW" else "BW+${formatWeightValue(goal.targetWeightKg)}kg"
+            } else "${formatWeightValue(goal.targetWeightKg)}kg"
+            "${goal.targetSets} × ${goal.targetReps} @ $wStr"
+        }
+        else -> "${formatWeightValue(evaluation.effectiveTargetE1rm)} kg 1RM"
     }
 
     val animatedProgress by animateFloatAsState(
@@ -716,8 +756,16 @@ private fun GoalProgrammingCard(
                     }
                 }
 
+                val bestRightText = when {
+                    goal.isRelativeBwGoal ->
+                        "Curr: ${"%.2f".format(evaluation.currentRelBw)}× BW • ${formatWeightValue(evaluation.progressPct)}%"
+                    evaluation.trainingMode == TrainingMode.CUT && evaluation.currentRelBw > 0.0 ->
+                        "Best: ${"%.2f".format(evaluation.currentRelBw)}× BW • ${formatWeightValue(evaluation.retentionPct)}% held"
+                    else ->
+                        "Best: ${formatWeightValue(evaluation.currentBestE1rm)}kg • ${formatWeightValue(evaluation.progressPct)}%"
+                }
                 Text(
-                    text = "Best: ${formatWeightValue(evaluation.currentBestE1rm)}kg • ${formatWeightValue(evaluation.progressPct)}%",
+                    text = bestRightText,
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = TextSecondary
@@ -732,14 +780,17 @@ private fun GoalProgrammingCard(
                     .clip(RoundedCornerShape(3.dp))
                     .background(BgDark)
             ) {
+                val barBrush = when {
+                    evaluation.isAchieved -> GoldGradient
+                    evaluation.status == GoalStatus.RETAINING -> Brush.horizontalGradient(listOf(BlueAccent, IncreaseGreen))
+                    else -> OrangeGradient
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(animatedProgress)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            if (evaluation.isAchieved) GoldGradient else OrangeGradient
-                        )
+                        .background(barBrush)
                 )
             }
 
@@ -1063,6 +1114,7 @@ fun CreateOrEditGoalDialog(
     workouts: List<Workout>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
     currentBodyWeightKg: Double,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     onDismiss: () -> Unit,
     onSave: (ExerciseGoal) -> Unit
 ) {
@@ -1145,13 +1197,26 @@ fun CreateOrEditGoalDialog(
         val initW = if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.targetWeightKg > 0.0) {
             existingGoal.targetWeightKg
         } else if (baseW > 0.0) {
-            GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)
+            val delta = if (trainingMode == TrainingMode.CUT) 0.0 else 2.5
+            GoalEngine.roundToGymLoad(baseW + delta, selectedExercise)
         } else 80.0
         mutableStateOf(formatWeightValue(initW))
     }
 
+    var targetRelativeBwText by remember(selectedExercise) {
+        val initRel = if (existingGoal != null && existingGoal.exerciseName.equals(selectedExercise, true) && existingGoal.targetRelativeBw > 0.0) {
+            existingGoal.targetRelativeBw
+        } else if (currentRelBw > 0.0) {
+            val mult = if (trainingMode == TrainingMode.CUT) 1.05 else 1.12
+            ((currentRelBw * mult) * 20.0).roundToInt() / 20.0
+        } else {
+            1.25
+        }
+        mutableStateOf("%.2f".format(initRel))
+    }
+
     var targetSetsText by remember(selectedExercise) {
-        mutableStateOf((existingGoal?.targetSets ?: 3).toString())
+        mutableStateOf((existingGoal?.targetSets ?: if (trainingMode == TrainingMode.CUT) 2 else 3).toString())
     }
     var targetRepsText by remember(selectedExercise) {
         mutableStateOf((existingGoal?.targetReps ?: 8).toString())
@@ -1327,16 +1392,20 @@ fun CreateOrEditGoalDialog(
                     }
                 }
 
-                // 3. Goal Type Selector: 1RM vs Sets / Reps
+                // 3. Goal Type Selector: 1RM vs Rel. ×BW vs Sets × Reps
                 Text("3. GOAL TYPE", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(BgDark, RoundedCornerShape(11.dp))
                         .padding(3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf("E1RM" to "🎯 1-Rep Max (1RM)", "SETS_REPS" to "🏋️ Sets × Reps").forEach { (typeKey, label) ->
+                    listOf(
+                        "E1RM" to "1RM",
+                        "RELATIVE_BW" to "Rel. ×BW",
+                        "SETS_REPS" to "Sets×Reps"
+                    ).forEach { (typeKey, label) ->
                         val active = goalType == typeKey
                         Box(
                             modifier = Modifier
@@ -1344,14 +1413,16 @@ fun CreateOrEditGoalDialog(
                                 .clip(RoundedCornerShape(9.dp))
                                 .background(if (active) AccentOrange else Color.Transparent)
                                 .clickable { goalType = typeKey }
-                                .padding(vertical = 9.dp),
+                                .padding(vertical = 9.dp, horizontal = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = label,
-                                fontSize = 12.5.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
-                                color = if (active) Color(0xFF140D07) else TextSecondary
+                                color = if (active) Color(0xFF140D07) else TextSecondary,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -1362,13 +1433,29 @@ fun CreateOrEditGoalDialog(
                     Text("4. TARGET 1-REP MAX (KG)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
 
                     if (effectiveCurrentE1rm > 0.0) {
-                        val presets = listOf(
-                            "+2.5kg" to (effectiveCurrentE1rm + 2.5),
-                            "+5% Block" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.05, selectedExercise),
-                            "+10% Peak" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.10, selectedExercise),
-                            "1.25× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.25, selectedExercise),
-                            "1.5× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.50, selectedExercise)
-                        )
+                        val presets = when (trainingMode) {
+                            TrainingMode.CUT -> listOf(
+                                "Hold PR (100%)" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm, selectedExercise),
+                                "95% Cut Floor" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 0.95, selectedExercise),
+                                "+2.5kg" to (effectiveCurrentE1rm + 2.5),
+                                "1.25× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.25, selectedExercise),
+                                "1.5× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.50, selectedExercise)
+                            )
+                            TrainingMode.BULK -> listOf(
+                                "+5% Block" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.05, selectedExercise),
+                                "+10% Peak" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.10, selectedExercise),
+                                "+15% Cycle" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.15, selectedExercise),
+                                "1.5× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.50, selectedExercise),
+                                "2.0× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 2.00, selectedExercise)
+                            )
+                            TrainingMode.MAINGAIN -> listOf(
+                                "+2.5kg" to (effectiveCurrentE1rm + 2.5),
+                                "+5% Steady" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.05, selectedExercise),
+                                "+7.5% Block" to GoalEngine.roundToGymLoad(effectiveCurrentE1rm * 1.075, selectedExercise),
+                                "1.25× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.25, selectedExercise),
+                                "1.5× BW" to GoalEngine.roundToGymLoad(currentBodyWeightKg * 1.50, selectedExercise)
+                            )
+                        }
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(presets) { (lbl, valKg) ->
                                 Surface(
@@ -1403,6 +1490,52 @@ fun CreateOrEditGoalDialog(
                             unfocusedBorderColor = BorderDark
                         )
                     )
+                } else if (goalType == "RELATIVE_BW") {
+                    Text("4. TARGET RELATIVE STRENGTH (× BODY WEIGHT)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
+
+                    val relPresets = buildList {
+                        if (currentRelBw > 0.0) {
+                            add("+0.05× BW" to (((currentRelBw + 0.05) * 100.0).roundToInt() / 100.0))
+                            add("+0.10× BW" to (((currentRelBw + 0.10) * 100.0).roundToInt() / 100.0))
+                        }
+                        add("1.25× BW" to 1.25)
+                        add("1.50× BW" to 1.50)
+                        add("2.00× BW" to 2.00)
+                    }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(relPresets) { (lbl, relVal) ->
+                            val approxKg = GoalEngine.roundToGymLoad(relVal * currentBodyWeightKg, selectedExercise)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = BgDark,
+                                border = BorderStroke(0.8.dp, BlueAccent.copy(alpha = 0.55f)),
+                                modifier = Modifier.clickable { targetRelativeBwText = "%.2f".format(relVal) }
+                            ) {
+                                Text(
+                                    text = "$lbl (~${formatWeightValue(approxKg)}kg)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BlueAccent,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = targetRelativeBwText,
+                        onValueChange = { targetRelativeBwText = it },
+                        label = { Text("Target Multiple (× BW)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentOrange,
+                            unfocusedBorderColor = BorderDark
+                        )
+                    )
                 } else {
                     Text("4. TARGET SETS × REPS @ WEIGHT", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
 
@@ -1411,12 +1544,26 @@ fun CreateOrEditGoalDialog(
                         recentTopWeight > 0.0 -> recentTopWeight
                         else -> 60.0
                     }
-                    val srPresets = listOf(
-                        Triple("3 × 8 Overload", 3, 8 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)),
-                        Triple("5 × 5 Strength", 5, 5 to GoalEngine.roundToGymLoad(baseW + 5.0, selectedExercise)),
-                        Triple("3 × 10 Volume", 3, 10 to baseW),
-                        Triple("4 × 6 Power", 4, 6 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise))
-                    )
+                    val srPresets = when (trainingMode) {
+                        TrainingMode.CUT -> listOf(
+                            Triple("3 × 5 Retain", 3, 5 to baseW),
+                            Triple("2 × 8 Maintain", 2, 8 to baseW),
+                            Triple("3 × 6 Heavy", 3, 6 to baseW),
+                            Triple("2 × 10 Clean", 2, 10 to baseW)
+                        )
+                        TrainingMode.BULK -> listOf(
+                            Triple("4 × 8 Hypertrophy", 4, 8 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)),
+                            Triple("5 × 5 Strength", 5, 5 to GoalEngine.roundToGymLoad(baseW + 5.0, selectedExercise)),
+                            Triple("4 × 6 Power", 4, 6 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)),
+                            Triple("3 × 10 Volume", 3, 10 to baseW)
+                        )
+                        TrainingMode.MAINGAIN -> listOf(
+                            Triple("3 × 8 Overload", 3, 8 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise)),
+                            Triple("5 × 5 Strength", 5, 5 to GoalEngine.roundToGymLoad(baseW + 5.0, selectedExercise)),
+                            Triple("3 × 10 Volume", 3, 10 to baseW),
+                            Triple("4 × 6 Power", 4, 6 to GoalEngine.roundToGymLoad(baseW + 2.5, selectedExercise))
+                        )
+                    }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(srPresets) { (lbl, sCnt, repW) ->
                             Surface(
@@ -1504,7 +1651,7 @@ fun CreateOrEditGoalDialog(
                 )
 
                 // Live Preview Calculation Box
-                val previewGoal = remember(selectedExercise, goalType, targetE1rmText, targetWeightText, targetSetsText, targetRepsText, effectiveCurrentE1rm, manualStartW, manualStartR, notesText) {
+                val previewGoal = remember(selectedExercise, goalType, targetE1rmText, targetWeightText, targetSetsText, targetRepsText, targetRelativeBwText, effectiveCurrentE1rm, manualStartW, manualStartR, notesText) {
                     ExerciseGoal(
                         id = existingGoal?.id ?: "goal-${selectedExercise.lowercase().replace(" ", "-")}",
                         exerciseName = selectedExercise,
@@ -1513,6 +1660,7 @@ fun CreateOrEditGoalDialog(
                         targetWeightKg = targetWeightText.trim().toDoubleOrNull() ?: 0.0,
                         targetSets = targetSetsText.trim().toIntOrNull()?.coerceIn(1, 20) ?: 3,
                         targetReps = targetRepsText.trim().toIntOrNull()?.coerceIn(1, 50) ?: 8,
+                        targetRelativeBw = targetRelativeBwText.trim().toDoubleOrNull() ?: 1.25,
                         baselineE1rmKg = effectiveCurrentE1rm,
                         baselineWeightKg = manualStartW,
                         baselineReps = manualStartR,
@@ -1544,9 +1692,13 @@ fun CreateOrEditGoalDialog(
                             color = TextPrimary
                         )
                         Text(
-                            text = if (effectiveCurrentE1rm > 0.0)
+                            text = if (goalType == "RELATIVE_BW") {
+                                "× BW goal scales your kg target automatically as body weight changes (currently ${formatWeightValue(currentBodyWeightKg)}kg)."
+                            } else if (effectiveCurrentE1rm > 0.0) {
                                 "Requires +${formatWeightValue(deltaNeeded)} kg E1RM gain over your current ${formatWeightValue(effectiveCurrentE1rm)} kg strength."
-                            else "Enter your current lift above or log a workout to calibrate your starting point.",
+                            } else {
+                                "Enter your current lift above or log a workout to calibrate your starting point."
+                            },
                             fontSize = 11.5.sp,
                             color = TextSecondary
                         )
@@ -1700,13 +1852,23 @@ fun ExerciseGoalReportDialog(
                                 valueColor = if (eval.isAchieved) GoldPR else AccentOrange,
                                 modifier = Modifier.weight(1f)
                             )
-                            GoalSummaryMiniCard(
-                                label = "GAIN SINCE START",
-                                value = "${if (report.strengthGainSinceGoalStartKg >= 0) "+" else ""}${formatWeightValue(report.strengthGainSinceGoalStartKg)}kg",
-                                sub = "${if (report.strengthGainPct >= 0) "+" else ""}${formatWeightValue(report.strengthGainPct)}% E1RM",
-                                valueColor = IncreaseGreen,
-                                modifier = Modifier.weight(1f)
-                            )
+                            if (eval.trainingMode == TrainingMode.CUT && report.strengthGainSinceGoalStartKg < 0.0) {
+                                GoalSummaryMiniCard(
+                                    label = "RETENTION",
+                                    value = "${formatWeightValue(eval.retentionPct)}%",
+                                    sub = "${formatWeightValue(report.strengthGainSinceGoalStartKg)}kg vs start",
+                                    valueColor = if (eval.retentionPct >= 95.0) IncreaseGreen else BlueAccent,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                GoalSummaryMiniCard(
+                                    label = "GAIN SINCE START",
+                                    value = "${if (report.strengthGainSinceGoalStartKg >= 0) "+" else ""}${formatWeightValue(report.strengthGainSinceGoalStartKg)}kg",
+                                    sub = "${if (report.strengthGainPct >= 0) "+" else ""}${formatWeightValue(report.strengthGainPct)}% E1RM",
+                                    valueColor = IncreaseGreen,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                             GoalSummaryMiniCard(
                                 label = "REL. STRENGTH",
                                 value = "${"%.2f".format(eval.currentRelBw)}× BW",

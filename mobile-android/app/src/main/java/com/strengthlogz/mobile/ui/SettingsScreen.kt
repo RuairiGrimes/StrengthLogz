@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.strengthlogz.mobile.data.GoogleSheetsClient
 import com.strengthlogz.mobile.model.BodyWeightEntry
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -54,6 +55,8 @@ fun SettingsScreen(
     currentSpreadsheetId: String,
     currentServiceAccountJson: String = "",
     lastSyncTime: String,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onSelectTrainingMode: (TrainingMode) -> Unit = {},
     onSaveSpreadsheetId: (String) -> Unit,
     onSaveServiceAccountJson: (String) -> Unit = {},
     onClearCloudCredentials: () -> Unit = {},
@@ -133,7 +136,13 @@ fun SettingsScreen(
     ) {
         ModernScreenHeader(
             title = "Options & Settings",
-            subtitle = "Connect your own Google Sheet, manage body weight & catalog"
+            subtitle = "Training phase, Google Sheet sync, body weight & catalog"
+        )
+
+        // 0. Training Phase Mode Card (Bulk / Maingain / Cut)
+        TrainingModeSettingsCard(
+            currentMode = trainingMode,
+            onSelectMode = onSelectTrainingMode
         )
 
         // 1. Google Sheets Cloud Sync & Credentials Card
@@ -556,7 +565,7 @@ fun SettingsScreen(
                                 InstructionStepRow(
                                     stepNum = "4",
                                     title = "Paste Details Above & Tap Sync",
-                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, and Programs tabs!"
+                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, Programs, and Settings tabs!"
                                 )
                                 Surface(
                                     color = SurfaceCard,

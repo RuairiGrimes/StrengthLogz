@@ -11,6 +11,7 @@ import com.strengthlogz.mobile.model.ExerciseGoal
 import com.strengthlogz.mobile.model.ProgramDay
 import com.strengthlogz.mobile.model.ProgramExerciseItem
 import com.strengthlogz.mobile.model.SavedSummaryEntry
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutProgram
 import com.strengthlogz.mobile.model.WorkoutSet
@@ -263,7 +264,9 @@ class WorkoutRepository(private val context: Context) {
             program = data.program,
             programs = data.programs ?: mutableListOf(),
             activeProgramId = data.activeProgramId,
-            savedSummaries = data.savedSummaries ?: mutableListOf()
+            savedSummaries = data.savedSummaries ?: mutableListOf(),
+            trainingMode = data.trainingMode,
+            trainingModeUpdatedAt = data.trainingModeUpdatedAt
         )
     }
 
@@ -314,8 +317,14 @@ class WorkoutRepository(private val context: Context) {
             try {
                 val json = file.readText(Charsets.UTF_8)
                 val loaded = gson.fromJson(json, AppData::class.java)
-                if (loaded != null && (loaded.workouts.isNotEmpty() || loaded.exercises.isNotEmpty() || loaded.program != null || !loaded.programs.isNullOrEmpty() || !loaded.savedSummaries.isNullOrEmpty())) {
+                if (loaded != null && (loaded.workouts.isNotEmpty() || loaded.exercises.isNotEmpty() || loaded.program != null || !loaded.programs.isNullOrEmpty() || !loaded.savedSummaries.isNullOrEmpty() || !loaded.trainingMode.isNullOrBlank())) {
                     appData = normalizeDates(loaded)
+                    val prefMode = prefs.getString(PREF_TRAINING_MODE, null)
+                    val prefUpdated = prefs.getLong(PREF_TRAINING_MODE_UPDATED_AT, 0L)
+                    if (!prefMode.isNullOrBlank() && prefUpdated > appData.trainingModeUpdatedAt) {
+                        appData.trainingMode = TrainingMode.fromString(prefMode).id
+                        appData.trainingModeUpdatedAt = prefUpdated
+                    }
                     return
                 }
             } catch (e: Exception) {
@@ -324,6 +333,8 @@ class WorkoutRepository(private val context: Context) {
         }
 
         // First launch: load built-in default exercises catalog cleanly (no personal workouts)
+        val initMode = prefs.getString(PREF_TRAINING_MODE, TrainingMode.MAINGAIN.id) ?: TrainingMode.MAINGAIN.id
+        val initUpdated = prefs.getLong(PREF_TRAINING_MODE_UPDATED_AT, 0L)
         appData = AppData(
             workouts = mutableListOf(),
             sets = mutableListOf(),
@@ -333,7 +344,9 @@ class WorkoutRepository(private val context: Context) {
             program = null,
             programs = mutableListOf(),
             activeProgramId = null,
-            savedSummaries = mutableListOf()
+            savedSummaries = mutableListOf(),
+            trainingMode = TrainingMode.fromString(initMode).id,
+            trainingModeUpdatedAt = initUpdated
         )
         saveLocalDataAsync()
     }
@@ -358,7 +371,9 @@ class WorkoutRepository(private val context: Context) {
             program = appData.program,
             programs = appData.programs?.toMutableList() ?: mutableListOf(),
             activeProgramId = appData.activeProgramId,
-            savedSummaries = appData.savedSummaries?.toMutableList() ?: mutableListOf()
+            savedSummaries = appData.savedSummaries?.toMutableList() ?: mutableListOf(),
+            trainingMode = appData.trainingMode,
+            trainingModeUpdatedAt = appData.trainingModeUpdatedAt
         )
         ioExecutor.execute {
             try {
@@ -413,6 +428,29 @@ class WorkoutRepository(private val context: Context) {
     fun setDotsIsMale(v: Boolean) { prefs.edit().putBoolean("dots_is_male", v).apply() }
     fun getBwUseLbs(): Boolean = prefs.getBoolean("bw_use_lbs", false)
     fun setBwUseLbs(v: Boolean) { prefs.edit().putBoolean("bw_use_lbs", v).apply() }
+
+    fun getTrainingMode(): TrainingMode {
+        val raw = appData.trainingMode?.takeIf { it.isNotBlank() }
+            ?: prefs.getString(PREF_TRAINING_MODE, TrainingMode.MAINGAIN.id)
+        return TrainingMode.fromString(raw)
+    }
+
+    fun getTrainingModeUpdatedAt(): Long {
+        val prefStamp = prefs.getLong(PREF_TRAINING_MODE_UPDATED_AT, 0L)
+        return maxOf(appData.trainingModeUpdatedAt, prefStamp)
+    }
+
+    @Synchronized
+    fun setTrainingMode(mode: TrainingMode) {
+        val now = System.currentTimeMillis()
+        appData.trainingMode = mode.id
+        appData.trainingModeUpdatedAt = now
+        prefs.edit()
+            .putString(PREF_TRAINING_MODE, mode.id)
+            .putLong(PREF_TRAINING_MODE_UPDATED_AT, now)
+            .apply()
+        saveLocalDataAsync()
+    }
 
     // ---------------- Saved 14-Day Summaries ----------------
 
@@ -607,7 +645,8 @@ class WorkoutRepository(private val context: Context) {
                         allExerciseSetsAfterSave = allExSets,
                         allWorkoutsAfterSave = appData.workouts,
                         exercisesCatalog = appData.exercises,
-                        bodyWeights = getBodyWeights()
+                        bodyWeights = getBodyWeights(),
+                        trainingMode = getTrainingMode()
                     )
                     goalsList[i] = updatedGoal.copy(updatedAt = System.currentTimeMillis())
                     updatedGoalsInSession.add(goalsList[i])
@@ -831,6 +870,8 @@ class WorkoutRepository(private val context: Context) {
         private const val SYNCED_GOALS = "synced_goal_ids"
         private const val SYNCED_PROGRAMS = "synced_program_ids"
         private const val SYNCED_SHEET_ID = "synced_metadata_spreadsheet_id"
+        private const val PREF_TRAINING_MODE = "training_mode"
+        private const val PREF_TRAINING_MODE_UPDATED_AT = "training_mode_updated_at"
 
         fun buildDefaultProgram(daysPerWeek: Int): WorkoutProgram {
             val coerced = daysPerWeek.coerceIn(1, 7)
@@ -1111,7 +1152,9 @@ class WorkoutRepository(private val context: Context) {
         val bodyWeights: List<BodyWeightEntry>,
         val goals: List<ExerciseGoal>,
         val programs: List<WorkoutProgram>,
-        val activeProgramId: String?
+        val activeProgramId: String?,
+        val trainingMode: String,
+        val trainingModeUpdatedAt: Long
     )
 
     /**
@@ -1181,8 +1224,30 @@ class WorkoutRepository(private val context: Context) {
             e.printStackTrace()
         }
 
+        var resolvedMode = getTrainingMode().id
+        var resolvedModeUpdatedAt = getTrainingModeUpdatedAt()
+        try {
+            val (mergedMode, mergedStamp) = SyncMerge.resolveTrainingMode(
+                localMode = resolvedMode,
+                localUpdatedAt = resolvedModeUpdatedAt,
+                remoteMode = remote.trainingMode,
+                remoteUpdatedAt = remote.trainingModeUpdatedAt
+            )
+            if (mergedMode != remote.trainingMode || mergedStamp != remote.trainingModeUpdatedAt) {
+                sheetsClient.overwriteSettings(spreadsheetId, mergedMode, mergedStamp)
+            }
+            resolvedMode = mergedMode
+            resolvedModeUpdatedAt = mergedStamp
+            prefs.edit()
+                .putString(PREF_TRAINING_MODE, resolvedMode)
+                .putLong(PREF_TRAINING_MODE_UPDATED_AT, resolvedModeUpdatedAt)
+                .apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         prefs.edit().putString(SYNCED_SHEET_ID, spreadsheetId).apply()
-        return SyncedMeta(bw, goals, programs, activeId)
+        return SyncedMeta(bw, goals, programs, activeId, resolvedMode, resolvedModeUpdatedAt)
     }
 
     suspend fun syncWithGoogleSheets(): Result<String> = withContext(Dispatchers.IO) {
@@ -1272,7 +1337,9 @@ class WorkoutRepository(private val context: Context) {
                         ?: syncedExtra.programs.firstOrNull(),
                     programs = syncedExtra.programs.toMutableList(),
                     activeProgramId = syncedExtra.activeProgramId,
-                    savedSummaries = (appData.savedSummaries ?: mutableListOf()).toMutableList()
+                    savedSummaries = (appData.savedSummaries ?: mutableListOf()).toMutableList(),
+                    trainingMode = syncedExtra.trainingMode,
+                    trainingModeUpdatedAt = syncedExtra.trainingModeUpdatedAt
                 )
                 rebuildIndexes()
                 saveLocalDataAsync()

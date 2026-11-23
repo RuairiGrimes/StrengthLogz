@@ -5,6 +5,7 @@ import com.strengthlogz.mobile.model.BodyWeightEntry
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ExerciseGoal
 import com.strengthlogz.mobile.model.GoalSessionReport
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.SessionProgressPoint
@@ -22,6 +23,8 @@ import kotlin.math.roundToInt
 enum class GoalStatus(val label: String) {
     ACHIEVED("ACHIEVED 🏆"),
     ON_TRACK("ON TRACK"),
+    RETAINING("STRENGTH RETAINED 🛡"),
+    RETENTION_WATCH("RETENTION WATCH"),
     PLATEAU_ALERT("PLATEAU ALERT"),
     NEEDS_FREQUENCY("NEEDS FREQUENCY"),
     BUILDING("BUILDING BASE")
@@ -59,12 +62,15 @@ data class AccessoryRecommendation(
 @Immutable
 data class GoalEvaluation(
     val goal: ExerciseGoal,
+    val trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     val category: String,
     val isBodyweight: Boolean,
     val currentBodyWeightKg: Double,
     val bodyWeightDeltaKg: Double,
     val currentBestE1rm: Double,
     val recentBestE1rm: Double,
+    val retentionPct: Double = 100.0,
+    val relBwDelta: Double = 0.0,
     val currentTopWeight: Double,
     val currentTopWeightReps: Int,
     val bestSetSummary: String,
@@ -204,25 +210,33 @@ object GoalEngine {
     }
 
     /**
-     * Computes the equivalent total-load E1RM for a goal (whether E1RM or SETS_REPS).
+     * Computes the equivalent total-load E1RM for a goal (E1RM, SETS_REPS, or RELATIVE_BW).
      */
     fun computeEffectiveTargetE1rm(
         goal: ExerciseGoal,
         isBodyweight: Boolean,
         bodyWeightKg: Double
     ): Double {
-        return if (goal.isSetsRepsGoal) {
-            val totalLoad = BodyWeightUtils.totalLoad(isBodyweight, goal.targetWeightKg, bodyWeightKg)
-            val baseE1rm = computeEpley(totalLoad, goal.targetReps.coerceAtLeast(1))
-            // Multi-set fatigue factor: completing e.g. 4 sets x 8 reps requires ~2-4% higher 1RM capacity than a single set of 8
-            val setFatigueMultiplier = 1.0 + ((goal.targetSets.coerceIn(1, 10) - 1) * 0.012)
-            roundHalf(baseE1rm * setFatigueMultiplier)
-        } else {
-            if (isBodyweight && goal.targetE1rmKg < bodyWeightKg) {
-                // If user entered added weight instead of total load for a bodyweight 1RM goal
-                roundHalf(bodyWeightKg + goal.targetE1rmKg)
-            } else {
-                roundHalf(goal.targetE1rmKg)
+        return when {
+            goal.isRelativeBwGoal -> {
+                val safeBw = bodyWeightKg.coerceAtLeast(30.0)
+                val safeRatio = goal.targetRelativeBw.coerceAtLeast(0.1)
+                roundHalf(safeRatio * safeBw)
+            }
+            goal.isSetsRepsGoal -> {
+                val totalLoad = BodyWeightUtils.totalLoad(isBodyweight, goal.targetWeightKg, bodyWeightKg)
+                val baseE1rm = computeEpley(totalLoad, goal.targetReps.coerceAtLeast(1))
+                // Multi-set fatigue factor: completing e.g. 4 sets x 8 reps requires ~2-4% higher 1RM capacity than a single set of 8
+                val setFatigueMultiplier = 1.0 + ((goal.targetSets.coerceIn(1, 10) - 1) * 0.012)
+                roundHalf(baseE1rm * setFatigueMultiplier)
+            }
+            else -> {
+                if (isBodyweight && goal.targetE1rmKg < bodyWeightKg) {
+                    // If user entered added weight instead of total load for a bodyweight 1RM goal
+                    roundHalf(bodyWeightKg + goal.targetE1rmKg)
+                } else {
+                    roundHalf(goal.targetE1rmKg)
+                }
             }
         }
     }
@@ -343,7 +357,7 @@ object GoalEngine {
 
     /**
      * Full in-app evaluation of an [ExerciseGoal] based on the user's current strength,
-     * body weight, and previous workout sessions.
+     * body weight, training mode, and previous workout sessions.
      */
     fun evaluateGoal(
         goal: ExerciseGoal,
@@ -351,7 +365,8 @@ object GoalEngine {
         exerciseSets: List<WorkoutSet>,
         allSets: List<WorkoutSet> = exerciseSets,
         exercisesCatalog: List<Exercise> = emptyList(),
-        bodyWeights: List<BodyWeightEntry> = emptyList()
+        bodyWeights: List<BodyWeightEntry> = emptyList(),
+        trainingMode: TrainingMode = TrainingMode.MAINGAIN
     ): GoalEvaluation {
         val exName = goal.exerciseName.trim()
         val catalogEntry = exercisesCatalog.find { it.name.equals(exName, ignoreCase = true) }
@@ -368,6 +383,12 @@ object GoalEngine {
 
         val workoutMap = workouts.associateBy { it.id }
         val sessions = buildSessionPoints(exerciseSets, workoutMap, isBw)
+
+        fun sessionRelBw(pt: SessionProgressPoint): Double {
+            if (pt.e1rm <= 0.0) return 0.0
+            val bw = if (bodyWeights.isNotEmpty()) BodyWeightUtils.weightOn(pt.displayDate, bodyWeights) else pt.bodyWeightKg
+            return if (bw > 0.0) roundHundredth(pt.e1rm / bw) else pt.relativeStrength
+        }
 
         val totalSessions = sessions.size
         val nowMsRef = workouts.maxOfOrNull { DateUtils.toEpochMs(it.date) }?.takeIf { it > 0L }
@@ -458,30 +479,52 @@ object GoalEngine {
             }
         }
 
-        val isAchieved = if (!goal.achievedDate.isNullOrBlank()) {
-            true
-        } else if (goal.isSetsRepsGoal) {
-            bestMatchingSetsAtTargetWeightReps >= goal.targetSets || (activeSessions.isNotEmpty() && activeBestE1rm >= effectiveTargetE1rm + 2.5)
+        val currentRelBw = roundHundredth(BodyWeightUtils.relativeStrength(
+            if (trainingMode == TrainingMode.CUT && recentBestE1rm > 0.0) max(recentBestE1rm, activeBestE1rm) else currentBestE1rm,
+            currentBwKg
+        ))
+        val activeBestRelBw = activeSessions.maxOfOrNull { sessionRelBw(it) } ?: currentRelBw
+        val baselineRelBw = if (goal.baselineE1rmKg > 0.0 && baselineBwKg > 0.0) {
+            roundHundredth(goal.baselineE1rmKg / baselineBwKg)
         } else {
-            activeSessions.isNotEmpty() && activeBestE1rm >= effectiveTargetE1rm - 0.05
+            sessions.firstOrNull()?.let { sessionRelBw(it) } ?: currentRelBw
+        }
+        val relBwDelta = roundHundredth(currentRelBw - baselineRelBw)
+
+        val anchorPeakE1rm = max(goal.baselineE1rmKg, sessions.maxOfOrNull { it.e1rm } ?: currentBestE1rm)
+        val retentionBaseCurr = if (recentBestE1rm > 0.0) recentBestE1rm else currentBestE1rm
+        val retentionPct = if (anchorPeakE1rm > 0.0 && retentionBaseCurr > 0.0) {
+            roundTenth(((retentionBaseCurr / anchorPeakE1rm) * 100.0).coerceIn(0.0, 120.0))
+        } else 100.0
+
+        val isAchieved = when {
+            !goal.achievedDate.isNullOrBlank() -> true
+            goal.isRelativeBwGoal -> activeSessions.isNotEmpty() && activeBestRelBw >= goal.targetRelativeBw - 0.005
+            goal.isSetsRepsGoal -> bestMatchingSetsAtTargetWeightReps >= goal.targetSets || (activeSessions.isNotEmpty() && activeBestE1rm >= effectiveTargetE1rm + 2.5)
+            else -> activeSessions.isNotEmpty() && activeBestE1rm >= effectiveTargetE1rm - 0.05
         }
 
         // Progress percentage:
+        // For RELATIVE_BW goal: ratio of currentRelBw / targetRelativeBw
         // For 1RM goal: ratio of currentBestE1rm / effectiveTargetE1rm (capped at 100%)
         // For SETS_REPS goal: blend of E1RM capacity ratio (65%) and qualifying sets/reps completion (35%)
         val rawE1rmRatio = if (effectiveTargetE1rm > 0.0) (currentBestE1rm / effectiveTargetE1rm) * 100.0 else 0.0
-        val progressPct = if (isAchieved) {
-            100.0
-        } else if (goal.isSetsRepsGoal) {
-            val setsRatio = if (goal.targetSets > 0) {
-                (bestMatchingSetsAtTargetWeightReps.toDouble() / goal.targetSets.toDouble()) * 100.0
-            } else 0.0
-            val repsRatio = if (goal.targetReps > 0 && bestMatchingRepsAtTargetWeight > 0) {
-                (bestMatchingRepsAtTargetWeight.toDouble() / goal.targetReps.toDouble()).coerceAtMost(1.0) * 100.0
-            } else 0.0
-            roundTenth((rawE1rmRatio * 0.65 + max(setsRatio, repsRatio * 0.8) * 0.35).coerceIn(0.0, 99.5))
-        } else {
-            roundTenth(rawE1rmRatio.coerceIn(0.0, 99.5))
+        val progressPct = when {
+            isAchieved -> 100.0
+            goal.isRelativeBwGoal -> {
+                val targetR = goal.targetRelativeBw.coerceAtLeast(0.05)
+                roundTenth(((max(currentRelBw, activeBestRelBw) / targetR) * 100.0).coerceIn(0.0, 99.5))
+            }
+            goal.isSetsRepsGoal -> {
+                val setsRatio = if (goal.targetSets > 0) {
+                    (bestMatchingSetsAtTargetWeightReps.toDouble() / goal.targetSets.toDouble()) * 100.0
+                } else 0.0
+                val repsRatio = if (goal.targetReps > 0 && bestMatchingRepsAtTargetWeight > 0) {
+                    (bestMatchingRepsAtTargetWeight.toDouble() / goal.targetReps.toDouble()).coerceAtMost(1.0) * 100.0
+                } else 0.0
+                roundTenth((rawE1rmRatio * 0.65 + max(setsRatio, repsRatio * 0.8) * 0.35).coerceIn(0.0, 99.5))
+            }
+            else -> roundTenth(rawE1rmRatio.coerceIn(0.0, 99.5))
         }
 
         val baseline = if (goal.baselineE1rmKg > 0.0 && goal.baselineE1rmKg < effectiveTargetE1rm) {
@@ -515,12 +558,20 @@ object GoalEngine {
             roundTenth(sessions.takeLast(6).map { s -> s.sets.count { (it.reps ?: 0) > 0 } }.average())
         } else 3.0
 
-        // Plateau detection: check if >= 3 recent sessions have failed to improve over prior sessions
-        val isPlateaued = if (sessions.size >= 4 && !isAchieved) {
-            val last3Max = sessions.takeLast(3).maxOf { it.e1rm }
-            val priorMax = sessions.dropLast(3).maxOf { it.e1rm }
-            last3Max <= priorMax + 0.5
-        } else false
+        // Mode-aware plateau detection (Cut mode never triggers harsh plateau alert on retention)
+        val isPlateaued = when (trainingMode) {
+            TrainingMode.BULK -> if (sessions.size >= 4 && !isAchieved) {
+                val last3Max = sessions.takeLast(3).maxOf { it.e1rm }
+                val priorMax = sessions.dropLast(3).maxOf { it.e1rm }
+                last3Max <= priorMax + 0.5
+            } else false
+            TrainingMode.MAINGAIN -> if (sessions.size >= 5 && !isAchieved) {
+                val last4Max = sessions.takeLast(4).maxOf { it.e1rm }
+                val priorMax = sessions.dropLast(4).maxOf { it.e1rm }
+                last4Max <= priorMax + 0.5 && relBwDelta <= 0.01
+            } else false
+            TrainingMode.CUT -> false
+        }
 
         // Monthly E1RM velocity
         val monthlyGainKg = if (sessions.size >= 3) {
@@ -535,11 +586,19 @@ object GoalEngine {
         }
 
         // Relative Strength & Tier
-        val currentRelBw = roundHundredth(BodyWeightUtils.relativeStrength(currentBestE1rm, currentBwKg))
-        val targetRelBw = roundHundredth(BodyWeightUtils.relativeStrength(effectiveTargetE1rm, currentBwKg))
+        val targetRelBw = if (goal.isRelativeBwGoal) {
+            roundHundredth(goal.targetRelativeBw)
+        } else {
+            roundHundredth(BodyWeightUtils.relativeStrength(effectiveTargetE1rm, currentBwKg))
+        }
         val strengthTier = classifyStrengthTier(exName, category, currentRelBw, currentBestE1rm)
 
-        // Realistic weekly progression rate based on tier & historical velocity
+        // Realistic weekly progression rate based on tier, historical velocity & training mode
+        val modeVelocityFactor = when (trainingMode) {
+            TrainingMode.BULK -> 1.15
+            TrainingMode.MAINGAIN -> 0.70
+            TrainingMode.CUT -> 0.50
+        }
         val expectedWeeklyGainKg = when (strengthTier) {
             "Elite" -> 0.35
             "Advanced" -> 0.5
@@ -547,7 +606,7 @@ object GoalEngine {
             else -> 1.1
         }.let { baseRate ->
             val histWeekly = (monthlyGainKg / 4.3).coerceIn(0.25, 1.75)
-            (baseRate * 0.6 + histWeekly * 0.4)
+            ((baseRate * 0.6 + histWeekly * 0.4) * modeVelocityFactor).coerceAtLeast(0.2)
         }
 
         val estimatedWeeksToGoal = if (isAchieved) 0 else {
@@ -558,6 +617,8 @@ object GoalEngine {
             goal.achievedDate ?: sessions.lastOrNull()?.displayDate ?: DateUtils.todayDdMonYyyy()
         } else if (goal.safeTargetDate.isNotBlank()) {
             goal.safeTargetDate
+        } else if (trainingMode == TrainingMode.CUT && !goal.isRelativeBwGoal) {
+            "Cut Hold Phase"
         } else {
             val cal = Calendar.getInstance()
             cal.add(Calendar.DAY_OF_YEAR, estimatedWeeksToGoal * 7)
@@ -578,6 +639,12 @@ object GoalEngine {
 
         val status = when {
             isAchieved -> GoalStatus.ACHIEVED
+            trainingMode == TrainingMode.CUT -> when {
+                sessions.size < 2 -> GoalStatus.BUILDING
+                sessionsPerWeek < 0.8 || daysSinceLast > 14 -> GoalStatus.NEEDS_FREQUENCY
+                retentionPct >= 95.0 || relBwDelta >= 0.0 -> GoalStatus.RETAINING
+                else -> GoalStatus.RETENTION_WATCH
+            }
             isPlateaued -> GoalStatus.PLATEAU_ALERT
             sessionsPerWeek < 0.8 || daysSinceLast > 14 -> GoalStatus.NEEDS_FREQUENCY
             sessions.size < 2 -> GoalStatus.BUILDING
@@ -590,11 +657,16 @@ object GoalEngine {
             remainingKg > 15.0 || sessionsPerWeek < 1.2 -> 2
             else -> 2
         }
-        val recommendedSetsPerWeek = recommendedSessionsPerWeek * 4
+        val recommendedSetsPerWeek = when (trainingMode) {
+            TrainingMode.BULK -> recommendedSessionsPerWeek * 4
+            TrainingMode.MAINGAIN -> recommendedSessionsPerWeek * 4
+            TrainingMode.CUT -> recommendedSessionsPerWeek * 3
+        }
 
         // Select Best Programming Methodology & Build Next Session Prescription
         // Strictly anchored to recent sessions or user-specified starting strength (never 12-month-old PRs)
         val workingBaseE1rm = (when {
+            trainingMode == TrainingMode.CUT && recentBestE1rm > 0.0 -> recentBestE1rm
             currentBestE1rm > 0.0 -> currentBestE1rm
             recentBestE1rm > 0.0 -> recentBestE1rm
             else -> effectiveTargetE1rm * 0.78
@@ -617,14 +689,34 @@ object GoalEngine {
                         weightKg = maintW,
                         reps = maintReps,
                         rpe = "RPE 8",
-                        notes = "Lock in mastery & set a new +2.5kg goal!"
+                        notes = if (trainingMode == TrainingMode.CUT) "Lock in relative strength while cutting" else "Lock in mastery & set a new +2.5kg goal!"
                     )
                 }
                 Quadruple(
                     "Goal Consolidation & New Peak Block",
-                    "You have already achieved this target! Consolidate the neural adaptation with 2–3 clean sessions at your target load, or raise your goal by +2.5–5kg.",
+                    if (trainingMode == TrainingMode.CUT) {
+                        "Target hit! Keep 2–3 crisp sets at your anchor load to preserve neural efficiency and push your × BW ratio even higher."
+                    } else {
+                        "You have already achieved this target! Consolidate the neural adaptation with 2–3 clean sessions at your target load, or raise your goal by +2.5–5kg."
+                    },
                     sets,
                     "Own every rep with controlled eccentric tempo before setting your next milestone."
+                )
+            }
+            trainingMode == TrainingMode.CUT -> {
+                // Cut-Optimal Heavy Neural Retention Protocol (High Intensity, Low Fatigue)
+                val anchorW = loadForPctOfE1rm(0.87) // ~4 reps
+                val backoffW = loadForPctOfE1rm(0.79) // ~5-6 reps
+                val sets = listOf(
+                    PrescribedGoalSet(1, "Heavy Neural Anchor", anchorW, 4, "RPE 8–8.5", "Protect peak motor-unit recruitment while cutting"),
+                    PrescribedGoalSet(2, "Retention Back-Off", backoffW, 5, "RPE 7.5–8", "Crisp bar speed — stop with 2 reps in reserve"),
+                    PrescribedGoalSet(3, "Retention Back-Off", backoffW, 5, "RPE 8", "Optional if fatigued — quality beats junk volume")
+                )
+                Quadruple(
+                    "Cut Heavy Retention Protocol (High-Intensity, Low-Fatigue)",
+                    "During a cut, intensity preserves strength while excess junk volume spikes recovery debt. Holding ${formatWeightValue(retentionPct)}% of your baseline E1RM (${"%.2f".format(currentRelBw)}× BW) with 3 crisp sets keeps relative strength climbing.",
+                    sets,
+                    "Rest 3–4 min after Set 1; holding ≥95% strength while dropping BW boosts your × BW ratio."
                 )
             }
             goal.isSetsRepsGoal -> {
@@ -700,7 +792,7 @@ object GoalEngine {
                 )
             }
             remainingKg <= 5.0 -> {
-                // Close to 1RM Goal: Peaking & Realization Wave
+                // Close to Goal: Peaking & Realization Wave
                 val heavyDoubleW = loadForPctOfE1rm(0.90)
                 val prTestRepW = loadForPctOfE1rm(0.84)
                 val backoffW = loadForPctOfE1rm(0.78)
@@ -711,13 +803,29 @@ object GoalEngine {
                 )
                 Quadruple(
                     "Strength Peaking & Realization Block",
-                    "You are within ${formatWeightValue(remainingKg)}kg (${formatWeightValue(100.0 - progressPct)}%) of your ${formatWeightValue(effectiveTargetE1rm)}kg 1RM goal! A 3-rep primer followed by an all-out 6-rep PR set is the safest, highest-yield way to cross the finish line.",
+                    "You are within ${formatWeightValue(remainingKg)}kg (${formatWeightValue(100.0 - progressPct)}%) of your ${formatWeightValue(effectiveTargetE1rm)}kg target! A 3-rep primer followed by a crisp 6-rep PR set is the cleanest way to cross the finish line.",
                     sets,
                     "Take a full 3–4 minutes rest between Set 1 and Set 2 to maximize peak force output."
                 )
             }
+            trainingMode == TrainingMode.MAINGAIN -> {
+                // Maingain: Controlled Micro-Progression Wave
+                val topSetW = loadForPctOfE1rm(0.84)
+                val volSetW = loadForPctOfE1rm(0.77)
+                val sets = listOf(
+                    PrescribedGoalSet(1, "Primary Strength Set", topSetW, 5, "RPE 8", "Drive 5 crisp reps @ ${formatWeightValue(topSetW)}kg"),
+                    PrescribedGoalSet(2, "Controlled Volume", volSetW, 7, "RPE 8", "Maintain tight technique and bar speed"),
+                    PrescribedGoalSet(3, "Micro-Overload Set", volSetW, 8, "RPE 8.5", "Earn +1 rep or +1.25kg when reps stay clean")
+                )
+                Quadruple(
+                    "Controlled Micro-Progression Wave",
+                    "In Maingain mode, focus on steady micro-gains without excessive fatigue: pair 1 heavy 5-rep anchor with 2 clean 7–8 rep back-offs toward ${"%.2f".format(targetRelBw)}× BW.",
+                    sets,
+                    "Aim for +1 rep or +1.25kg micro-jumps once Set 1 moves cleanly at RPE 8."
+                )
+            }
             else -> {
-                // Progressive Linear / Wave Periodization for 1RM Goal
+                // Bulk: Surplus Overload Strength-Hypertrophy Wave
                 val topSetW = loadForPctOfE1rm(0.83) // ~5-6 reps
                 val volSetW = loadForPctOfE1rm(0.77) // ~8 reps
                 val sets = listOf(
@@ -727,8 +835,8 @@ object GoalEngine {
                     PrescribedGoalSet(4, "Hypertrophy Back-Off", volSetW, 8, "RPE 8.5", "Drive 8+ reps on final set")
                 )
                 Quadruple(
-                    "Top-Set + Back-Off Strength-Hypertrophy Wave",
-                    "Closing a ${formatWeightValue(remainingKg)}kg gap (from $strengthTier ${"%.2f".format(currentRelBw)}× BW to ${"%.2f".format(targetRelBw)}× BW) requires pairing heavy 5-rep strength sets with 8-rep hypertrophy back-offs $recommendedSessionsPerWeek× per week.",
+                    "Surplus Overload Strength-Hypertrophy Wave",
+                    "Closing a ${formatWeightValue(remainingKg)}kg gap (from $strengthTier ${"%.2f".format(currentRelBw)}× BW to ${"%.2f".format(targetRelBw)}× BW) leverages your Bulk surplus across heavy 5-rep sets and 8-rep hypertrophy back-offs $recommendedSessionsPerWeek× per week.",
                     sets,
                     "When you hit 6 reps on Set 1, add +2.5kg to all working sets the following session."
                 )
@@ -768,14 +876,27 @@ object GoalEngine {
         // Body Weight Specific Advice
         val bodyWeightAdvice = if (isBw) {
             val reqAddedAtCurrBw = roundHalf((effectiveTargetE1rm / (1.0 + (if (goal.isSetsRepsGoal) goal.targetReps else 1) / 30.0)) - currentBwKg)
-            "Bodyweight lift (Current BW: ${formatWeightValue(currentBwKg)}kg). Every 1kg of body weight change shifts your relative load directly. At ${formatWeightValue(currentBwKg)}kg BW, your target equates to ${"%.2f".format(targetRelBw)}× BW (approx +${formatWeightValue(reqAddedAtCurrBw.coerceAtLeast(0.0))}kg added weight)."
-        } else {
-            val bwTrendNote = when {
-                bwDeltaKg <= -1.0 -> "You are down ${formatWeightValue(abs(bwDeltaKg))}kg BW — while cutting, prioritize heavy low-fatigue top sets (3–5 reps) and extra rest so leverage loss doesn't stall your E1RM."
-                bwDeltaKg >= 1.0 -> "You are up +${formatWeightValue(bwDeltaKg)}kg BW — leverage this energy surplus to push an extra back-off volume set each session."
-                else -> "At ${formatWeightValue(currentBwKg)}kg body weight, your current strength is ${"%.2f".format(currentRelBw)}× BW ($strengthTier) and your goal reaches ${"%.2f".format(targetRelBw)}× BW."
+            val bwModeTail = when (trainingMode) {
+                TrainingMode.CUT -> " In Cut mode, losing body fat makes bodyweight reps easier and drives your relative ratio (${"%.2f".format(currentRelBw)}× BW) upward."
+                TrainingMode.MAINGAIN -> " In Maingain mode, keep body weight steady and add +1 rep or +1.25kg gradually."
+                TrainingMode.BULK -> " In Bulk mode, match scale gain with extra added weight so relative strength holds."
             }
-            bwTrendNote
+            "Bodyweight lift (Current BW: ${formatWeightValue(currentBwKg)}kg). Every 1kg of body weight change shifts your relative load directly. At ${formatWeightValue(currentBwKg)}kg BW, your target equates to ${"%.2f".format(targetRelBw)}× BW (approx +${formatWeightValue(reqAddedAtCurrBw.coerceAtLeast(0.0))}kg added weight).$bwModeTail"
+        } else {
+            when (trainingMode) {
+                TrainingMode.CUT -> {
+                    val bwChangeTxt = if (bwDeltaKg <= -0.3) "Down ${formatWeightValue(abs(bwDeltaKg))}kg BW — " else ""
+                    "${bwChangeTxt}In Cut mode, holding ${formatWeightValue(retentionPct)}% of peak E1RM (${"%.2f".format(currentRelBw)}× BW) is a win. Each -1kg of body weight drops the bar weight needed for ${"%.2f".format(targetRelBw)}× BW."
+                }
+                TrainingMode.MAINGAIN -> {
+                    "Maingain mode (@ ${formatWeightValue(currentBwKg)}kg BW): current strength is ${"%.2f".format(currentRelBw)}× BW ($strengthTier) toward ${"%.2f".format(targetRelBw)}× BW. Chase clean micro-gains without rushing fatigue."
+                }
+                TrainingMode.BULK -> when {
+                    bwDeltaKg >= 1.0 -> "Bulk mode (+${formatWeightValue(bwDeltaKg)}kg BW): leverage this energy surplus to push an extra back-off volume set and drive absolute E1RM up."
+                    bwDeltaKg <= -1.0 -> "Bulk mode (down ${formatWeightValue(abs(bwDeltaKg))}kg BW): scale weight dipped — fuel recovery so heavy top sets keep climbing."
+                    else -> "Bulk mode (@ ${formatWeightValue(currentBwKg)}kg BW): current strength is ${"%.2f".format(currentRelBw)}× BW ($strengthTier); push progressive overload toward ${"%.2f".format(targetRelBw)}× BW."
+                }
+            }
         }
 
         // 4-Phase Periodization Roadmap from current to target
@@ -787,14 +908,31 @@ object GoalEngine {
         val roadmapPhases = (1..4).map { phaseIdx ->
             val frac = phaseIdx / 4.0
             val phaseE1rm = roundHalf(startE1rm + totalSpan * frac)
-            val (pTitle, reps, setsCnt, cue) = when (phaseIdx) {
-                1 -> Quadruple("Phase 1: Hypertrophy & Work Capacity", 8, 4, "Accumulate clean 8-rep volume to expand muscle cross-section")
-                2 -> Quadruple("Phase 2: Strength Transition", 6, 4, "Increase bar weight and drive 6-rep sets at RPE 8–8.5")
-                3 -> Quadruple("Phase 3: Heavy Neural Overload", 4, 3, "Peak force production with heavy 4-rep sets & back-offs")
-                else -> if (goal.isSetsRepsGoal) {
-                    Quadruple("Phase 4: Goal Realization", goal.targetReps, goal.targetSets, "Execute ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg")
-                } else {
-                    Quadruple("Phase 4: Peak & Goal Realization", 3, 3, "Hit target E1RM (${formatWeightValue(effectiveTargetE1rm)}kg) via heavy triple or rep PR")
+            val (pTitle, reps, setsCnt, cue) = if (trainingMode == TrainingMode.CUT) {
+                when (phaseIdx) {
+                    1 -> Quadruple("Phase 1: Neural Anchor", 5, 3, "Lock in top-end strength with crisp 5-rep sets & full rest")
+                    2 -> Quadruple("Phase 2: Intensity Protection", 4, 3, "Hold heavy bar weight while scale weight trends down")
+                    3 -> Quadruple("Phase 3: Relative Ratio Climb", 4, 3, "Push ${"%.2f".format(currentRelBw)}× BW toward ${"%.2f".format(targetRelBw)}× BW")
+                    else -> if (goal.isRelativeBwGoal) {
+                        Quadruple("Phase 4: Relative Goal Hit", 3, 3, "Hit ${"%.2f".format(goal.targetRelativeBw)}× BW (≈${formatWeightValue(effectiveTargetE1rm)}kg @ current BW)")
+                    } else if (goal.isSetsRepsGoal) {
+                        Quadruple("Phase 4: Target Retention", goal.targetReps, goal.targetSets, "Hold ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg")
+                    } else {
+                        Quadruple("Phase 4: Peak Retention", 3, 3, "Protect ${formatWeightValue(effectiveTargetE1rm)}kg E1RM at lighter body weight")
+                    }
+                }
+            } else {
+                when (phaseIdx) {
+                    1 -> Quadruple("Phase 1: Hypertrophy & Work Capacity", 8, 4, "Accumulate clean 8-rep volume to expand muscle cross-section")
+                    2 -> Quadruple("Phase 2: Strength Transition", 6, 4, "Increase bar weight and drive 6-rep sets at RPE 8–8.5")
+                    3 -> Quadruple("Phase 3: Heavy Neural Overload", 4, 3, "Peak force production with heavy 4-rep sets & back-offs")
+                    else -> if (goal.isRelativeBwGoal) {
+                        Quadruple("Phase 4: Relative Goal Realization", 3, 3, "Hit ${"%.2f".format(goal.targetRelativeBw)}× BW (≈${formatWeightValue(effectiveTargetE1rm)}kg)")
+                    } else if (goal.isSetsRepsGoal) {
+                        Quadruple("Phase 4: Goal Realization", goal.targetReps, goal.targetSets, "Execute ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg")
+                    } else {
+                        Quadruple("Phase 4: Peak & Goal Realization", 3, 3, "Hit target E1RM (${formatWeightValue(effectiveTargetE1rm)}kg) via heavy triple or rep PR")
+                    }
                 }
             }
             val totalLoadForReps = phaseE1rm / (1.0 + reps / 30.0)
@@ -831,12 +969,15 @@ object GoalEngine {
 
         return GoalEvaluation(
             goal = goal,
+            trainingMode = trainingMode,
             category = category,
             isBodyweight = isBw,
             currentBodyWeightKg = currentBwKg,
             bodyWeightDeltaKg = bwDeltaKg,
             currentBestE1rm = currentBestE1rm,
             recentBestE1rm = recentBestE1rm,
+            retentionPct = retentionPct,
+            relBwDelta = relBwDelta,
             currentTopWeight = currentTopWeight,
             currentTopWeightReps = currentTopWeightReps,
             bestSetSummary = bestSetSummary,
@@ -886,6 +1027,7 @@ object GoalEngine {
         sessionDate: String = DateUtils.todayDdMonYyyy()
     ): LiveSessionGoalAnalysis {
         val goal = evaluation.goal
+        val mode = evaluation.trainingMode
         val isBw = evaluation.isBodyweight
         val bwKg = BodyWeightUtils.weightOn(sessionDate).takeIf { it > 0.0 } ?: evaluation.currentBodyWeightKg
 
@@ -920,21 +1062,33 @@ object GoalEngine {
         }
 
         val combinedBestE1rm = max(evaluation.currentBestE1rm, bestE1rm)
-        val achievedToday = if (goal.isSetsRepsGoal) {
-            qualifyingSets >= goal.targetSets || bestE1rm >= evaluation.effectiveTargetE1rm + 2.5
-        } else {
-            bestE1rm >= evaluation.effectiveTargetE1rm - 0.05
+        val liveRelBw = if (bwKg > 0.0 && bestE1rm > 0.0) roundHundredth(bestE1rm / bwKg) else 0.0
+        val peakHistRel = evaluation.sessionHistory.maxOfOrNull { it.relativeStrength } ?: 0.0
+        val isRelPrToday = liveRelBw > 0.0 && peakHistRel > 0.0 && liveRelBw > peakHistRel + 0.005
+        val sessionRetentionPct = if (evaluation.currentBestE1rm > 0.0 && bestE1rm > 0.0) {
+            roundTenth((bestE1rm / evaluation.currentBestE1rm) * 100.0)
+        } else 0.0
+
+        val achievedToday = when {
+            goal.isRelativeBwGoal -> liveRelBw > 0.0 && liveRelBw >= goal.targetRelativeBw - 0.005
+            goal.isSetsRepsGoal -> qualifyingSets >= goal.targetSets || bestE1rm >= evaluation.effectiveTargetE1rm + 2.5
+            else -> bestE1rm >= evaluation.effectiveTargetE1rm - 0.05
         }
 
-        val updatedProgressPct = if (achievedToday || evaluation.isAchieved) {
-            100.0
-        } else if (goal.isSetsRepsGoal) {
-            val eRatio = (combinedBestE1rm / evaluation.effectiveTargetE1rm) * 100.0
-            val bestQualSets = max(evaluation.bestMatchingSetsAtTargetWeightReps, qualifyingSets)
-            val sRatio = if (goal.targetSets > 0) (bestQualSets.toDouble() / goal.targetSets.toDouble()) * 100.0 else 0.0
-            roundTenth((eRatio * 0.65 + sRatio * 0.35).coerceIn(0.0, 99.5))
-        } else {
-            roundTenth(((combinedBestE1rm / evaluation.effectiveTargetE1rm) * 100.0).coerceIn(0.0, 99.5))
+        val updatedProgressPct = when {
+            achievedToday || evaluation.isAchieved -> 100.0
+            goal.isRelativeBwGoal -> {
+                val targetR = goal.targetRelativeBw.coerceAtLeast(0.05)
+                val bestR = max(evaluation.currentRelBw, liveRelBw)
+                roundTenth(((bestR / targetR) * 100.0).coerceIn(0.0, 99.5))
+            }
+            goal.isSetsRepsGoal -> {
+                val eRatio = (combinedBestE1rm / evaluation.effectiveTargetE1rm) * 100.0
+                val bestQualSets = max(evaluation.bestMatchingSetsAtTargetWeightReps, qualifyingSets)
+                val sRatio = if (goal.targetSets > 0) (bestQualSets.toDouble() / goal.targetSets.toDouble()) * 100.0 else 0.0
+                roundTenth((eRatio * 0.65 + sRatio * 0.35).coerceIn(0.0, 99.5))
+            }
+            else -> roundTenth(((combinedBestE1rm / evaluation.effectiveTargetE1rm) * 100.0).coerceIn(0.0, 99.5))
         }
 
         val prevRefE1rm = if (evaluation.recentBestE1rm > 0.0) evaluation.recentBestE1rm else evaluation.currentBestE1rm
@@ -950,9 +1104,11 @@ object GoalEngine {
 
         val sessionGrade = when {
             achievedToday -> "S+ • GOAL ACHIEVED! 🏆"
+            mode == TrainingMode.CUT && isRelPrToday -> "S • NEW RELATIVE PR! 🏆"
             bestE1rm > evaluation.currentBestE1rm + 0.1 -> "S • NEW ALL-TIME PR!"
+            mode == TrainingMode.CUT && workingSetsCount >= 2 && (sessionRetentionPct >= 95.0 || hitSessionTarget) -> "A+ • STRENGTH PROTECTED 🛡"
             hitSessionTarget -> "A+ • SESSION TARGET HIT"
-            workingSetsCount >= 2 && bestE1rm >= prescribedTopE1rm * 0.96 -> "A • ON TRACK"
+            workingSetsCount >= 2 && bestE1rm >= prescribedTopE1rm * 0.95 -> "A • ON TRACK"
             workingSetsCount > 0 -> "B • IN PROGRESS"
             else -> "READY TO START"
         }
@@ -967,37 +1123,46 @@ object GoalEngine {
             val wStr = if (isBw) {
                 if (targetCurrentSet.weightKg <= 0.0) "BW" else "BW+${formatWeightValue(targetCurrentSet.weightKg)}kg"
             } else "${formatWeightValue(targetCurrentSet.weightKg)}kg"
-            // Calculate how many reps at current weight would beat today's target or the goal
-            val repsForGoalAtThisWeight = ((evaluation.effectiveTargetE1rm / BodyWeightUtils.totalLoad(isBw, targetCurrentSet.weightKg, bwKg).coerceAtLeast(1.0) - 1.0) * 30.0).let { ceil(it).toInt().coerceIn(1, 30) }
-            "Aim for Set $nextSetIdx (${targetCurrentSet.role}): $wStr × ${targetCurrentSet.reps} reps (${targetCurrentSet.rpe}). Note: $wStr × $repsForGoalAtThisWeight reps = 100% Goal E1RM!"
+            if (mode == TrainingMode.CUT) {
+                "Aim for Set $nextSetIdx (${targetCurrentSet.role}): $wStr × ${targetCurrentSet.reps} reps (${targetCurrentSet.rpe}) — protect crisp bar speed."
+            } else {
+                val repsForGoalAtThisWeight = ((evaluation.effectiveTargetE1rm / BodyWeightUtils.totalLoad(isBw, targetCurrentSet.weightKg, bwKg).coerceAtLeast(1.0) - 1.0) * 30.0).let { ceil(it).toInt().coerceIn(1, 30) }
+                "Aim for Set $nextSetIdx (${targetCurrentSet.role}): $wStr × ${targetCurrentSet.reps} reps (${targetCurrentSet.rpe}). Note: $wStr × $repsForGoalAtThisWeight reps = 100% Goal E1RM!"
+            }
         } else {
-            "Complete 3–4 working sets pushing 1–2 reps shy of failure (RPE 8.5)."
+            "Complete 2–4 working sets with 1–2 reps in reserve (RPE 8–8.5)."
         }
 
         val liveHeadline = when {
             achievedToday -> "Incredible session — your logged sets today officially achieved your ${goal.exerciseName} goal!"
+            mode == TrainingMode.CUT && isRelPrToday -> "New Relative Strength PR! ${"%.2f".format(liveRelBw)}× BW (${formatWeightValue(bestE1rm)}kg E1RM @ ${formatWeightValue(bwKg)}kg BW)!"
+            mode == TrainingMode.CUT && workingSetsCount > 0 && sessionRetentionPct >= 95.0 -> "Strength protected (${formatWeightValue(sessionRetentionPct)}% of peak • ${"%.2f".format(liveRelBw)}× BW)! Lock in clean retention reps without overtaxing recovery."
             hitSessionTarget -> "Session target achieved! Today's best E1RM (${formatWeightValue(bestE1rm)}kg) keeps you right on pace for your goal."
             workingSetsCount > 0 -> {
                 val gapToday = roundHalf((prescribedTopE1rm - bestE1rm).coerceAtLeast(0.0))
-                if (gapToday > 0.0) {
+                if (mode == TrainingMode.CUT) {
+                    "Current session best: ${formatWeightValue(bestE1rm)}kg E1RM (${"%.2f".format(liveRelBw)}× BW). Keep reps crisp and prioritize recovery."
+                } else if (gapToday > 0.0) {
                     "Current session best: ${formatWeightValue(bestE1rm)}kg Est. 1RM ($workingSetsCount sets). Add +1 rep or +2.5kg on your next set to hit today's ${formatWeightValue(prescribedTopE1rm)}kg target!"
                 } else {
                     "Top set pace met (${formatWeightValue(bestE1rm)}kg Est. 1RM)! Complete ${max(1, evaluation.nextSessionSets.size - workingSetsCount)} more working set(s) to lock in today's volume."
                 }
             }
-            else -> "Today's Goal Prescription: ${evaluation.nextSessionSummary}. Hit this to drive your E1RM toward ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg!"
+            else -> "Today's ${mode.label} Prescription: ${evaluation.nextSessionSummary}."
         }
 
         val bullets = buildList {
-            if (goal.isSetsRepsGoal) {
-                add("Goal Target: ${goal.targetSets} sets × ${goal.targetReps} reps @ ${formatWeightValue(goal.targetWeightKg)}kg (Today: $qualifyingSets/${goal.targetSets} qualifying sets).")
-            } else {
-                add("Goal Target: ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg Est. 1RM (Current Progress: ${formatWeightValue(updatedProgressPct)}%, ${formatWeightValue(max(0.0, evaluation.effectiveTargetE1rm - combinedBestE1rm))}kg remaining).")
+            when {
+                goal.isRelativeBwGoal -> add("Goal Target: ${"%.2f".format(goal.targetRelativeBw)}× BW (≈${formatWeightValue(evaluation.effectiveTargetE1rm)}kg @ ${formatWeightValue(bwKg)}kg BW • Progress: ${formatWeightValue(updatedProgressPct)}%).")
+                goal.isSetsRepsGoal -> add("Goal Target: ${goal.targetSets} sets × ${goal.targetReps} reps @ ${formatWeightValue(goal.targetWeightKg)}kg (Today: $qualifyingSets/${goal.targetSets} qualifying sets).")
+                else -> add("Goal Target: ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg Est. 1RM (Progress: ${formatWeightValue(updatedProgressPct)}%, ${formatWeightValue(max(0.0, evaluation.effectiveTargetE1rm - combinedBestE1rm))}kg remaining).")
             }
             add("Today's Prescribed Sets: ${evaluation.nextSessionSummary} (${evaluation.methodologyTitle}).")
-            if (bestWeight > 0.0 && bestReps > 0) {
+            if (bestWeight > 0.0 && bestReps > 0 && mode != TrainingMode.CUT) {
                 val repNeededAtBestW = ceil(((evaluation.effectiveTargetE1rm / BodyWeightUtils.totalLoad(isBw, bestWeight, bwKg).coerceAtLeast(1.0)) - 1.0) * 30.0).toInt().coerceAtLeast(1)
                 add("At today's top weight (${formatWeightValue(bestWeight)}kg), hitting $repNeededAtBestW reps equates to your ${formatWeightValue(evaluation.effectiveTargetE1rm)}kg goal.")
+            } else if (bestE1rm > 0.0 && bwKg > 0.0) {
+                add("Relative Strength Today: ${"%.2f".format(liveRelBw)}× BW (${formatWeightValue(sessionRetentionPct)}% retention vs peak).")
             }
             add("Coach Cue: ${evaluation.nextSessionFocusCue}")
         }
@@ -1031,14 +1196,23 @@ object GoalEngine {
         exerciseSets: List<WorkoutSet>,
         allSets: List<WorkoutSet> = exerciseSets,
         exercisesCatalog: List<Exercise> = emptyList(),
-        bodyWeights: List<BodyWeightEntry> = emptyList()
+        bodyWeights: List<BodyWeightEntry> = emptyList(),
+        trainingMode: TrainingMode = TrainingMode.MAINGAIN
     ): ExerciseGoalReport {
-        val eval = evaluateGoal(goal, workouts, exerciseSets, allSets, exercisesCatalog, bodyWeights)
+        val eval = evaluateGoal(goal, workouts, exerciseSets, allSets, exercisesCatalog, bodyWeights, trainingMode)
         val isBw = eval.isBodyweight
 
         val freqRatio = (eval.sessionsPerWeek / eval.recommendedSessionsPerWeek.toDouble()).coerceIn(0.2, 1.15)
-        val progRatio = (eval.progressPct / 100.0).coerceIn(0.2, 1.0)
-        val plateauPenalty = if (eval.isPlateaued) 15 else 0
+        val progRatio = if (trainingMode == TrainingMode.CUT) {
+            when {
+                eval.isAchieved || eval.retentionPct >= 95.0 || eval.relBwDelta >= 0.0 -> 1.0
+                eval.retentionPct >= 90.0 -> 0.85
+                else -> (eval.progressPct / 100.0).coerceIn(0.4, 0.85)
+            }
+        } else {
+            (eval.progressPct / 100.0).coerceIn(0.2, 1.0)
+        }
+        val plateauPenalty = if (eval.isPlateaued && trainingMode != TrainingMode.CUT) 15 else 0
         val adherenceScore = ((freqRatio * 50.0 + progRatio * 50.0).roundToInt() - plateauPenalty).coerceIn(35, 100)
 
         val baselineE1rm = if (goal.baselineE1rmKg > 0.0) goal.baselineE1rmKg else (eval.sessionHistory.firstOrNull()?.e1rm ?: eval.currentBestE1rm)
@@ -1050,28 +1224,39 @@ object GoalEngine {
         val volDeltaPct = if (priorVolAvg > 0.0) roundTenth(((recentVolAvg - priorVolAvg) / priorVolAvg) * 100.0) else 0.0
         val volumeTrendSummary = when {
             volDeltaPct >= 5.0 -> "Upward (+${formatWeightValue(volDeltaPct)}% session tonnage over last 3 sessions • Avg ${formatWeightValue(roundHalf(recentVolAvg))}kg)"
+            volDeltaPct <= -5.0 && trainingMode == TrainingMode.CUT -> "Planned Cut Taper (${formatWeightValue(volDeltaPct)}% tonnage — keeping fatigue manageable • Avg ${formatWeightValue(roundHalf(recentVolAvg))}kg)"
             volDeltaPct <= -5.0 -> "Tapering (${formatWeightValue(volDeltaPct)}% session tonnage over last 3 sessions • Avg ${formatWeightValue(roundHalf(recentVolAvg))}kg)"
             else -> "Steady (Avg ${formatWeightValue(roundHalf(recentVolAvg))}kg session volume across recent workouts)"
         }
 
-        val executiveStatus = when {
-            eval.isAchieved -> "GOAL ACHIEVED 🏆 — Target of ${if (goal.isSetsRepsGoal) "${goal.targetSets}×${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg" else "${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM"} reached!"
-            eval.isPlateaued -> "PLATEAU DETECTED — Switch to ${eval.methodologyTitle} (${eval.nextSessionSummary}) to break stagnation."
-            eval.status == GoalStatus.NEEDS_FREQUENCY -> "FREQUENCY DEFICIT — Last trained ${eval.daysSinceLastSession}d ago (${eval.sessionsPerWeek}/wk vs ${eval.recommendedSessionsPerWeek}/wk target)."
-            else -> "ON TRACK — ${formatWeightValue(eval.progressPct)}% complete (${formatWeightValue(eval.remainingKg)}kg remaining • Est. ${eval.estimatedWeeksToGoal} wks to goal)."
+        val targetDesc = when {
+            goal.isRelativeBwGoal -> "${"%.2f".format(goal.targetRelativeBw)}× BW (≈${formatWeightValue(eval.effectiveTargetE1rm)}kg)"
+            goal.isSetsRepsGoal -> "${goal.targetSets}×${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg"
+            else -> "${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM"
         }
 
-        val headlineSummary = if (goal.isSetsRepsGoal) {
-            "${goal.exerciseName}: Target ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg (Equiv. ${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM) • Best E1RM: ${formatWeightValue(eval.currentBestE1rm)}kg (${"%.2f".format(eval.currentRelBw)}× BW)"
-        } else {
-            "${goal.exerciseName}: Target ${formatWeightValue(eval.effectiveTargetE1rm)}kg 1RM (${"%.2f".format(eval.targetRelBw)}× BW) • Current Best: ${formatWeightValue(eval.currentBestE1rm)}kg (${"%.2f".format(eval.currentRelBw)}× BW)"
+        val executiveStatus = when {
+            eval.isAchieved -> "GOAL ACHIEVED 🏆 — Target of $targetDesc reached!"
+            eval.status == GoalStatus.RETAINING -> "STRENGTH RETAINED 🛡 (Cut Mode) — Holding ${formatWeightValue(eval.retentionPct)}% of peak E1RM (${"%.2f".format(eval.currentRelBw)}× BW)!"
+            eval.status == GoalStatus.RETENTION_WATCH -> "RETENTION WATCH (Cut Mode) — Holding ${formatWeightValue(eval.retentionPct)}% of peak; prioritize heavy low-rep anchor sets & sleep."
+            eval.isPlateaued -> "PLATEAU DETECTED — Switch to ${eval.methodologyTitle} (${eval.nextSessionSummary}) to break stagnation."
+            eval.status == GoalStatus.NEEDS_FREQUENCY -> "FREQUENCY DEFICIT — Last trained ${eval.daysSinceLastSession}d ago (${eval.sessionsPerWeek}/wk vs ${eval.recommendedSessionsPerWeek}/wk target)."
+            else -> "ON TRACK (${trainingMode.label}) — ${formatWeightValue(eval.progressPct)}% complete (${formatWeightValue(eval.remainingKg)}kg remaining • Est. ${eval.estimatedWeeksToGoal} wks to goal)."
+        }
+
+        val headlineSummary = when {
+            goal.isRelativeBwGoal -> "${goal.exerciseName}: Target ${"%.2f".format(goal.targetRelativeBw)}× BW (≈${formatWeightValue(eval.effectiveTargetE1rm)}kg) • Current: ${"%.2f".format(eval.currentRelBw)}× BW (${formatWeightValue(eval.currentBestE1rm)}kg E1RM)"
+            goal.isSetsRepsGoal -> "${goal.exerciseName}: Target ${goal.targetSets} × ${goal.targetReps} @ ${formatWeightValue(goal.targetWeightKg)}kg (Equiv. ${formatWeightValue(eval.effectiveTargetE1rm)}kg E1RM) • Best E1RM: ${formatWeightValue(eval.currentBestE1rm)}kg (${"%.2f".format(eval.currentRelBw)}× BW)"
+            else -> "${goal.exerciseName}: Target ${formatWeightValue(eval.effectiveTargetE1rm)}kg 1RM (${"%.2f".format(eval.targetRelBw)}× BW) • Current Best: ${formatWeightValue(eval.currentBestE1rm)}kg (${"%.2f".format(eval.currentRelBw)}× BW)"
         }
 
         val strengths = buildList {
             if (eval.currentBestE1rm > 0.0) {
                 add("Peak E1RM of ${formatWeightValue(eval.currentBestE1rm)}kg places you in the ${eval.strengthTier} strength tier (${"%.2f".format(eval.currentRelBw)}× body weight at ${formatWeightValue(eval.currentBodyWeightKg)}kg BW).")
             }
-            if (gainKg > 0.0) {
+            if (trainingMode == TrainingMode.CUT && eval.retentionPct >= 95.0) {
+                add("Excellent Cut Retention: holding ${formatWeightValue(eval.retentionPct)}% of baseline strength (${if (eval.relBwDelta >= 0) "+" else ""}${"%.2f".format(eval.relBwDelta)}× BW change).")
+            } else if (gainKg > 0.0) {
                 add("Gained +${formatWeightValue(gainKg)}kg (+${formatWeightValue(gainPct)}%) on Estimated 1RM from baseline (${formatWeightValue(baselineE1rm)}kg → ${formatWeightValue(eval.currentBestE1rm)}kg).")
             }
             if (eval.sessionsPerWeek >= 1.2) {
@@ -1081,19 +1266,22 @@ object GoalEngine {
                 add("Positive work capacity trend: recent session volume is up +${formatWeightValue(volDeltaPct)}%.")
             }
             if (isEmpty()) {
-                add("Goal initialized and calibrated to your ${formatWeightValue(eval.currentBodyWeightKg)}kg body weight and historical profile.")
+                add("Goal initialized and calibrated to your ${formatWeightValue(eval.currentBodyWeightKg)}kg body weight and ${trainingMode.label} phase.")
             }
         }
 
         val bottlenecks = buildList {
-            if (eval.isPlateaued) {
-                add("Stagnation across last 3+ sessions in the ${eval.dominantRepZone} range — introduce ${eval.methodologyTitle} next session (${eval.nextSessionSummary}).")
+            if (eval.isPlateaued && trainingMode != TrainingMode.CUT) {
+                add("Stagnation across recent sessions in the ${eval.dominantRepZone} range — introduce ${eval.methodologyTitle} next session (${eval.nextSessionSummary}).")
+            }
+            if (eval.status == GoalStatus.RETENTION_WATCH) {
+                add("Cut retention dipped below 95% (${formatWeightValue(eval.retentionPct)}%); keep the heavy anchor set first and trim extra accessory sets.")
             }
             if (eval.sessionsPerWeek < eval.recommendedSessionsPerWeek - 0.3) {
-                add("Training frequency is ${eval.sessionsPerWeek}×/week — increasing to ${eval.recommendedSessionsPerWeek}×/week (~${eval.recommendedSetsPerWeek} sets/week) will accelerate neural adaptations by ~35%.")
+                add("Training frequency is ${eval.sessionsPerWeek}×/week — increasing to ${eval.recommendedSessionsPerWeek}×/week (~${eval.recommendedSetsPerWeek} sets/week) supports neural retention and strength output.")
             }
             val missingAcc = eval.accessories.filter { it.recentSessions == 0 }
-            if (missingAcc.isNotEmpty()) {
+            if (missingAcc.isNotEmpty() && trainingMode != TrainingMode.CUT) {
                 add("Accessory gap: add ${missingAcc.joinToString(" or ") { it.exerciseName }} (2–3 sets/week) to reinforce weak-point leverage.")
             }
             add("Next Session Action: Aim for ${eval.nextSessionSummary}. ${eval.nextSessionFocusCue}")
@@ -1103,17 +1291,24 @@ object GoalEngine {
         val sessionEntries = eval.sessionHistory.mapIndexed { idx, pt ->
             val prevPt = if (idx > 0) eval.sessionHistory[idx - 1] else null
             val deltaE1rm = if (prevPt != null) roundHalf(pt.e1rm - prevPt.e1rm) else 0.0
-            val pctAtSess = roundTenth(((pt.e1rm / eval.effectiveTargetE1rm) * 100.0).coerceIn(0.0, 100.0))
-            val validSets = pt.sets.filter { (it.reps ?: 0) > 0 }
-            val hitGoalInSess = if (goal.isSetsRepsGoal) {
-                validSets.count { (it.weight ?: 0.0) >= goal.targetWeightKg - 0.01 && (it.reps ?: 0) >= goal.targetReps } >= goal.targetSets
+            val pctAtSess = if (goal.isRelativeBwGoal && goal.targetRelativeBw > 0.0) {
+                roundTenth(((pt.relativeStrength / goal.targetRelativeBw) * 100.0).coerceIn(0.0, 100.0))
             } else {
-                pt.e1rm >= eval.effectiveTargetE1rm - 0.05
+                roundTenth(((pt.e1rm / eval.effectiveTargetE1rm) * 100.0).coerceIn(0.0, 100.0))
+            }
+            val validSets = pt.sets.filter { (it.reps ?: 0) > 0 }
+            val hitGoalInSess = when {
+                goal.isRelativeBwGoal -> pt.relativeStrength >= goal.targetRelativeBw - 0.005
+                goal.isSetsRepsGoal -> validSets.count { (it.weight ?: 0.0) >= goal.targetWeightKg - 0.01 && (it.reps ?: 0) >= goal.targetReps } >= goal.targetSets
+                else -> pt.e1rm >= eval.effectiveTargetE1rm - 0.05
             }
             val note = when {
                 hitGoalInSess -> "🏆 Goal Target Achieved!"
                 pt.isE1rmPr -> "★ New All-Time E1RM PR (${formatWeightValue(pt.e1rm)}kg)"
+                pt.isRelPr && trainingMode == TrainingMode.CUT -> "★ New Relative Strength PR (${"%.2f".format(pt.relativeStrength)}× BW)"
                 deltaE1rm > 0.0 -> "+${formatWeightValue(deltaE1rm)}kg E1RM vs prior session"
+                deltaE1rm < 0.0 && trainingMode == TrainingMode.CUT && prevPt != null && pt.e1rm >= prevPt.e1rm * 0.95 ->
+                    "Strength retained during cut (${"%.2f".format(pt.relativeStrength)}× BW)"
                 deltaE1rm < 0.0 -> "Volume / recovery session (${formatWeightValue(deltaE1rm)}kg vs prior)"
                 else -> "Maintained ${formatWeightValue(pt.e1rm)}kg E1RM"
             }
@@ -1128,7 +1323,7 @@ object GoalEngine {
                 workingSets = validSets.size,
                 progressPctAtSession = pctAtSess,
                 deltaVsPrevE1rm = deltaE1rm,
-                hitMilestone = hitGoalInSess || pt.isE1rmPr,
+                hitMilestone = hitGoalInSess || pt.isE1rmPr || (pt.isRelPr && trainingMode == TrainingMode.CUT),
                 coachNote = note
             )
         }.reversed()
@@ -1157,12 +1352,13 @@ object GoalEngine {
         workouts: List<Workout>,
         allSets: List<WorkoutSet>,
         exercisesCatalog: List<Exercise> = emptyList(),
-        bodyWeights: List<BodyWeightEntry> = emptyList()
+        bodyWeights: List<BodyWeightEntry> = emptyList(),
+        trainingMode: TrainingMode = TrainingMode.MAINGAIN
     ): AllGoalsMasterReport {
         val setsByExLower = allSets.groupBy { it.exercise.trim().lowercase() }
         val reports = goals.map { g ->
             val exSets = setsByExLower[g.exerciseName.trim().lowercase()] ?: emptyList()
-            generateExerciseReport(g, workouts, exSets, allSets, exercisesCatalog, bodyWeights)
+            generateExerciseReport(g, workouts, exSets, allSets, exercisesCatalog, bodyWeights, trainingMode)
         }.sortedWith(
             compareByDescending<ExerciseGoalReport> { it.evaluation.goal.enabled }
                 .thenByDescending { it.evaluation.progressPct }
@@ -1171,8 +1367,12 @@ object GoalEngine {
         val totalGoals = reports.size
         val activeGoals = reports.count { it.evaluation.goal.enabled }
         val achievedCount = reports.count { it.evaluation.isAchieved }
-        val onTrackCount = reports.count { !it.evaluation.isAchieved && it.evaluation.status == GoalStatus.ON_TRACK }
-        val plateauedCount = reports.count { !it.evaluation.isAchieved && (it.evaluation.isPlateaued || it.evaluation.status == GoalStatus.NEEDS_FREQUENCY) }
+        val onTrackCount = reports.count {
+            !it.evaluation.isAchieved && (it.evaluation.status == GoalStatus.ON_TRACK || it.evaluation.status == GoalStatus.RETAINING)
+        }
+        val plateauedCount = reports.count {
+            !it.evaluation.isAchieved && (it.evaluation.isPlateaued || it.evaluation.status == GoalStatus.NEEDS_FREQUENCY || it.evaluation.status == GoalStatus.RETENTION_WATCH)
+        }
 
         val overallCompletionPct = if (reports.isNotEmpty()) {
             roundTenth(reports.map { it.evaluation.progressPct }.average())
@@ -1202,9 +1402,10 @@ object GoalEngine {
 
         val takeaways = buildList {
             if (reports.isEmpty()) {
-                add("No exercise goals set yet. Create your first 1RM or Sets × Reps goal on the Goals screen to unlock personalized periodization and session reports.")
+                add("No exercise goals set yet. Create your first 1RM, Sets × Reps, or Relative × BW goal on the Goals screen to unlock personalized periodization and session reports.")
             } else {
-                add("Portfolio Completion: ${formatWeightValue(overallCompletionPct)}% average progress across $totalGoals goal lift${if (totalGoals == 1) "" else "s"} ($achievedCount achieved, $onTrackCount on track, $plateauedCount needing programming adjustments).")
+                add("Active Phase: ${trainingMode.label} — ${trainingMode.tagline}.")
+                add("Portfolio Completion: ${formatWeightValue(overallCompletionPct)}% average progress across $totalGoals goal lift${if (totalGoals == 1) "" else "s"} ($achievedCount achieved, $onTrackCount ${if (trainingMode == TrainingMode.CUT) "retaining / on track" else "on track"}, $plateauedCount needing attention).")
                 add("Relative Strength Profile (@ ${formatWeightValue(currentBw)}kg BW): Strongest relative movement is $strongestRel.")
                 if (closestGoal != "–") {
                     add("Closest Breakthrough: $closestGoal.")
@@ -1248,7 +1449,8 @@ object GoalEngine {
         allExerciseSetsAfterSave: List<WorkoutSet>,
         allWorkoutsAfterSave: List<Workout>,
         exercisesCatalog: List<Exercise> = emptyList(),
-        bodyWeights: List<BodyWeightEntry> = emptyList()
+        bodyWeights: List<BodyWeightEntry> = emptyList(),
+        trainingMode: TrainingMode = TrainingMode.MAINGAIN
     ): ExerciseGoal {
         val validSessionSets = workoutExerciseSets.filter { (it.reps ?: 0) > 0 }
         if (validSessionSets.isEmpty()) return goal
@@ -1259,7 +1461,8 @@ object GoalEngine {
             exerciseSets = allExerciseSetsAfterSave,
             allSets = allExerciseSetsAfterSave,
             exercisesCatalog = exercisesCatalog,
-            bodyWeights = bodyWeights
+            bodyWeights = bodyWeights,
+            trainingMode = trainingMode
         )
         val isBw = eval.isBodyweight
         val sessBw = BodyWeightUtils.weightOn(workout.date, bodyWeights.ifEmpty { emptyList() }).takeIf { it > 0.0 }
@@ -1290,16 +1493,18 @@ object GoalEngine {
         val priorSessions = eval.sessionHistory.filter { it.workoutId != workout.id }
         val prevBestE1rm = priorSessions.lastOrNull()?.e1rm ?: goal.baselineE1rmKg
         val deltaKg = if (prevBestE1rm > 0.0) roundHalf(sessBestE1rm - prevBestE1rm) else 0.0
+        val sessRelBw = if (sessBw > 0.0 && sessBestE1rm > 0.0) roundHundredth(sessBestE1rm / sessBw) else 0.0
 
-        val achievedInThisSession = if (goal.isSetsRepsGoal) {
-            qualifyingSets >= goal.targetSets || sessBestE1rm >= eval.effectiveTargetE1rm + 2.5
-        } else {
-            sessBestE1rm >= eval.effectiveTargetE1rm - 0.05
+        val achievedInThisSession = when {
+            goal.isRelativeBwGoal -> sessRelBw > 0.0 && sessRelBw >= goal.targetRelativeBw - 0.005
+            goal.isSetsRepsGoal -> qualifyingSets >= goal.targetSets || sessBestE1rm >= eval.effectiveTargetE1rm + 2.5
+            else -> sessBestE1rm >= eval.effectiveTargetE1rm - 0.05
         }
 
         val summaryNote = when {
             achievedInThisSession -> "🏆 Goal Achieved! Logged ${SetUtils.formatSetsSummary(validSessionSets, isBw)} (${formatWeightValue(sessBestE1rm)}kg E1RM)."
             deltaKg > 0.0 -> "Progress +${formatWeightValue(deltaKg)}kg E1RM vs last session (${SetUtils.formatSetsSummary(validSessionSets, isBw)}) • Now at ${formatWeightValue(eval.progressPct)}% of goal."
+            trainingMode == TrainingMode.CUT && eval.retentionPct >= 95.0 -> "Cut Strength Protected (${formatWeightValue(eval.retentionPct)}% held • ${"%.2f".format(sessRelBw)}× BW): ${SetUtils.formatSetsSummary(validSessionSets, isBw)}."
             else -> "Logged ${validSessionSets.size} working sets (${SetUtils.formatSetsSummary(validSessionSets, isBw)}) • Best E1RM ${formatWeightValue(sessBestE1rm)}kg (${formatWeightValue(eval.progressPct)}% of goal)."
         }
 

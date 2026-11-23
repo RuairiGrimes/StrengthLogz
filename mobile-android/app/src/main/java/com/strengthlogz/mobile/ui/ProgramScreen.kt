@@ -46,6 +46,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ProgramDay
 import com.strengthlogz.mobile.model.ProgramExerciseItem
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutProgram
 import com.strengthlogz.mobile.model.WorkoutSet
@@ -71,7 +72,8 @@ fun ProgramScreen(
     onAddCustomExercise: (Exercise) -> Unit,
     onLoadProgramDayToLogger: (SuggestedWorkoutPlan) -> Unit,
     persistedSelectedDayIdx: Int? = null,
-    onSelectedDayChanged: (String, Int) -> Unit = { _, _ -> }
+    onSelectedDayChanged: (String, Int) -> Unit = { _, _ -> },
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN
 ) {
     var showProgramSwitcher by remember { mutableStateOf(false) }
     var showCreateProgramDialog by remember { mutableStateOf(false) }
@@ -155,10 +157,16 @@ fun ProgramScreen(
         )
         onSaveProgram(updatedProg)
 
+        val phaseFocusSuffix = when (trainingMode) {
+            TrainingMode.CUT -> " • Cut focus: protect top-set weight, trim back-off sets if fatigued"
+            TrainingMode.BULK -> " • Bulk focus: push progressive overload on top sets"
+            TrainingMode.MAINGAIN -> ""
+        }
+        val baseNote = if (day.safeFocus.isNotBlank()) "Program Focus: ${day.safeFocus}" else "Loaded from ${activeProgram.safeProgramName}"
         val plan = SuggestedWorkoutPlan(
             split = WorkoutSplitType.FULL_BODY,
             title = day.dayName,
-            notes = if (day.safeFocus.isNotBlank()) "Program Focus: ${day.safeFocus}" else "Loaded from ${activeProgram.safeProgramName}",
+            notes = baseNote + phaseFocusSuffix,
             exercises = suggestedItems
         )
         onLoadProgramDayToLogger(plan)
@@ -286,6 +294,7 @@ fun ProgramScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        TrainingModePill(mode = trainingMode, compact = true)
                         if (activeProgram != null) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),

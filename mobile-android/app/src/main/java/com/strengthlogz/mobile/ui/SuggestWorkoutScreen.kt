@@ -24,6 +24,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.strengthlogz.mobile.model.Exercise
+import com.strengthlogz.mobile.model.TrainingMode
+import com.strengthlogz.mobile.model.TrainingModePolicy
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.model.WorkoutSet
 import com.strengthlogz.mobile.ui.theme.*
@@ -225,7 +227,8 @@ private fun parseIsoToEpochMs(iso: String): Long = DateUtils.toEpochMs(iso)
 
 private fun analyzeMuscleVolume(
     sets: List<WorkoutSet>,
-    exercises: List<Exercise>
+    exercises: List<Exercise>,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN
 ): List<MuscleVolumeStat> {
     val catMap = exercises.associate { it.name.lowercase() to it.category }
     val validSets = sets.filter { (it.reps ?: 0) > 0 }
@@ -235,14 +238,7 @@ private fun analyzeMuscleVolume(
     val refMs = parseIsoToEpochMs(latestIso).coerceAtLeast(System.currentTimeMillis())
     val dayMs = 86_400_000L
 
-    val targets = linkedMapOf(
-        "Chest" to 10,
-        "Back" to 12,
-        "Shoulders" to 9,
-        "Legs" to 10,
-        "Arms" to 9,
-        "Core" to 4
-    )
+    val targets = TrainingModePolicy.weeklyMuscleTargets(trainingMode)
 
     val counts7 = mutableMapOf<String, Int>()
     val counts14 = mutableMapOf<String, Int>()
@@ -277,13 +273,15 @@ private fun analyzeMuscleVolume(
 
 private fun buildSuggestedExerciseItem(
     slot: SlotDefinition,
+    slotIndex: Int,
     candidateIndexOffset: Int,
     alreadyPicked: Set<String>,
     setsByExerciseLower: Map<String, List<WorkoutSet>>,
     latestGlobalIso: String,
     workoutMap: Map<String, Workout>,
     catMap: Map<String, String>,
-    volumeStats: Map<String, MuscleVolumeStat>
+    volumeStats: Map<String, MuscleVolumeStat>,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN
 ): SuggestedExerciseItem {
     val availableCandidates = slot.candidates.filter { it.lowercase() !in alreadyPicked }.ifEmpty { slot.candidates }
 
@@ -293,7 +291,8 @@ private fun buildSuggestedExerciseItem(
         val rawExSets = setsByExerciseLower[exName.lowercase()] ?: emptyList()
         val exSets = rawExSets.filter { (it.reps ?: 0) > 0 }
         val cat = catMap[exName.lowercase()] ?: slot.categoryHint
-        val volDeficitBonus = (volumeStats[cat]?.deficitRatio ?: 0.5f) * 10.0
+        val volScale = if (trainingMode == TrainingMode.BULK) 11.5 else 10.0
+        val volDeficitBonus = (volumeStats[cat]?.deficitRatio ?: 0.5f) * volScale
         val benefitBonus = if (EXERCISE_BENEFITS.containsKey(exName)) 4.0 else 0.0
 
         if (exSets.isEmpty()) {
@@ -310,7 +309,9 @@ private fun buildSuggestedExerciseItem(
             ((refMs - parseIsoToEpochMs(lastPt.isoDate)) / 86_400_000L).coerceIn(0L, 60L)
         } else 30L
 
-        val plateauGapBonus = if (peakE1rm > 0 && currE1rm < peakE1rm) {
+        val plateauGapBonus = if (trainingMode == TrainingMode.CUT) {
+            if (peakE1rm > 0 && currE1rm >= peakE1rm * TrainingModePolicy.CUT_RETENTION_FLOOR_RATIO) 6.0 else 3.0
+        } else if (peakE1rm > 0 && currE1rm < peakE1rm) {
             ((peakE1rm - currE1rm) / peakE1rm * 25.0).coerceAtMost(15.0)
         } else 5.0
 
@@ -320,7 +321,8 @@ private fun buildSuggestedExerciseItem(
             else -> 6.0
         }
 
-        (sessionCount.coerceAtMost(25) * 0.8) + plateauGapBonus + recencyBonus + volDeficitBonus + benefitBonus
+        val modeRelBonus = if (trainingMode == TrainingMode.CUT && BodyWeightUtils.isBodyweightExercise(exName)) 2.0 else 0.0
+        (sessionCount.coerceAtMost(25) * 0.8) + plateauGapBonus + recencyBonus + volDeficitBonus + benefitBonus + modeRelBonus
     }
 
     val chosenName = rankedCandidates[candidateIndexOffset % rankedCandidates.size]
@@ -335,14 +337,20 @@ private fun buildSuggestedExerciseItem(
     val currE1rm = lastSession?.e1rm ?: 0.0
     val benefitText = EXERCISE_BENEFITS[chosenName]
 
+    val modeDefaultSets = when (trainingMode) {
+        TrainingMode.CUT -> if (slotIndex >= 3) 2 else 3
+        TrainingMode.MAINGAIN -> 3
+        TrainingMode.BULK -> if (slotIndex < 3) 4 else 3
+    }
+
     if (lastSession == null) {
-        val defaultPrescribed = List(slot.defaultSets) {
+        val defaultPrescribed = List(modeDefaultSets) {
             PrescribedSet(weight = "", reps = slot.defaultReps.toString())
         }
         val newReason = if (!benefitText.isNullOrBlank()) {
             "✨ New Exercise Suggestion: $benefitText"
         } else {
-            "🎯 New stimulus for $cat (${slot.defaultSets} × ${slot.defaultReps})"
+            "🎯 New stimulus for $cat ($modeDefaultSets × ${slot.defaultReps})"
         }
         return SuggestedExerciseItem(
             slotTitle = slot.slotTitle,
@@ -353,7 +361,7 @@ private fun buildSuggestedExerciseItem(
             peakE1rm = 0.0,
             currentE1rm = 0.0,
             reasonTag = newReason,
-            targetSummary = "${slot.defaultSets} sets × ${slot.defaultReps} reps",
+            targetSummary = "$modeDefaultSets sets × ${slot.defaultReps} reps",
             prescribedSets = defaultPrescribed
         )
     }
@@ -363,13 +371,16 @@ private fun buildSuggestedExerciseItem(
     val baseReps = lastSession.topWeightReps
     val lastSummary = com.strengthlogz.mobile.util.SetUtils.formatSetsSummary(completedLastSets, isBodyweight = baseWeight <= 0.0)
 
-    val numSets = completedLastSets.size.coerceIn(3, 4)
+    val numSets = modeDefaultSets
 
-    val isReadyForWeightJump = baseWeight > 0 && (
-        (baseReps >= 8 && slot.defaultReps <= 6) ||
-            (baseReps >= 12) ||
-            (prevSession != null && lastSession.e1rm > prevSession.e1rm && baseReps >= slot.defaultReps + 1)
-        )
+    val isReadyForWeightJump = baseWeight > 0 && when (trainingMode) {
+        TrainingMode.BULK ->
+            (baseReps >= 8) || (prevSession != null && lastSession.e1rm >= prevSession.e1rm && baseReps >= slot.defaultReps)
+        TrainingMode.MAINGAIN ->
+            (baseReps >= 8 && slot.defaultReps <= 6) || (baseReps >= 12) || (prevSession != null && lastSession.e1rm > prevSession.e1rm && baseReps >= slot.defaultReps + 1)
+        TrainingMode.CUT ->
+            baseReps >= 12
+    }
 
     val targetWeight: Double
     val targetReps: Int
@@ -377,13 +388,29 @@ private fun buildSuggestedExerciseItem(
 
     if (baseWeight <= 0.0) {
         targetWeight = 0.0
-        targetReps = (baseReps + 1).coerceAtLeast(slot.defaultReps)
-        overloadNote = "Aim for +1 rep per set over last session ($baseReps → $targetReps reps)"
+        targetReps = if (trainingMode == TrainingMode.CUT) {
+            baseReps.coerceAtLeast(slot.defaultReps)
+        } else {
+            (baseReps + 1).coerceAtLeast(slot.defaultReps)
+        }
+        overloadNote = if (trainingMode == TrainingMode.CUT) {
+            "Cut Retain: Match $targetReps clean reps across $numSets sets"
+        } else {
+            "Aim for +1 rep per set over last session ($baseReps → $targetReps reps)"
+        }
     } else if (isReadyForWeightJump) {
         val increment = if (cat.equals("Arms", ignoreCase = true) || cat.equals("Shoulders", ignoreCase = true) && chosenName.contains("Raise", ignoreCase = true)) 1.25 else 2.5
         targetWeight = ((baseWeight + increment) * 2.0).roundToInt() / 2.0
         targetReps = slot.defaultReps.coerceAtLeast(baseReps - 2)
-        overloadNote = "Weight progression: +${formatWeightValue(targetWeight - baseWeight)}kg ($numSets x $targetReps @ ${formatWeightValue(targetWeight)}kg)"
+        overloadNote = if (trainingMode == TrainingMode.CUT) {
+            "Cut micro-jump: +${formatWeightValue(targetWeight - baseWeight)}kg ($numSets x $targetReps @ ${formatWeightValue(targetWeight)}kg)"
+        } else {
+            "Weight progression: +${formatWeightValue(targetWeight - baseWeight)}kg ($numSets x $targetReps @ ${formatWeightValue(targetWeight)}kg)"
+        }
+    } else if (trainingMode == TrainingMode.CUT) {
+        targetWeight = baseWeight
+        targetReps = baseReps.coerceAtLeast(slot.defaultReps)
+        overloadNote = "Cut Retain: Hold ${formatWeightValue(targetWeight)}kg × $targetReps"
     } else {
         targetWeight = baseWeight
         targetReps = (baseReps + 1).coerceAtMost(15)
@@ -395,15 +422,33 @@ private fun buildSuggestedExerciseItem(
     val targetE1rm = if (targetLoad > 0) computeEpley(targetLoad, targetReps) else 0.0
     val volStat = volumeStats[cat]
     val benefitSuffix = if (!benefitText.isNullOrBlank()) " • Benefit: $benefitText" else ""
-    val reasonTag = when {
-        peakE1rm > 0 && currE1rm < peakE1rm * 0.94 ->
-            "🔧 Needs Improvement: Current E1RM (${formatWeightValue(currE1rm)}kg) is below your ${formatWeightValue(peakE1rm)}kg PR (${peakSession?.displayDate ?: ""})$benefitSuffix"
-        targetE1rm > peakE1rm && peakE1rm > 0 ->
-            "🏆 PR Opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)!$benefitSuffix"
-        volStat != null && volStat.setsLast7Days < volStat.targetWeeklySets / 2 ->
-            "📊 Weekly Volume Gap: $cat has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days$benefitSuffix"
-        else ->
-            "📈 Progressive Overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
+    val reasonTag = when (trainingMode) {
+        TrainingMode.CUT -> when {
+            slotIndex >= 3 ->
+                "🛡 Low-Fatigue Volume: $numSets crisp sets for $cat without burnout ($overloadNote)$benefitSuffix"
+            isBwChosen || (targetE1rm > peakE1rm && peakE1rm > 0) ->
+                "🏆 Rel. Strength Builder: $overloadNote — high payoff during weight loss$benefitSuffix"
+            else ->
+                "🛡 Strength Retention: $overloadNote to protect peak strength$benefitSuffix"
+        }
+        TrainingMode.BULK -> when {
+            targetE1rm > peakE1rm && peakE1rm > 0 ->
+                "🏆 PR Opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)!$benefitSuffix"
+            volStat != null && volStat.setsLast7Days < volStat.targetWeeklySets * 0.7 ->
+                "💪 Hypertrophy Volume: $cat is at ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets this week — $numSets sets scheduled$benefitSuffix"
+            else ->
+                "🔥 Surplus Overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
+        }
+        TrainingMode.MAINGAIN -> when {
+            peakE1rm > 0 && currE1rm < peakE1rm * 0.94 ->
+                "🔧 Needs Improvement: Current E1RM (${formatWeightValue(currE1rm)}kg) is below your ${formatWeightValue(peakE1rm)}kg PR (${peakSession?.displayDate ?: ""})$benefitSuffix"
+            targetE1rm > peakE1rm && peakE1rm > 0 ->
+                "🏆 PR Opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)!$benefitSuffix"
+            volStat != null && volStat.setsLast7Days < volStat.targetWeeklySets / 2 ->
+                "📊 Weekly Volume Gap: $cat has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days$benefitSuffix"
+            else ->
+                "📈 Progressive Overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
+        }
     }
 
     val targetSummary = if (targetWeight > 0) {
@@ -439,6 +484,8 @@ fun SuggestWorkoutScreen(
     workouts: List<Workout>,
     sets: List<WorkoutSet>,
     exercises: List<Exercise>,
+    trainingMode: TrainingMode = TrainingMode.MAINGAIN,
+    onOpenModePicker: () -> Unit = {},
     onStartSuggestedWorkout: (SuggestedWorkoutPlan) -> Unit
 ) {
     var selectedSplit by remember { mutableStateOf(WorkoutSplitType.PUSH) }
@@ -450,7 +497,7 @@ fun SuggestWorkoutScreen(
 
     val workoutMap = remember(workouts) { workouts.associateBy { it.id } }
     val catMap = remember(exercises) { exercises.associate { it.name.lowercase() to it.category } }
-    val volumeStatsList = remember(sets, exercises) { analyzeMuscleVolume(sets, exercises) }
+    val volumeStatsList = remember(sets, exercises, trainingMode) { analyzeMuscleVolume(sets, exercises, trainingMode) }
     val volumeStatsMap = remember(volumeStatsList) { volumeStatsList.associateBy { it.category } }
 
     val recommendedSplit = remember(volumeStatsMap) {
@@ -489,30 +536,37 @@ fun SuggestWorkoutScreen(
         sets.maxOfOrNull { DateUtils.toSortableIso(it.date) } ?: "2026-10-16"
     }
 
-    val generatedExercises = remember(selectedSplit, targetExerciseCount, shuffleSeed, slotOffsets.toMap(), setsByExerciseLower, workouts) {
+    val generatedExercises = remember(selectedSplit, targetExerciseCount, shuffleSeed, slotOffsets.toMap(), setsByExerciseLower, workouts, trainingMode) {
         val picked = mutableSetOf<String>()
         activeSlots.mapIndexed { idx, slot ->
             val offset = (slotOffsets[idx] ?: 0) + shuffleSeed
             val item = buildSuggestedExerciseItem(
                 slot = slot,
+                slotIndex = idx,
                 candidateIndexOffset = offset,
                 alreadyPicked = picked,
                 setsByExerciseLower = setsByExerciseLower,
                 latestGlobalIso = latestGlobalIso,
                 workoutMap = workoutMap,
                 catMap = catMap,
-                volumeStats = volumeStatsMap
+                volumeStats = volumeStatsMap,
+                trainingMode = trainingMode
             )
             picked.add(item.exerciseName.lowercase())
             item
         }
     }
 
-    val currentPlan = remember(selectedSplit, generatedExercises) {
+    val currentPlan = remember(selectedSplit, generatedExercises, trainingMode) {
+        val modeNote = when (trainingMode) {
+            TrainingMode.CUT -> "Cut session — strength retention & fatigue management"
+            TrainingMode.BULK -> "Bulk session — hypertrophy volume & surplus overload"
+            TrainingMode.MAINGAIN -> "Balanced progressive overload"
+        }
         SuggestedWorkoutPlan(
             split = selectedSplit,
             title = selectedSplit.label,
-            notes = "Auto-designed ${selectedSplit.label} session (progressive overload)",
+            notes = "Auto-designed ${selectedSplit.label} session ($modeNote)",
             exercises = generatedExercises
         )
     }
@@ -558,37 +612,54 @@ fun SuggestWorkoutScreen(
         ) {
             // 1. Clean Header with 7-Day Volume Sheet trigger & Shuffle
             item {
-                ModernScreenHeader(
-                    title = "Suggest",
-                    subtitle = "Recommended today: ${recommendedSplit.label}",
-                    action = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedButton(
-                                onClick = { showVolumeSheet = true },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, BorderDark),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                                modifier = Modifier.height(38.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ModernScreenHeader(
+                        title = "Suggest",
+                        subtitle = "Recommended today: ${recommendedSplit.label}",
+                        action = {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("7-Day Volume", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            }
+                                OutlinedButton(
+                                    onClick = { showVolumeSheet = true },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, BorderDark),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
+                                    modifier = Modifier.height(38.dp)
+                                ) {
+                                    Text("7-Day Volume", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
 
-                            IconButton(
-                                onClick = { shuffleSeed++ },
-                                modifier = Modifier
-                                    .background(SurfaceCard, RoundedCornerShape(10.dp))
-                                    .border(0.8.dp, BorderDark, RoundedCornerShape(10.dp))
-                                    .size(38.dp)
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Shuffle", tint = AccentOrange, modifier = Modifier.size(19.dp))
+                                IconButton(
+                                    onClick = { shuffleSeed++ },
+                                    modifier = Modifier
+                                        .background(SurfaceCard, RoundedCornerShape(10.dp))
+                                        .border(0.8.dp, BorderDark, RoundedCornerShape(10.dp))
+                                        .size(38.dp)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Shuffle", tint = AccentOrange, modifier = Modifier.size(19.dp))
+                                }
                             }
                         }
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
+                        Text(
+                            text = when (trainingMode) {
+                                TrainingMode.BULK -> "3–4 sets/lift • +20% volume targets"
+                                TrainingMode.MAINGAIN -> "Balanced 3-set progression"
+                                TrainingMode.CUT -> "2–3 sets • strength retention, low fatigue"
+                            },
+                            fontSize = 11.5.sp,
+                            color = TextSecondary
+                        )
                     }
-                )
+                }
             }
 
             // 2. Compact Split & Session Length Bar
@@ -765,7 +836,7 @@ fun SuggestWorkoutScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Working sets completed in the last 7 days vs weekly target:",
+                        text = "Working sets completed in the last 7 days vs ${trainingMode.shortLabel} weekly targets:",
                         fontSize = 12.sp,
                         color = TextSecondary
                     )

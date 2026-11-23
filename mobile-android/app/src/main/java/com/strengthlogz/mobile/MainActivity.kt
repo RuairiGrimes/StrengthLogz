@@ -42,12 +42,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.strengthlogz.mobile.data.WorkoutRepository
+import com.strengthlogz.mobile.model.TrainingMode
 import com.strengthlogz.mobile.model.Workout
 import com.strengthlogz.mobile.ui.BodyWeightScreen
 import com.strengthlogz.mobile.ui.ExercisesScreen
 import com.strengthlogz.mobile.ui.FourteenDaySummaryDialog
 import com.strengthlogz.mobile.ui.GoalsScreen
 import com.strengthlogz.mobile.ui.HistoryScreen
+import com.strengthlogz.mobile.ui.TrainingModePickerDialog
 import com.strengthlogz.mobile.data.HealthConnectWeightSource
 import com.strengthlogz.mobile.ui.LogWorkoutScreen
 import com.strengthlogz.mobile.ui.ProgramScreen
@@ -139,8 +141,23 @@ class MainActivity : ComponentActivity() {
                 var bwReturnScreen by remember { mutableStateOf(Screen.SETTINGS) }
                 var dotsIsMale by remember { mutableStateOf(repository.getDotsIsMale()) }
                 var bwUseLbs by remember { mutableStateOf(repository.getBwUseLbs()) }
+                var trainingMode by remember { mutableStateOf(repository.getTrainingMode()) }
+                var showModePickerDialog by remember { mutableStateOf(false) }
                 var postWorkoutUpdatedGoal by remember { mutableStateOf<com.strengthlogz.mobile.model.ExerciseGoal?>(null) }
                 var showSummaryDialog by remember { mutableStateOf(false) }
+
+                val updateTrainingMode: (TrainingMode) -> Unit = { newMode ->
+                    repository.setTrainingMode(newMode)
+                    trainingMode = newMode
+                    dataVersion++
+                    lifecycleScope.launch {
+                        val res = repository.syncWithGoogleSheets()
+                        if (res.isSuccess) {
+                            trainingMode = repository.getTrainingMode()
+                            dataVersion++
+                        }
+                    }
+                }
 
                 BackHandler(enabled = selectedWorkoutForDetail == null && currentScreen !in PRIMARY_TABS) {
                     currentScreen = lastPrimaryScreen
@@ -170,6 +187,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     val res = repository.syncWithGoogleSheets()
                     if (res.isSuccess) {
+                        trainingMode = repository.getTrainingMode()
                         dataVersion++
                     }
                 }
@@ -374,6 +392,7 @@ class MainActivity : ComponentActivity() {
                                         getSetsForWorkout = { id -> repository.getSetsForWorkout(id) },
                                         getSetsForExercise = { exName -> repository.getSetsForExercise(exName) },
                                         availableExercises = repository.appData.exercises,
+                                        trainingMode = trainingMode,
                                         onBack = { selectedWorkoutForDetail = null },
                                         onNavigateToProgress = { exName ->
                                             selectedProgressExercise = exName
@@ -455,7 +474,9 @@ class MainActivity : ComponentActivity() {
                                                 repository.clearActiveDraft()
                                                 activeDraft = null
                                                 dataVersion++
-                                            }
+                                            },
+                                            trainingMode = trainingMode,
+                                            onOpenModePicker = { showModePickerDialog = true }
                                         )
                                         Screen.PROGRAM -> ProgramScreen(
                                             programs = repository.getPrograms(),
@@ -498,12 +519,15 @@ class MainActivity : ComponentActivity() {
                                             persistedSelectedDayIdx = repository.getActiveProgram()?.id?.let { programSelectedDayById[it] },
                                             onSelectedDayChanged = { progId, idx ->
                                                 programSelectedDayById[progId] = idx
-                                            }
+                                            },
+                                            trainingMode = trainingMode
                                         )
                                         Screen.SUGGEST -> SuggestWorkoutScreen(
                                             workouts = repository.appData.workouts,
                                             sets = repository.appData.sets,
                                             exercises = repository.appData.exercises,
+                                            trainingMode = trainingMode,
+                                            onOpenModePicker = { showModePickerDialog = true },
                                             onStartSuggestedWorkout = { plan ->
                                                 pendingSuggestedPlan = plan
                                                 currentScreen = Screen.LOG
@@ -555,6 +579,8 @@ class MainActivity : ComponentActivity() {
                                             workouts = repository.appData.workouts,
                                             getSetsForExercise = { exName -> repository.getSetsForExercise(exName) },
                                             goals = repository.getGoals(),
+                                            trainingMode = trainingMode,
+                                            onOpenModePicker = { showModePickerDialog = true },
                                             onNavigateGoals = { exName ->
                                                 selectedGoalExercise = exName
                                                 lastPrimaryScreen = Screen.PROGRESS
@@ -577,6 +603,8 @@ class MainActivity : ComponentActivity() {
                                             availableExercises = repository.appData.exercises,
                                             bodyWeights = repository.getBodyWeights(),
                                             getSetsForExercise = { exName -> repository.getSetsForExercise(exName) },
+                                            trainingMode = trainingMode,
+                                            onOpenModePicker = { showModePickerDialog = true },
                                             initialExerciseForGoal = selectedGoalExercise,
                                             onConsumeInitialExercise = { selectedGoalExercise = null },
                                             onSaveGoal = { goal ->
@@ -605,6 +633,8 @@ class MainActivity : ComponentActivity() {
                                             currentSpreadsheetId = repository.getSpreadsheetId(),
                                             currentServiceAccountJson = repository.getServiceAccountJson(),
                                             lastSyncTime = repository.getLastSyncTime(),
+                                            trainingMode = trainingMode,
+                                            onSelectTrainingMode = updateTrainingMode,
                                             onSaveSpreadsheetId = { repository.setSpreadsheetId(it) },
                                             onSaveServiceAccountJson = { repository.setServiceAccountJson(it) },
                                             onClearCloudCredentials = {
@@ -613,7 +643,10 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onTriggerSync = {
                                                 val res = repository.syncWithGoogleSheets()
-                                                if (res.isSuccess) dataVersion++
+                                                if (res.isSuccess) {
+                                                    trainingMode = repository.getTrainingMode()
+                                                    dataVersion++
+                                                }
                                                 res
                                             },
                                             workoutCount = repository.appData.workouts.size,
@@ -639,6 +672,8 @@ class MainActivity : ComponentActivity() {
                                             distinctExercises = repository.getDistinctExercisesByFrequency(),
                                             getSetsForExercise = { exName -> repository.getSetsForExercise(exName) },
                                             isMale = dotsIsMale,
+                                            trainingMode = trainingMode,
+                                            onOpenModePicker = { showModePickerDialog = true },
                                             onSetMale = {
                                                 dotsIsMale = it
                                                 repository.setDotsIsMale(it)
@@ -673,14 +708,15 @@ class MainActivity : ComponentActivity() {
 
                         // Post-workout Goal Report popup when a session containing a goal exercise is logged
                         postWorkoutUpdatedGoal?.let { updatedGoal ->
-                            val report = remember(updatedGoal, dataVersion) {
+                            val report = remember(updatedGoal, dataVersion, trainingMode) {
                                 com.strengthlogz.mobile.util.GoalEngine.generateExerciseReport(
                                     goal = updatedGoal,
                                     workouts = repository.appData.workouts,
                                     exerciseSets = repository.getSetsForExercise(updatedGoal.exerciseName),
                                     allSets = repository.appData.sets,
                                     exercisesCatalog = repository.appData.exercises,
-                                    bodyWeights = repository.getBodyWeights()
+                                    bodyWeights = repository.getBodyWeights(),
+                                    trainingMode = trainingMode
                                 )
                             }
                             com.strengthlogz.mobile.ui.ExerciseGoalReportDialog(
@@ -698,6 +734,8 @@ class MainActivity : ComponentActivity() {
                                 goals = repository.getGoals(),
                                 activeProgram = repository.getActiveProgram(),
                                 isMale = dotsIsMale,
+                                trainingMode = trainingMode,
+                                onOpenModePicker = { showModePickerDialog = true },
                                 savedSummaries = repository.getSavedSummaries(),
                                 onSaveSummary = { entry ->
                                     repository.saveSummaryEntry(entry)
@@ -708,6 +746,14 @@ class MainActivity : ComponentActivity() {
                                     dataVersion++
                                 },
                                 onDismiss = { showSummaryDialog = false }
+                            )
+                        }
+
+                        if (showModePickerDialog) {
+                            TrainingModePickerDialog(
+                                currentMode = trainingMode,
+                                onSelectMode = updateTrainingMode,
+                                onDismiss = { showModePickerDialog = false }
                             )
                         }
                     }

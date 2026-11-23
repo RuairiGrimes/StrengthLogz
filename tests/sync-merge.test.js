@@ -48,3 +48,11 @@ test('goals: newer wins, remote-only kept; programs merge by id', () => {
 test('stable stringify ignores key order', () => {
   assert.strictEqual(SM.stable({ a: 1, b: [1, { c: 2, d: 3 }] }), SM.stable({ b: [1, { d: 3, c: 2 }], a: 1 }));
 });
+
+test('resolveTrainingMode picks newer timestamp, prefers local on ties, and rejects invalid modes', () => {
+  assert.deepStrictEqual(SM.resolveTrainingMode('MAINGAIN', 100, 'CUT', 200), { mode: 'CUT', updatedAt: 200 });
+  assert.deepStrictEqual(SM.resolveTrainingMode('BULK', 300, 'CUT', 200), { mode: 'BULK', updatedAt: 300 });
+  assert.deepStrictEqual(SM.resolveTrainingMode('CUT', 100, 'BULK', 100), { mode: 'CUT', updatedAt: 100 });
+  assert.deepStrictEqual(SM.resolveTrainingMode('BULK', 10, 'INVALID', 999), { mode: 'BULK', updatedAt: 10 });
+  assert.deepStrictEqual(SM.resolveTrainingMode(null, 0, null, 0), { mode: 'MAINGAIN', updatedAt: 0 });
+});

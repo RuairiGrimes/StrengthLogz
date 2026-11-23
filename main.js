@@ -73,6 +73,9 @@ handle('get14DaySummary', (opts) => data.get14DaySummary(opts));
 handle('saveSummaryEntry', (opts) => data.saveSummaryEntry(opts));
 handle('deleteSummaryEntry', (id) => data.deleteSummaryEntry(id));
 
+// Settings / Training Phase Mode
+handle('setTrainingMode', (mode) => data.setTrainingMode(mode));
+
 handle('pickKeyFile', async () => {
   const res = await dialog.showOpenDialog(win, {
     title: 'Select Google service account key (JSON)',
