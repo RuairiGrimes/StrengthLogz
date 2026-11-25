@@ -122,30 +122,46 @@ fun BodyWeightScreen(
     ) {
         // Header
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .background(SurfaceCard, CircleShape)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary, modifier = Modifier.size(19.dp))
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Body Weight & Strength", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(SurfaceCard, RoundedCornerShape(10.dp))
                     ) {
-                        Text("Trends, relative strength & DOTS", fontSize = 12.sp, color = TextSecondary)
-                        TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
+                    Text(
+                        text = "Body weight & strength",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SegChips(listOf("kg", "lb"), if (useLbs) 1 else 0) { onSetUseLbs(it == 1) }
                 }
-                SegChips(listOf("kg", "lb"), if (useLbs) 1 else 0) { onSetUseLbs(it == 1) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
+                    Text(
+                        text = "Trends, relative strength & DOTS",
+                        fontSize = 12.sp,
+                        color = TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
 
@@ -168,27 +184,38 @@ fun BodyWeightScreen(
             val peakDots = dotsAll.maxByOrNull { it.dots }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     CompactKpiCard(
-                        label = "CURRENT",
+                        label = "Current",
                         value = last?.let { "${f1(disp(it.weightKg))} $unit" } ?: "–",
                         caption = last?.let { "7d avg ${f1(disp(it.avg7Kg))}" } ?: "No readings",
                         valueColor = AccentOrange,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
                     CompactKpiCard(
-                        label = "CHANGE (${range.label})",
+                        label = "Change (${range.label})",
                         value = delta?.let { (if (it > 0) "+" else "") + f1(disp(it)) + " $unit" } ?: "–",
                         caption = rate?.let { (if (it > 0) "+" else "") + f2(disp(it)) + " $unit/wk" } ?: "Need 7+ days",
                         valueColor = changeColor,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
                     CompactKpiCard(
-                        label = if (peakDots != null) "PEAK DOTS" else "DOTS",
+                        label = if (peakDots != null) "Peak DOTS" else "DOTS",
                         value = peakDots?.let { f1(it.dots) } ?: "–",
                         caption = peakDots?.let { "Total ${f1(disp(it.totalKg))} $unit" } ?: "Needs S+B+D",
                         valueColor = GoldPR,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
                     )
                 }
 
@@ -270,7 +297,16 @@ fun BodyWeightScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Relative Strength", fontSize = 15.5.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text(
+                            text = "Relative strength",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
                         SegChips(StrengthMode.entries.map { it.label }, mode.ordinal) { mode = StrengthMode.entries[it] }
                     }
 
@@ -442,9 +478,10 @@ private fun SegChips(labels: List<String>, selected: Int, onSelect: (Int) -> Uni
                 Text(
                     label,
                     fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = if (active) Color(0xFF140D07) else TextSecondary,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }

@@ -44,14 +44,14 @@ const epley = (w, r) => (!r || r <= 0 ? 0 : (r === 1 ? (w || 0) : (w || 0) * (1 
 
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLORS = {
-  up: css('--up') || '#3ddc97',
-  down: css('--down') || '#ff5d73',
+  up: css('--up') || '#4cc38a',
+  down: css('--down') || '#e5484d',
   pr: css('--pr') || '#ffd166',
   accent: css('--accent') || '#ff7a45',
-  cutBlue: '#60a5fa',
-  maingainGreen: '#34d399',
-  muted: css('--muted') || '#8b93a7',
-  border: css('--border') || '#2a2f3a',
+  cutBlue: css('--blue') || '#60a5fa',
+  maingainGreen: '#4cc38a',
+  muted: css('--muted') || '#989da8',
+  border: css('--border') || 'rgba(237, 237, 239, 0.08)',
 };
 
 const TrainingModeClient = {
@@ -372,13 +372,25 @@ function sessionsFor(name, excludeWorkoutId = null) {
   return sorted;
 }
 
+function syncProgressRelButton(exerciseName) {
+  const btn = $('#progress-open-rel');
+  if (!btn) return;
+  const pts = exerciseName ? buildRelativeStrengthDatapoints(exerciseName) : [];
+  if (!pts.length) {
+    btn.classList.add('hidden');
+    return;
+  }
+  btn.classList.remove('hidden');
+  const latest = pts[pts.length - 1];
+  btn.innerHTML = `Relative strength <span class="rel-badge">${latest.rel.toFixed(2)}×</span>`;
+}
+
 function metricsFor(name) {
   const bw = isBW(name);
-  const hasRel = bw || (S.bodyWeights || []).length > 0;
+  syncProgressRelButton(name);
   return {
-    e1rm: { label: bw ? 'Est. Total 1RM' : 'Est. 1RM', unit: 'kg', get: (s) => s.e1rm },
+    e1rm: { label: bw ? 'Est. total 1RM' : 'Est. 1RM', unit: 'kg', get: (s) => s.e1rm },
     top: { label: bw ? 'Top added weight' : 'Top weight', unit: 'kg', get: (s) => s.top },
-    ...(hasRel ? { rel: { label: 'Rel. (× BW)', unit: '× BW', get: (s) => s.rel } } : {}),
     volume: { label: bw ? 'Total reps' : 'Volume', unit: bw ? 'reps' : 'kg', get: (s) => s.volume },
     reps: { label: 'Max reps', unit: 'reps', get: (s) => s.maxReps },
   };
@@ -386,10 +398,410 @@ function metricsFor(name) {
 
 function defaultMetric(name, sessions) {
   const m = metricsFor(name);
-  const order = TrainingModeClient.normalize(S.trainingMode) === 'CUT'
-    ? ['rel', 'e1rm', 'top', 'reps', 'volume']
-    : ['e1rm', 'top', 'reps', 'volume'];
+  const order = ['e1rm', 'top', 'reps', 'volume'];
   return order.find((k) => m[k] && sessions.some((s) => m[k].get(s) !== null)) || 'e1rm';
+}
+
+const REL_MONTH_MAP = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+function relToIso(d) {
+  if (!d) return '';
+  const s = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec(s);
+  if (m) {
+    const mon = REL_MONTH_MAP[m[2].toLowerCase()];
+    if (mon) return `${m[3]}-${mon}-${m[1].padStart(2, '0')}`;
+  }
+  const parsed = new Date(s);
+  return Number.isNaN(parsed.getTime()) ? s : parsed.toISOString().slice(0, 10);
+}
+
+function relResolveBwEntry(dateStr, entries) {
+  const sorted = (entries || [])
+    .filter((e) => Number(e.weightKg) > 0)
+    .map((e) => ({ ...e, iso: relToIso(e.date), kg: Number(e.weightKg) }))
+    .filter((e) => e.iso)
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+  if (!sorted.length) return null;
+  const targetIso = relToIso(dateStr);
+  let prior = null;
+  for (const e of sorted) {
+    if (e.iso <= targetIso) prior = e;
+    else break;
+  }
+  if (prior) return { entry: prior, hasExactOrPrior: true };
+  return { entry: sorted[0], hasExactOrPrior: false };
+}
+
+function buildRelativeStrengthDatapoints(exerciseName) {
+  if (!exerciseName) return [];
+  const bw = isBW(exerciseName);
+  const bwEntries = S.bodyWeights || [];
+  if (!bw && !bwEntries.length) return [];
+
+  const sessions = sessionsFor(exerciseName);
+  const points = [];
+  let peakRel = 0;
+  let firstRel = null;
+
+  for (const s of sessions) {
+    const validSets = (s.sets || []).filter((st) => Number(st.reps) > 0);
+    if (!validSets.length || !(s.e1rm > 0)) continue;
+
+    const resolved = relResolveBwEntry(s.date, bwEntries);
+    const bwKg = resolved ? resolved.entry.kg : BodyWeightUtils.weightOn(s.date);
+    if (!(bwKg > 0)) continue;
+
+    let bestSet = validSets[0];
+    let bestSetE1rm = -1;
+    for (const st of validSets) {
+      const est = BodyWeightUtils.calculateE1rm(exerciseName, s.date, st.weight, st.reps);
+      if (est > bestSetE1rm) {
+        bestSetE1rm = est;
+        bestSet = st;
+      }
+    }
+    const wNum = Number(bestSet.weight) || 0;
+    const topSetSummary = bw
+      ? (wNum > 0 ? `BW+${fmt(wNum)}kg × ${bestSet.reps}` : `BW × ${bestSet.reps}`)
+      : `${fmt(wNum)}kg × ${bestSet.reps}`;
+
+    const e1rm = round(s.e1rm, 0.1);
+    const rel = Math.round((e1rm / bwKg) * 1000) / 1000;
+    const prev = points.length ? points[points.length - 1] : null;
+    if (firstRel === null) firstRel = rel;
+
+    const isRelPr = rel > peakRel + 0.004;
+    if (rel > peakRel) peakRel = rel;
+
+    const delta = prev ? Math.round((rel - prev.rel) * 1000) / 1000 : null;
+    const bwDelta = prev ? Math.round((bwKg - prev.bwKg) * 10) / 10 : null;
+    const pctVsFirst = firstRel > 0 ? Math.round(((rel - firstRel) / firstRel) * 1000) / 10 : 0;
+    const isBodyweightShift = !!(prev && bwDelta !== null && Math.abs(bwDelta) >= 0.05 && Math.abs(e1rm - prev.e1rm) < 0.05);
+
+    points.push({
+      workoutId: s.workoutId,
+      date: s.date,
+      iso: relToIso(s.date),
+      t: s.t,
+      title: s.title || '',
+      e1rm,
+      topSetSummary,
+      bwKg: Math.round(bwKg * 10) / 10,
+      bwDate: resolved ? resolved.entry.date : null,
+      hasExactOrPriorBw: resolved ? resolved.hasExactOrPrior : false,
+      rel,
+      delta,
+      bwDelta,
+      pctVsFirst,
+      isRelPr,
+      isBodyweightShift,
+    });
+  }
+  return points;
+}
+
+let relChartInstance = null;
+
+function openRelativeStrengthModal(exerciseName) {
+  const allPoints = buildRelativeStrengthDatapoints(exerciseName);
+  const keyOf = (p) => String(p.workoutId || p.iso || '');
+  const state = {
+    rangeDays: 0,
+    prsOnly: false,
+    showBwLine: true,
+    selectedKey: allPoints.length ? keyOf(allPoints[allPoints.length - 1]) : null,
+  };
+
+  const { body } = openCustomModal({
+    title: `${exerciseName} — Relative strength`,
+    large: true,
+    cancelText: 'Close',
+    onClose: () => {
+      if (relChartInstance) {
+        relChartInstance.destroy();
+        relChartInstance = null;
+      }
+    },
+    html: '<div id="rel-modal-root"></div>',
+  });
+
+  const root = body.querySelector('#rel-modal-root');
+
+  const getFiltered = () => {
+    let list = allPoints;
+    if (state.rangeDays > 0 && allPoints.length) {
+      const todayDay = epochDay(today());
+      list = allPoints.filter((p) => todayDay - epochDay(p.iso) <= state.rangeDays);
+    }
+    if (state.prsOnly) list = list.filter((p) => p.isRelPr);
+    return list;
+  };
+
+  const bindToolbar = () => {
+    root.querySelectorAll('[data-rel-range]').forEach((btn) => {
+      btn.onclick = () => {
+        state.rangeDays = Number(btn.dataset.relRange);
+        render();
+      };
+    });
+    const prBtn = root.querySelector('#rel-toggle-pr');
+    if (prBtn) {
+      prBtn.onclick = () => {
+        state.prsOnly = !state.prsOnly;
+        render();
+      };
+    }
+    const bwBtn = root.querySelector('#rel-toggle-bw');
+    if (bwBtn) {
+      bwBtn.onclick = () => {
+        state.showBwLine = !state.showBwLine;
+        render();
+      };
+    }
+  };
+
+  const render = () => {
+    if (relChartInstance) {
+      relChartInstance.destroy();
+      relChartInstance = null;
+    }
+
+    if (!allPoints.length) {
+      root.innerHTML = '<div class="empty">Log a body weight reading and at least one working set to plot relative strength (× BW).</div>';
+      return;
+    }
+
+    const rangeButtons = [
+      { d: 90, lbl: '3M' },
+      { d: 182, lbl: '6M' },
+      { d: 365, lbl: '1Y' },
+      { d: 0, lbl: 'All' },
+    ].map((r) => `<button type="button" class="${state.rangeDays === r.d ? 'active' : ''}" data-rel-range="${r.d}">${r.lbl}</button>`).join('');
+
+    const toolbarHtml = `
+      <div class="rel-modal-toolbar">
+        <div class="rel-toggle-row">
+          <button type="button" id="rel-toggle-pr" class="rel-pill-btn pr ${state.prsOnly ? 'active' : ''}">PRs only</button>
+          <button type="button" id="rel-toggle-bw" class="rel-pill-btn ${state.showBwLine ? 'active' : ''}">BW line</button>
+        </div>
+        <div class="seg">${rangeButtons}</div>
+      </div>
+    `;
+
+    const visible = getFiltered();
+    if (!visible.length) {
+      root.innerHTML = `
+        ${toolbarHtml}
+        <div class="empty">No sessions match this filter.</div>
+      `;
+      bindToolbar();
+      return;
+    }
+
+    const chartPts = visible;
+    const peak = chartPts.reduce((best, p) => (!best || p.rel > best.rel ? p : best), null);
+    const first = chartPts[0];
+    const latest = chartPts[chartPts.length - 1];
+    const gain = latest.rel - first.rel;
+    const gainPct = first.rel > 0 ? (gain / first.rel) * 100 : 0;
+
+    if (!chartPts.some((p) => keyOf(p) === state.selectedKey)) {
+      state.selectedKey = keyOf(latest);
+    }
+    const selectedIdx = chartPts.findIndex((p) => keyOf(p) === state.selectedKey);
+    const selected = selectedIdx >= 0 ? chartPts[selectedIdx] : latest;
+    const selectedKey = keyOf(selected);
+
+    const kpiHtml = `
+      <div class="rel-modal-kpis">
+        <div class="stat">
+          <div class="lbl">Peak ratio</div>
+          <div class="val" style="color:var(--pr);">${peak.rel.toFixed(2)}×</div>
+          <div class="sub">${shortDate(peak.date)} • ${fmt(peak.e1rm)}kg @ ${peak.bwKg.toFixed(1)}kg</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Latest</div>
+          <div class="val" style="color:var(--blue);">${latest.rel.toFixed(2)}×</div>
+          <div class="sub">${latest.delta !== null ? `${latest.delta >= 0 ? '+' : ''}${latest.delta.toFixed(2)}× vs prev` : shortDate(latest.date)}</div>
+        </div>
+        <div class="stat">
+          <div class="lbl">Range gain</div>
+          <div class="val" style="color:${gain >= 0 ? 'var(--up)' : 'var(--down)'};">${gain >= 0 ? '+' : ''}${gain.toFixed(2)}×</div>
+          <div class="sub">${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}% since ${shortDate(first.date)}</div>
+        </div>
+      </div>
+    `;
+
+    const bwSourceNote = selected.bwDate
+      ? (selected.bwDate === selected.date || relToIso(selected.bwDate) === selected.iso
+        ? `BW logged ${shortDate(selected.bwDate)}`
+        : `BW carried from ${shortDate(selected.bwDate)}`)
+      : `Default ${selected.bwKg.toFixed(1)}kg BW`;
+
+    const selectedBanner = `
+      <div class="rel-detail-note">
+        <div>
+          <b>${shortDate(selected.date)}</b>
+          ${selected.isRelPr ? '<span class="rel-badge" style="margin-left:6px;background:rgba(255,209,102,0.16);color:var(--pr);">Rel PR</span>' : ''}
+          <span class="muted small" style="margin-left:8px;">${esc(selected.topSetSummary)} • E1RM ${fmt(selected.e1rm)}kg ÷ ${selected.bwKg.toFixed(1)}kg = <b>${selected.rel.toFixed(2)}× BW</b></span>
+        </div>
+        <div class="muted small">${esc(bwSourceNote)}${selected.isBodyweightShift ? ' • Driven by BW change' : ''}</div>
+      </div>
+    `;
+
+    const rowsHtml = [...chartPts].reverse().map((p) => {
+      const pKey = keyOf(p);
+      const isSel = pKey === selectedKey;
+      const deltaStr = p.delta === null ? '—' : `${p.delta > 0 ? '+' : ''}${p.delta.toFixed(2)}×`;
+      const deltaColor = p.delta === null ? 'var(--muted)' : (p.delta > 0.004 ? 'var(--up)' : (p.delta < -0.004 ? 'var(--down)' : 'var(--muted)'));
+      const bwNoteTitle = p.bwDate ? `BW source: ${shortDate(p.bwDate)}` : 'Default fallback BW';
+      return `
+        <tr class="${isSel ? 'rel-row-selected' : ''}" data-rel-key="${esc(pKey)}">
+          <td>${shortDate(p.date)}${p.isRelPr ? '<span class="rel-pr-dot" title="Relative strength PR"></span>' : ''}</td>
+          <td>${esc(p.topSetSummary)}</td>
+          <td class="num">${fmt(p.e1rm)} kg</td>
+          <td class="num" title="${esc(bwNoteTitle)}">${p.bwKg.toFixed(1)} kg${p.bwDate && relToIso(p.bwDate) !== p.iso ? '*' : ''}</td>
+          <td class="num" style="font-weight:700;color:${p.isRelPr ? 'var(--pr)' : 'var(--text)'};">${p.rel.toFixed(2)}×</td>
+          <td class="num" style="color:${deltaColor};font-weight:600;">${deltaStr}</td>
+        </tr>
+      `;
+    }).join('');
+
+    root.innerHTML = `
+      ${kpiHtml}
+      ${toolbarHtml}
+      <div class="rel-chart-wrap"><canvas id="rel-modal-canvas"></canvas></div>
+      ${selectedBanner}
+      <div class="rel-table-wrap">
+        <table class="rel-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Top set</th>
+              <th class="num">E1RM</th>
+              <th class="num">BW</th>
+              <th class="num">× BW</th>
+              <th class="num">Delta</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    `;
+
+    const canvas = root.querySelector('#rel-modal-canvas');
+    const relValues = chartPts.map((p) => p.rel);
+    const minRel = Math.min(...relValues);
+    const maxRel = Math.max(...relValues);
+    const padRel = Math.max(0.08, (maxRel - minRel) * 0.22);
+
+    const datasets = [{
+      label: 'Relative strength (× BW)',
+      data: relValues,
+      yAxisID: 'y',
+      borderColor: COLORS.cutBlue,
+      backgroundColor: 'rgba(96, 165, 250, 0.10)',
+      borderWidth: 2.2,
+      tension: 0.22,
+      fill: true,
+      pointRadius: chartPts.map((p) => (keyOf(p) === selectedKey ? 6 : (p.isRelPr ? 5 : 3.2))),
+      pointHoverRadius: 7,
+      pointBackgroundColor: chartPts.map((p) => (keyOf(p) === selectedKey ? COLORS.accent : (p.isRelPr ? COLORS.pr : COLORS.cutBlue))),
+      pointBorderColor: chartPts.map((p) => (keyOf(p) === selectedKey ? '#ffffff' : (p.isRelPr ? COLORS.pr : COLORS.cutBlue))),
+      pointBorderWidth: chartPts.map((p) => (keyOf(p) === selectedKey ? 2 : 1)),
+    }];
+
+    if (state.showBwLine) {
+      datasets.push({
+        label: 'Body weight (kg)',
+        data: chartPts.map((p) => p.bwKg),
+        yAxisID: 'y1',
+        borderColor: 'rgba(255, 209, 102, 0.55)',
+        borderDash: [4, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.2,
+        fill: false,
+      });
+    }
+
+    relChartInstance = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: chartPts.map((p) => shortDate(p.date)),
+        datasets,
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        onClick: (_evt, elements) => {
+          if (elements && elements.length) {
+            const pt = chartPts[elements[0].index];
+            const k = pt ? keyOf(pt) : null;
+            if (k && k !== state.selectedKey) {
+              state.selectedKey = k;
+              render();
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: state.showBwLine,
+            labels: { color: COLORS.muted, boxWidth: 12, font: { size: 11 } },
+          },
+          tooltip: {
+            backgroundColor: '#14161a',
+            borderColor: 'rgba(237, 237, 239, 0.14)',
+            borderWidth: 1,
+            titleColor: '#ededef',
+            bodyColor: '#ededef',
+            callbacks: {
+              label: (ctx) => {
+                const p = chartPts[ctx.dataIndex];
+                if (ctx.dataset.yAxisID === 'y1') return `Body weight: ${p.bwKg.toFixed(1)} kg`;
+                return `${p.rel.toFixed(2)}× BW (${fmt(p.e1rm)} kg ÷ ${p.bwKg.toFixed(1)} kg)`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color: COLORS.muted, maxTicksLimit: 8, font: { size: 11 } },
+            grid: { color: 'rgba(237, 237, 239, 0.05)' },
+          },
+          y: {
+            position: 'left',
+            suggestedMin: Math.max(0, minRel - padRel),
+            suggestedMax: maxRel + padRel,
+            ticks: { color: COLORS.cutBlue, callback: (v) => `${Number(v).toFixed(2)}×`, font: { size: 11 } },
+            grid: { color: 'rgba(237, 237, 239, 0.06)' },
+          },
+          y1: {
+            display: state.showBwLine,
+            position: 'right',
+            ticks: { color: COLORS.muted, callback: (v) => `${Number(v).toFixed(1)}kg`, font: { size: 11 } },
+            grid: { drawOnChartArea: false },
+          },
+        },
+      },
+    });
+
+    bindToolbar();
+    root.querySelectorAll('tr[data-rel-key]').forEach((tr) => {
+      tr.onclick = () => {
+        state.selectedKey = tr.dataset.relKey;
+        render();
+      };
+    });
+  };
+
+  render();
 }
 
 // ---------------------------------------------------------------- UI utilities & Modal
@@ -464,7 +876,7 @@ function modal({ title, html, okText = 'OK', cancelText = 'Cancel', danger = fal
   });
 }
 
-function openCustomModal({ title, html, cancelText = 'Close', wide = false, large = false }) {
+function openCustomModal({ title, html, cancelText = 'Close', wide = false, large = false, onClose = null }) {
   const m = $('#modal');
   const box = $('.modal-box', m);
   $('#modal-title').textContent = title;
@@ -491,6 +903,7 @@ function openCustomModal({ title, html, cancelText = 'Close', wide = false, larg
     m.onclick = null;
     m.onkeydown = null;
     document.removeEventListener('keydown', onDocKey);
+    if (typeof onClose === 'function') onClose();
   };
 
   cancel.onclick = close;
@@ -628,14 +1041,14 @@ function computeSetRadarLabel(exName, workoutDate, w, r, histPeakE1rm, histPeakR
   const rel = bwKg > 0 ? Math.round((e1rm / bwKg) * 100) / 100 : 0;
 
   if (histPeakE1rm > 0 && e1rm > histPeakE1rm + 0.1) {
-    return '<span class="badge-rel-pr" style="margin-left:4px;">🏆 PR</span>';
+    return '<span class="badge-rel-pr" style="margin-left:4px;">PR</span>';
   }
   if (hasBw && histPeakRel > 0 && rel > histPeakRel + 0.004) {
-    return `<span class="badge-rel-pr" style="margin-left:4px;">🏆 REL PR (${rel.toFixed(2)}×)</span>`;
+    return `<span class="badge-rel-pr" style="margin-left:4px;">Rel PR (${rel.toFixed(2)}×)</span>`;
   }
   if (mode === 'CUT' && histPeakE1rm > 0 && e1rm >= histPeakE1rm * TrainingModeClient.CUT_RETENTION_FLOOR_RATIO) {
     const pct = Math.round((e1rm / histPeakE1rm) * 100);
-    return `<span class="delta-retained" style="font-size:10px;margin-left:4px;">🛡 ${pct}% held</span>`;
+    return `<span class="delta-retained" style="font-size:10px;margin-left:4px;">${pct}% held</span>`;
   }
   return '';
 }
@@ -643,7 +1056,7 @@ function computeSetRadarLabel(exName, workoutDate, w, r, histPeakE1rm, histPeakR
 function renderLogExercises() {
   const host = $('#log-exercises');
   if (!logExercises.length) {
-    host.innerHTML = '<div class="empty">No exercises added yet. Pick one below to start logging!</div>';
+    host.innerHTML = '<div class="empty">No exercises added yet. Pick one below to start logging.</div>';
     return;
   }
 
@@ -690,7 +1103,7 @@ function renderLogExercises() {
           <span class="ex-name" data-jump-progress="${esc(ex.name)}">${esc(ex.name)}</span>
           <span class="tag">${esc(info.category || 'Other')}</span>
           ${bw ? '<span class="tag" style="color:var(--pr);border-color:rgba(255,209,102,0.4)">BW</span>' : ''}
-          ${activeGoal ? `<button class="primary compact goal-progress-btn" data-goal-ex="${esc(ex.name)}" style="margin-left:8px;font-size:11px;padding:3px 8px;">🎯 Goal Progress</button>` : ''}
+          ${activeGoal ? `<button class="primary compact goal-progress-btn" data-goal-ex="${esc(ex.name)}" style="margin-left:8px;font-size:11px;padding:3px 8px;">Goal progress</button>` : ''}
           <div class="spacer"></div>
           <button class="ghost compact del-ex danger" title="Remove exercise">Remove</button>
         </div>
@@ -899,12 +1312,12 @@ async function saveWorkoutFromLog() {
     $('#log-date').value = today();
     renderLogExercises();
 
-    toast('Workout saved!', 'success');
+    toast('Workout saved', 'success');
 
     // If any goal was updated in this session, surface the Exercise Goal Report
     if (res.updatedGoals && res.updatedGoals.length > 0) {
       const topGoal = res.updatedGoals[0];
-      toast(`🎯 Goal progress logged for ${topGoal.exerciseName}!`, 'success');
+      toast(`Goal progress logged for ${topGoal.exerciseName}`, 'success');
       setTimeout(() => openExerciseGoalReportModal(topGoal.id), 400);
     } else {
       showView('history');
@@ -1575,18 +1988,18 @@ function evaluateGoalDesktop(goal) {
   let statusLabel;
   let statusColor;
   if (isAchieved) {
-    statusLabel = 'Achieved 🏆';
+    statusLabel = 'Achieved';
     statusColor = 'var(--pr)';
   } else if (mode === 'CUT') {
     if (retentionPct >= TrainingModeClient.CUT_RETENTION_FLOOR_PCT) {
-      statusLabel = 'Strength Retained 🛡';
+      statusLabel = 'Strength retained';
       statusColor = '#60a5fa';
     } else {
-      statusLabel = 'Retention Watch';
+      statusLabel = 'Retention watch';
       statusColor = 'var(--accent-2)';
     }
   } else if (progressPct >= 80) {
-    statusLabel = 'On Track';
+    statusLabel = 'On track';
     statusColor = 'var(--up)';
   } else {
     statusLabel = 'Building';
@@ -1675,8 +2088,8 @@ function renderGoals() {
   const bannerHtml = mode === 'MAINGAIN' ? '' : `
     <div class="mode-banner ${mode === 'CUT' ? 'mode-cut' : 'mode-bulk'}">
       ${mode === 'CUT'
-        ? '<b>🛡 Cut Phase Lens:</b> Holding ≥95% E1RM counts as <i>Strength Retained</i>. Relative (× BW) goals automatically scale kg targets as your body weight drops.'
-        : '<b>🔥 Bulk Phase Lens:</b> Surplus phase active — pushing progressive overload and peak E1RM PR milestones.'}
+        ? '<b>Cut phase lens:</b> Holding ≥95% E1RM counts as <i>Strength retained</i>. Relative (× BW) goals automatically scale kg targets as your body weight drops.'
+        : '<b>Bulk phase lens:</b> Surplus phase active — pushing progressive overload and peak E1RM PR milestones.'}
     </div>
   `;
 
@@ -1684,7 +2097,7 @@ function renderGoals() {
   if (!filtered.length) {
     host.innerHTML = `${bannerHtml}
       <div class="empty">
-        ${allGoals.length ? 'No goals match this filter.' : 'No strength goals set yet! Click <b>+ New Goal</b> above to set a 1RM, Relative ×BW, or Sets × Reps target.'}
+        ${allGoals.length ? 'No goals match this filter.' : 'No strength goals set yet. Click <b>+ New goal</b> above to set a 1RM, Relative ×BW, or Sets × Reps target.'}
       </div>
     `;
     return;
@@ -1721,18 +2134,18 @@ function renderGoals() {
       </div>
 
       <div class="goal-card-foot">
-        <div class="goal-next-summary">${e.isAchieved ? 'Goal Reached! 🏆' : `Next: ${esc(e.nextSessionSummary)}`}</div>
+        <div class="goal-next-summary">${e.isAchieved ? 'Goal reached' : `Next: ${esc(e.nextSessionSummary)}`}</div>
         <div class="goal-actions-group">
-          ${!e.isAchieved ? `<button class="primary compact train-goal-btn" data-id="${e.goal.id}">▶ Train</button>` : ''}
+          ${!e.isAchieved ? `<button class="primary compact train-goal-btn" data-id="${e.goal.id}">Train</button>` : ''}
           <button class="ghost compact toggle-goal-expand">Details ▾</button>
         </div>
       </div>
 
       <div class="goal-expanded-body hidden">
-        <div class="small font-bold uppercase muted">Prescribed Working Sets (${esc(TrainingModeClient.meta(mode).shortLabel)})</div>
+        <div class="small font-bold muted">Prescribed working sets (${esc(TrainingModeClient.meta(mode).shortLabel)})</div>
         <div style="font-size:13px;color:var(--text);">${e.nextSets} sets × ${e.nextReps} reps @ ${e.bw && e.nextWeight === 0 ? 'BW' : `${fmt(e.nextWeight)}kg`}</div>
 
-        <div class="small font-bold uppercase muted" style="margin-top:6px;">Milestones</div>
+        <div class="small font-bold muted" style="margin-top:6px;">Milestones</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:6px;">
           ${e.phases.map((p) => `
             <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font-size:11.5px;">
@@ -1743,7 +2156,7 @@ function renderGoals() {
         </div>
 
         <div class="btn-row" style="margin-top:10px;">
-          <button class="ghost compact inspect-report-btn" data-id="${e.goal.id}">📊 Full Report</button>
+          <button class="ghost compact inspect-report-btn" data-id="${e.goal.id}">Full report</button>
           <button class="ghost compact edit-goal-btn" data-id="${e.goal.id}">Edit</button>
           <button class="ghost compact toggle-goal-btn" data-id="${e.goal.id}">${e.goal.enabled === false ? 'Resume' : 'Pause'}</button>
           <button class="danger compact delete-goal-btn" data-id="${e.goal.id}">Delete</button>
@@ -2027,18 +2440,18 @@ function openGoalProgressModal(g) {
   const ev = evaluateGoalDesktop(g);
   const meta = TrainingModeClient.meta(ev.mode);
   const { body, close } = openCustomModal({
-    title: `🎯 ${ev.name} • Live Goal Progress`,
+    title: `${ev.name} • Live goal progress`,
     large: true,
     cancelText: 'Close',
     html: `
       <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
-        <div class="stat"><div class="lbl">Phase Lens</div><div class="val" style="color:${meta.color};font-size:17px;">${esc(meta.shortLabel)}</div></div>
+        <div class="stat"><div class="lbl">Phase lens</div><div class="val" style="color:${meta.color};font-size:17px;">${esc(meta.shortLabel)}</div></div>
         <div class="stat"><div class="lbl">Target</div><div class="val" style="color:var(--accent);font-size:16px;">${esc(ev.targetHeadline)}</div></div>
         <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Retention' : 'Progress'}</div><div class="val" style="color:${esc(ev.statusColor)};font-size:17px;">${ev.mode === 'CUT' ? `${ev.retentionPct}% held` : `${ev.progressPct}%`}</div></div>
-        <div class="stat"><div class="lbl">Rel. Strength</div><div class="val">${ev.currentRelBw > 0 ? `${ev.currentRelBw.toFixed(2)}× BW` : '–'}</div></div>
+        <div class="stat"><div class="lbl">Rel. strength</div><div class="val">${ev.currentRelBw > 0 ? `${ev.currentRelBw.toFixed(2)}× BW` : '–'}</div></div>
       </div>
       <div class="card" style="margin-bottom:12px;">
-        <div class="small font-bold uppercase muted" style="margin-bottom:6px;">Recommended Today (${esc(meta.shortLabel)} Phase)</div>
+        <div class="small font-bold muted" style="margin-bottom:6px;">Recommended today (${esc(meta.shortLabel)} phase)</div>
         <div style="font-size:15px;font-weight:700;color:var(--text);">${esc(ev.nextSessionSummary)}</div>
         <div class="muted small" style="margin-top:6px;">${ev.mode === 'CUT'
           ? 'Keep top-set intensity sharp and stop 1–2 reps shy of failure to protect strength without extra fatigue.'
@@ -2047,7 +2460,7 @@ function openGoalProgressModal(g) {
             : 'Match or add 1 clean rep over your previous session while maintaining crisp bar speed.')}</div>
       </div>
       <div class="btn-row" style="justify-content:flex-end;">
-        <button type="button" id="m-gp-full" class="primary compact">📊 View Full Goal History</button>
+        <button type="button" id="m-gp-full" class="primary compact">View full goal history</button>
       </div>
     `,
   });
@@ -2070,28 +2483,28 @@ function openExerciseGoalReportModal(goalId) {
       <td>${r.sessionBestE1rm}kg</td>
       <td>${r.workingSetsCount}</td>
       <td>${r.progressPct}%</td>
-      <td>${r.achievedGoal ? '🏆 Hit!' : 'In progress'}</td>
+      <td>${r.achievedGoal ? 'Achieved' : 'In progress'}</td>
     </tr>
   `).join('');
 
   modal({
-    title: `📊 Goal Report: ${ev.name}`,
+    title: `Goal report: ${ev.name}`,
     wide: true,
     html: `
       <div class="stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
         <div class="stat"><div class="lbl">Target</div><div class="val" style="color:var(--accent);font-size:17px;">${esc(ev.targetHeadline)}</div></div>
-        <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Rel. Strength' : 'Current Best'}</div><div class="val">${ev.mode === 'CUT' && ev.currentRelBw > 0 ? `${ev.currentRelBw.toFixed(2)}× BW` : `${ev.bestE1rm}kg`}</div></div>
+        <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Rel. strength' : 'Current best'}</div><div class="val">${ev.mode === 'CUT' && ev.currentRelBw > 0 ? `${ev.currentRelBw.toFixed(2)}× BW` : `${ev.bestE1rm}kg`}</div></div>
         <div class="stat"><div class="lbl">${ev.mode === 'CUT' ? 'Retention' : 'Progress'}</div><div class="val" style="color:${ev.isAchieved ? 'var(--pr)' : esc(ev.statusColor)}">${ev.mode === 'CUT' ? `${ev.retentionPct}% held` : `${ev.progressPct}%`}</div></div>
         <div class="stat"><div class="lbl">Status</div><div class="val" style="font-size:16px;color:${esc(ev.statusColor)};">${esc(ev.statusLabel)}</div></div>
       </div>
 
       <div class="card" style="margin-bottom:14px;">
-        <div class="small font-bold uppercase muted" style="margin-bottom:6px;">Next Session Prescription</div>
+        <div class="small font-bold muted" style="margin-bottom:6px;">Next session prescription</div>
         <div style="font-size:14px;font-weight:700;color:var(--text);">${esc(ev.nextSessionSummary)}</div>
       </div>
 
       <div class="card">
-        <div class="small font-bold uppercase muted" style="margin-bottom:8px;">Logged Goal Sessions (${reports.length})</div>
+        <div class="small font-bold muted" style="margin-bottom:8px;">Logged goal sessions (${reports.length})</div>
         <table class="table">
           <thead>
             <tr><th>Date</th><th>Top Set</th><th>E1RM</th><th>Sets</th><th>Progress</th><th>Status</th></tr>
@@ -2124,7 +2537,7 @@ function openAllGoalsMasterReportModal() {
   `).join('');
 
   const { m, close } = openCustomModal({
-    title: `📊 Master All-Goals Report (${evals.length})`,
+    title: `All goals report (${evals.length})`,
     html: `
       <div style="max-height:400px;overflow-y:auto;">
         ${rows || '<div class="muted">No goals configured yet.</div>'}
@@ -2588,7 +3001,7 @@ function buildSuggestedExerciseItem(slot, slotIndex, candidateOffset, alreadyPic
       lastSummary: 'No prior sessions logged',
       lastDate: 'First Time',
       targetSummary: `${numSets} × ${slot.defaultReps} reps`,
-      reasonTag: benefitText ? `✨ New Exercise Suggestion: ${benefitText}` : `🎯 New stimulus for ${cat} (${numSets} × ${slot.defaultReps})`,
+      reasonTag: benefitText ? `New exercise: ${benefitText}` : `New stimulus for ${cat} (${numSets} × ${slot.defaultReps})`,
       prescribedSets: Array.from({ length: numSets }, () => ({ weight: bw ? 0 : '', reps: slot.defaultReps, notes: '' })),
     };
   }
@@ -2638,29 +3051,29 @@ function buildSuggestedExerciseItem(slot, slotIndex, candidateOffset, alreadyPic
   let reasonTag;
   if (mode === 'CUT') {
     if (slotIndex >= 3) {
-      reasonTag = `🛡 Low-Fatigue Volume: ${numSets} clean sets for ${cat} to protect recovery (${overloadNote})${benefitSuffix}`;
+      reasonTag = `Low-fatigue volume: ${numSets} clean sets for ${cat} to protect recovery (${overloadNote})${benefitSuffix}`;
     } else if (bw || (targetE1rm > peakE1rm && peakE1rm > 0)) {
-      reasonTag = `🏆 Rel. Strength Builder: ${overloadNote} — high payoff during weight loss${benefitSuffix}`;
+      reasonTag = `Relative strength: ${overloadNote} — high payoff during weight loss${benefitSuffix}`;
     } else {
-      reasonTag = `🛡 Strength Retention: ${overloadNote} to hold ≥95% E1RM${benefitSuffix}`;
+      reasonTag = `Strength retention: ${overloadNote} to hold ≥95% E1RM${benefitSuffix}`;
     }
   } else if (mode === 'BULK') {
     if (targetE1rm > peakE1rm && peakE1rm > 0) {
-      reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
+      reasonTag = `PR opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)${benefitSuffix}`;
     } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets * 0.7) {
-      reasonTag = `💪 Hypertrophy Volume: ${cat} has ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets this week — ${numSets} sets scheduled${benefitSuffix}`;
+      reasonTag = `Hypertrophy volume: ${cat} has ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets this week — ${numSets} sets scheduled${benefitSuffix}`;
     } else {
-      reasonTag = `🔥 Surplus Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+      reasonTag = `Surplus overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
     }
   } else {
     if (peakE1rm > 0 && currE1rm < peakE1rm * 0.94) {
-      reasonTag = `🔧 Needs Improvement: Current E1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
+      reasonTag = `Needs focus: Current E1RM (${fmt(currE1rm)}kg) is below your ${fmt(peakE1rm)}kg PR${benefitSuffix}`;
     } else if (targetE1rm > peakE1rm && peakE1rm > 0) {
-      reasonTag = `🏆 PR Opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)!${benefitSuffix}`;
+      reasonTag = `PR opportunity: Hitting ${bw && targetWeight === 0 ? 'BW' : `${fmt(targetWeight)}kg`} × ${targetReps} sets a new E1RM PR (${fmt(round(targetE1rm))}kg)${benefitSuffix}`;
     } else if (volStat && volStat.setsLast7Days < volStat.targetWeeklySets / 2) {
-      reasonTag = `📊 Weekly Volume Gap: ${cat} has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
+      reasonTag = `Weekly volume gap: ${cat} has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days${benefitSuffix}`;
     } else {
-      reasonTag = `📈 Progressive Overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
+      reasonTag = `Progressive overload: Build on ${shortDate(lastSession.date)} (${overloadNote})${benefitSuffix}`;
     }
   }
 
@@ -2988,7 +3401,7 @@ function renderWorkoutDetail(workoutId) {
             <span class="ex-name" data-jump-progress="${esc(name)}">${esc(name)}</span>
             <span class="tag">${esc(exInfo(name).category)}</span>
             ${bw ? '<span class="tag" style="color:var(--pr)">BW</span>' : ''}
-            ${isPr ? '<span class="badge-rel-pr">🏆 PR</span>' : (isRelPr && mode === 'CUT' ? '<span class="badge-rel-pr">🏆 REL PR</span>' : '')}
+            ${isPr ? '<span class="badge-rel-pr">PR</span>' : (isRelPr && mode === 'CUT' ? '<span class="badge-rel-pr">Rel PR</span>' : '')}
           </div>
           <div class="detail-summary-badge">${summarize(name, sList)}${deltaHtml}</div>
         </div>
@@ -3152,7 +3565,7 @@ function renderProgressDetail(exerciseName) {
     );
     const prBadge = (s.isE1rmPr || s.isWeightPr)
       ? '<span class="badge-rel-pr">PR</span>'
-      : (s.isRelPr && (mode === 'CUT' || progressState.metric === 'rel') ? '<span class="badge-rel-pr">REL PR</span>' : '');
+      : (s.isRelPr && mode === 'CUT' ? '<span class="badge-rel-pr">Rel PR</span>' : '');
     const eDeltaHtml = eDelta !== null && eDelta !== 0
       ? ` <span class="delta ${eDelta > 0 ? 'up' : (heldDip ? 'delta-retained' : 'down')}">${eDelta > 0 ? '+' : ''}${eDelta}k${heldDip ? ' (held)' : ''}</span>`
       : '';
@@ -3611,7 +4024,7 @@ function renderAll() {
   if (modePill) {
     const meta = TrainingModeClient.meta(S.trainingMode);
     modePill.className = `mode-pill ${meta.cssClass}`;
-    modePill.textContent = `${meta.shortLabel} Mode ⇄`;
+    modePill.textContent = `${meta.shortLabel} mode`;
   }
 
   // Storage badge
@@ -4032,6 +4445,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('#history-search').addEventListener('input', renderHistory);
+  $('#progress-open-rel')?.addEventListener('click', () => {
+    if (progressState.exercise) openRelativeStrengthModal(progressState.exercise);
+  });
   $('#progress-input').addEventListener('input', (e) => {
     const val = e.target.value.trim();
     if (S.exercises.some((x) => x.name.toLowerCase() === val.toLowerCase())) {

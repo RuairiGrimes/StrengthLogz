@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,9 +73,9 @@ fun WorkoutDetailScreen(
                 title = {
                     Column {
                         Text(
-                            text = workout.title.ifBlank { "Workout Session" },
+                            text = workout.title.ifBlank { "Workout session" },
                             fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.SemiBold,
                             color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -84,8 +83,9 @@ fun WorkoutDetailScreen(
                         Text(
                             text = DateUtils.formatDisplayWithDay(workout.date),
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = AccentPeach
+                            fontWeight = FontWeight.Medium,
+                            color = AccentPeach,
+                            style = TabularStyle
                         )
                     }
                 },
@@ -128,71 +128,49 @@ fun WorkoutDetailScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "“${workout.notes}”",
+                            text = workout.notes,
                             fontSize = 12.5.sp,
-                            color = TextSecondary,
-                            fontStyle = FontStyle.Italic
+                            color = TextSecondary
                         )
                     }
                 }
             }
 
-            // Sleek 3-Column Summary Strip
+            // Equal-height 3-Column Summary Strip
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    StrengthCard(
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("VOLUME", fontSize = 9.5.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "${SetUtils.formatWeightValue(totalVolume)} kg",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary
-                        )
-                        Text("${groupedByExercise.size} movements", fontSize = 11.sp, color = TextSecondary)
-                    }
-
-                    StrengthCard(
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("SETS & REPS", fontSize = 9.5.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "$totalWorkingSets sets",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary
-                        )
-                        Text("$totalReps reps", fontSize = 11.sp, color = TextSecondary)
-                    }
-
-                    StrengthCard(
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("RECORDS", fontSize = 9.5.sp, color = TextSecondary, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = if (prExercises.isNotEmpty()) "${prExercises.size} PR${if (prExercises.size > 1) "s" else ""}" else "–",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (prExercises.isNotEmpty()) GoldPR else TextSecondary
-                        )
-                        Text(
-                            text = if (prExercises.isNotEmpty()) prExercises.first() else "Steady work",
-                            fontSize = 11.sp,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    CompactKpiCard(
+                        label = "Volume",
+                        value = "${SetUtils.formatWeightValue(totalVolume)} kg",
+                        caption = "${groupedByExercise.size} movements",
+                        valueColor = TextPrimary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+                    CompactKpiCard(
+                        label = "Sets & reps",
+                        value = "$totalWorkingSets sets",
+                        caption = "$totalReps reps",
+                        valueColor = TextPrimary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
+                    CompactKpiCard(
+                        label = "Records",
+                        value = if (prExercises.isNotEmpty()) "${prExercises.size} PR${if (prExercises.size > 1) "s" else ""}" else "–",
+                        caption = if (prExercises.isNotEmpty()) prExercises.first() else "Steady work",
+                        valueColor = if (prExercises.isNotEmpty()) GoldPR else TextSecondary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    )
                 }
             }
 
@@ -228,32 +206,36 @@ fun WorkoutDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                FlowRow(
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = exerciseName,
+                                    fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = exerciseName,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
-                                    )
                                     CategoryPill(category = exInfo?.category ?: "Other")
                                     if (isPr) {
                                         PrTrophyBadge(text = "PR", isNewPr = true)
                                     } else if (isRelPr && trainingMode == TrainingMode.CUT) {
-                                        PrTrophyBadge(text = "REL PR", isNewPr = true)
+                                        PrTrophyBadge(text = "Rel PR", isNewPr = true)
                                     }
                                 }
                                 Text(
                                     text = setsSummary,
-                                    fontSize = 13.sp,
+                                    fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = AccentPeach,
-                                    modifier = Modifier.padding(top = 3.dp)
+                                    style = TabularStyle
                                 )
                             }
+
+                            Spacer(Modifier.width(8.dp))
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -264,8 +246,11 @@ fun WorkoutDetailScreen(
                                         Text(
                                             text = "${SetUtils.formatWeightValue(currentSess.e1rm)} kg",
                                             fontSize = 14.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = TextPrimary
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            style = TabularStyle
                                         )
                                         if (e1rmDelta != null && e1rmDelta != 0.0) {
                                             val sign = if (e1rmDelta > 0) "+" else ""
@@ -283,7 +268,10 @@ fun WorkoutDetailScreen(
                                             Text(
                                                 text = deltaText,
                                                 fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                style = TabularStyle,
                                                 color = when {
                                                     e1rmDelta > 0 -> IncreaseGreen
                                                     isHeldDip -> BlueAccent
@@ -319,7 +307,6 @@ fun WorkoutDetailScreen(
                                         text = "Note: $exNote",
                                         fontSize = 12.sp,
                                         color = TextSecondary,
-                                        fontStyle = FontStyle.Italic,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                                     )
                                 }
@@ -329,7 +316,8 @@ fun WorkoutDetailScreen(
                                 Text(
                                     text = "Previous (${prevSess.displayDate}): ${SetUtils.formatSetsSummary(prevSess.sets, isBw)}",
                                     fontSize = 11.5.sp,
-                                    color = TextSecondary
+                                    color = TextSecondary,
+                                    style = TabularStyle
                                 )
                             }
 
@@ -339,10 +327,10 @@ fun WorkoutDetailScreen(
                                         .fillMaxWidth()
                                         .padding(horizontal = 4.dp, vertical = 2.dp)
                                 ) {
-                                    Text("SET", fontSize = 10.sp, color = TextSecondary, modifier = Modifier.width(34.dp))
-                                    Text("WEIGHT", fontSize = 10.sp, color = TextSecondary, modifier = Modifier.weight(1f))
-                                    Text("REPS", fontSize = 10.sp, color = TextSecondary, modifier = Modifier.weight(0.9f))
-                                    Text("E1RM", fontSize = 10.sp, color = TextSecondary, modifier = Modifier.width(65.dp))
+                                    Text("Set", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary, modifier = Modifier.width(34.dp))
+                                    Text("Weight", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary, modifier = Modifier.weight(1f))
+                                    Text("Reps", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary, modifier = Modifier.weight(0.9f))
+                                    Text("E1RM", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextSecondary, modifier = Modifier.width(65.dp))
                                 }
 
                                 exSets.sortedBy { it.setNo }.forEachIndexed { idx, s ->
@@ -364,28 +352,32 @@ fun WorkoutDetailScreen(
                                         Text(
                                             text = "${idx + 1}",
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
+                                            fontWeight = FontWeight.SemiBold,
                                             color = TextSecondary,
+                                            style = TabularStyle,
                                             modifier = Modifier.width(34.dp)
                                         )
                                         Text(
                                             text = if (s.weight != null && s.weight > 0) "${SetUtils.formatWeightValue(s.weight)} kg" else "BW",
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
+                                            fontWeight = FontWeight.Medium,
                                             color = TextPrimary,
+                                            style = TabularStyle,
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
                                             text = if (rVal > 0) "$rVal" else "0 (✗)",
                                             fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
+                                            fontWeight = FontWeight.Medium,
                                             color = if (rVal > 0) TextPrimary else DecreaseRed,
+                                            style = TabularStyle,
                                             modifier = Modifier.weight(0.9f)
                                         )
                                         Text(
                                             text = if (e1rm > 0) "${SetUtils.formatWeightValue(e1rm)} kg" else "–",
                                             fontSize = 12.sp,
                                             color = AccentPeach,
+                                            style = TabularStyle,
                                             modifier = Modifier.width(65.dp)
                                         )
                                     }

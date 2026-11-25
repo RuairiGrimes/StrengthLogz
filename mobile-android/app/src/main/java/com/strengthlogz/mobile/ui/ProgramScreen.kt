@@ -238,109 +238,138 @@ fun ProgramScreen(
         ) {
             // Header: Program Switcher & Actions
             item(key = "program_header") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (activeProgram != null) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = SurfaceCard,
-                            border = BorderStroke(1.dp, BorderDark),
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .clickable { showProgramSwitcher = true }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.CalendarMonth,
-                                    contentDescription = null,
-                                    tint = AccentOrange,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Text(
-                                    text = activeProgram.safeProgramName,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = TextPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "Switch Program",
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = "Workout Program",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary
-                        )
-                    }
-
-                    Spacer(Modifier.width(8.dp))
-
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TrainingModePill(mode = trainingMode, compact = true)
                         if (activeProgram != null) {
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = SurfaceCard,
-                                border = BorderStroke(0.8.dp, BorderDark),
+                                border = BorderStroke(1.dp, BorderDark),
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .weight(1f)
+                                    .height(36.dp)
                                     .clickable { showProgramSwitcher = true }
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "Manage Programs",
-                                        tint = TextSecondary,
+                                        imageVector = Icons.Default.CalendarMonth,
+                                        contentDescription = null,
+                                        tint = AccentOrange,
                                         modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = activeProgram.safeProgramName,
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Switch Program",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "Workout program",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (activeProgram != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = SurfaceCard,
+                                    border = BorderStroke(1.dp, BorderDark),
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clickable { showProgramSwitcher = true }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Manage Programs",
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = AccentOrange,
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .clickable { showCreateProgramDialog = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = "New Program",
+                                        tint = Color(0xFF140D07),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = "New",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF140D07),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
                         }
+                    }
 
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = AccentOrange,
-                            modifier = Modifier
-                                .height(34.dp)
-                                .clickable { showCreateProgramDialog = true }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "New Program",
-                                    tint = Color(0xFF140D07),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "New Program",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF140D07)
-                                )
-                            }
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TrainingModePill(mode = trainingMode, compact = true)
+                        Text(
+                            text = if (activeProgram != null) {
+                                "${activeDays.size} day${if (activeDays.size == 1) "" else "s"} · ${activeDays.sumOf { it.safeExercises.size }} exercises"
+                            } else {
+                                "Custom split builder"
+                            },
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = TabularStyle,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
@@ -421,17 +450,17 @@ fun ProgramScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "WORKOUT DAYS (${activeDays.size})",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
+                                text = "Workout days (${activeDays.size})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
                                 color = TextSecondary,
-                                letterSpacing = 0.6.sp
+                                style = TabularStyle
                             )
 
                             Text(
-                                text = "+ Add Day",
+                                text = "Add day",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
+                                fontWeight = FontWeight.SemiBold,
                                 color = AccentOrange,
                                 modifier = Modifier
                                     .clickable { showAddDayDialog = true }
@@ -554,7 +583,7 @@ fun ProgramScreen(
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("+ Add Workout Day", fontWeight = FontWeight.Bold)
+                                    Text("Add workout day", fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -674,7 +703,7 @@ fun ProgramScreen(
                                     ) {
                                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("+ Add Exercise to Day", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                        Text("Add exercise to day", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
                                     }
                                 }
                             }
@@ -744,10 +773,12 @@ fun ProgramScreen(
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
-                                        text = "+ Add Exercise to ${activeDay.dayName}",
+                                        text = "Add exercise to ${activeDay.dayName}",
                                         fontSize = 13.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = AccentOrange
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = AccentOrange,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -1015,10 +1046,11 @@ private fun ProgramSwitcherDialog(
                                             Text(
                                                 text = prog.safeProgramName,
                                                 fontSize = 14.5.sp,
-                                                fontWeight = FontWeight.Bold,
+                                                fontWeight = FontWeight.SemiBold,
                                                 color = if (isActive) AccentOrange else TextPrimary,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
                                             if (isActive) {
                                                 Icon(
@@ -1093,7 +1125,7 @@ private fun ProgramSwitcherDialog(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("+ Create New Program", fontWeight = FontWeight.ExtraBold, fontSize = 13.5.sp)
+                    Text("Create new program", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
                 }
             }
         }
@@ -1368,18 +1400,18 @@ private fun ProgramExerciseCard(
             ) {
                 // Sets & Reps Steppers
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CompactStepperPill(
-                        label = "SETS",
+                        label = "Sets",
                         value = item.targetSets,
                         onDecrement = { if (item.targetSets > 1) onUpdateSetsReps(item.targetSets - 1, item.targetReps) },
                         onIncrement = { if (item.targetSets < 10) onUpdateSetsReps(item.targetSets + 1, item.targetReps) }
                     )
 
                     CompactStepperPill(
-                        label = "REPS",
+                        label = "Reps",
                         value = item.targetReps,
                         onDecrement = { if (item.targetReps > 1) onUpdateSetsReps(item.targetSets, item.targetReps - 1) },
                         onIncrement = { if (item.targetReps < 50) onUpdateSetsReps(item.targetSets, item.targetReps + 1) }
@@ -1388,45 +1420,45 @@ private fun ProgramExerciseCard(
 
                 // Reorder Up/Down & Delete
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (totalCount > 1) {
                         IconButton(
                             onClick = onMoveUp,
                             enabled = index > 0,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 Icons.Default.ArrowUpward,
                                 contentDescription = "Move Up",
                                 tint = if (index > 0) TextSecondary else TextMuted.copy(alpha = 0.35f),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
                         IconButton(
                             onClick = onMoveDown,
                             enabled = index < totalCount - 1,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
                                 Icons.Default.ArrowDownward,
                                 contentDescription = "Move Down",
                                 tint = if (index < totalCount - 1) TextSecondary else TextMuted.copy(alpha = 0.35f),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
                     }
 
                     IconButton(
                         onClick = onRemove,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = "Remove Exercise",
                             tint = DecreaseRed.copy(alpha = 0.8f),
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -1443,14 +1475,14 @@ private fun CompactStepperPill(
     onIncrement: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = BgDark,
         border = BorderStroke(0.8.dp, BorderDark)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(6.dp),
@@ -1463,7 +1495,7 @@ private fun CompactStepperPill(
                     Text(
                         text = "−",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = TextPrimary
                     )
                 }
@@ -1471,19 +1503,20 @@ private fun CompactStepperPill(
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.widthIn(min = 38.dp)
+                modifier = Modifier.widthIn(min = 30.dp)
             ) {
                 Text(
                     text = "$value",
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     color = AccentOrange,
-                    maxLines = 1
+                    maxLines = 1,
+                    style = TabularStyle
                 )
                 Text(
                     text = label,
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Medium,
                     color = TextSecondary,
                     maxLines = 1
                 )
@@ -1500,7 +1533,7 @@ private fun CompactStepperPill(
                     Text(
                         text = "+",
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.SemiBold,
                         color = AccentOrange
                     )
                 }
@@ -1595,25 +1628,24 @@ private fun ProgramExercisePickerDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "PRESCRIBED TARGETS",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
-                            letterSpacing = 0.5.sp
+                            text = "Prescribed targets",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
                         )
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             CompactStepperPill(
-                                label = "SETS",
+                                label = "Sets",
                                 value = targetSets,
                                 onDecrement = { if (targetSets > 1) targetSets-- },
                                 onIncrement = { if (targetSets < 10) targetSets++ }
                             )
                             CompactStepperPill(
-                                label = "REPS",
+                                label = "Reps",
                                 value = targetReps,
                                 onDecrement = { if (targetReps > 1) targetReps-- },
                                 onIncrement = { if (targetReps < 50) targetReps++ }

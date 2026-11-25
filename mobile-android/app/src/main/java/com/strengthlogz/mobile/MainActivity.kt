@@ -5,9 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -205,165 +204,178 @@ class MainActivity : ComponentActivity() {
                                     .statusBarsPadding(),
                                 color = BgDark
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Column {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(28.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(AccentOrange.copy(alpha = 0.16f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.FitnessCenter,
-                                                contentDescription = null,
-                                                tint = AccentOrange,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                        Text(
-                                            text = "STRENGTHLOGZ",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = TextPrimary,
-                                            letterSpacing = 1.sp
-                                        )
-                                    }
-
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Surface(
-                                            color = SurfaceDark,
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(1.dp, BorderDark.copy(alpha = 0.7f)),
-                                            modifier = Modifier.clickable {
-                                                showSummaryDialog = true
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.AutoMirrored.Filled.TrendingUp,
-                                                    contentDescription = "14-Day Summary",
-                                                    tint = AccentOrange,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                                Text(
-                                                    "14d",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = TextPrimary
-                                                )
-                                            }
-                                        }
-
-                                        val isExercises = currentScreen == Screen.EXERCISES
-                                        Surface(
-                                            color = if (isExercises) AccentOrange.copy(alpha = 0.18f) else SurfaceDark,
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isExercises) AccentOrange else BorderDark.copy(alpha = 0.7f)
-                                            ),
-                                            modifier = Modifier.clickable {
-                                                currentScreen = if (isExercises) lastPrimaryScreen else Screen.EXERCISES
-                                            }
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.FitnessCenter,
-                                                    contentDescription = "Exercises Catalog",
-                                                    tint = if (isExercises) AccentOrange else TextSecondary,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                                Text(
-                                                    "Catalog",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = if (isExercises) AccentOrange else TextSecondary
-                                                )
-                                            }
-                                        }
-
-                                        val isSettings = currentScreen == Screen.SETTINGS
-                                        Surface(
-                                            color = if (isSettings) AccentOrange.copy(alpha = 0.18f) else SurfaceDark,
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isSettings) AccentOrange else BorderDark.copy(alpha = 0.7f)
-                                            ),
-                                            modifier = Modifier.clickable {
-                                                currentScreen = if (isSettings) lastPrimaryScreen else Screen.SETTINGS
-                                            }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Box(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(AccentOrange.copy(alpha = 0.14f)),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
-                                                    Icons.Default.Settings,
-                                                    contentDescription = "Settings & Body Weight",
-                                                    tint = if (isSettings) AccentOrange else TextSecondary,
+                                                    Icons.Default.FitnessCenter,
+                                                    contentDescription = null,
+                                                    tint = AccentOrange,
                                                     modifier = Modifier.size(16.dp)
                                                 )
                                             }
+                                            Text(
+                                                text = "StrengthLogz",
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextPrimary,
+                                                letterSpacing = 0.sp,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                color = SurfaceDark,
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, BorderDark),
+                                                modifier = Modifier
+                                                    .height(34.dp)
+                                                    .clickable { showSummaryDialog = true }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.AutoMirrored.Filled.TrendingUp,
+                                                        contentDescription = "14-Day Summary",
+                                                        tint = AccentOrange,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Text(
+                                                        text = "14d",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = TextPrimary,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        style = TabularStyle
+                                                    )
+                                                }
+                                            }
+
+                                            val isExercises = currentScreen == Screen.EXERCISES
+                                            Surface(
+                                                color = if (isExercises) AccentOrange.copy(alpha = 0.14f) else SurfaceDark,
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isExercises) AccentOrange.copy(alpha = 0.6f) else BorderDark
+                                                ),
+                                                modifier = Modifier
+                                                    .height(34.dp)
+                                                    .clickable {
+                                                        currentScreen = if (isExercises) lastPrimaryScreen else Screen.EXERCISES
+                                                    }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.FitnessCenter,
+                                                        contentDescription = "Exercises Catalog",
+                                                        tint = if (isExercises) AccentOrange else TextSecondary,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Catalog",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = if (isExercises) AccentOrange else TextSecondary,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+
+                                            val isSettings = currentScreen == Screen.SETTINGS
+                                            Surface(
+                                                color = if (isSettings) AccentOrange.copy(alpha = 0.14f) else SurfaceDark,
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isSettings) AccentOrange.copy(alpha = 0.6f) else BorderDark
+                                                ),
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .clickable {
+                                                        currentScreen = if (isSettings) lastPrimaryScreen else Screen.SETTINGS
+                                                    }
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        Icons.Default.Settings,
+                                                        contentDescription = "Settings & Body Weight",
+                                                        tint = if (isSettings) AccentOrange else TextSecondary,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
+                                    HorizontalDivider(color = BorderSubtle, thickness = 0.8.dp)
                                 }
                             }
                         }
                     },
                     bottomBar = {
-                        // Streamlined 5-tab Primary Bottom Navigation Bar with centered icons & top clearance
+                        // Streamlined 5-tab Primary Bottom Navigation Bar with top hairline
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .navigationBarsPadding(),
-                            color = SurfaceDark,
-                            border = BorderStroke(1.dp, BorderDark.copy(alpha = 0.7f))
+                            color = SurfaceDark
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(68.dp)
-                                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceAround,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                PRIMARY_TABS.forEach { screen ->
-                                    val isSelected = currentScreen == screen && selectedWorkoutForDetail == null
-                                    val isLogScreen = screen == Screen.LOG
+                            Column {
+                                HorizontalDivider(color = BorderSubtle, thickness = 1.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(64.dp)
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    PRIMARY_TABS.forEach { screen ->
+                                        val isSelected = currentScreen == screen && selectedWorkoutForDetail == null
+                                        val isLogScreen = screen == Screen.LOG
 
-                                    ModernNavItem(
-                                        screen = screen,
-                                        isSelected = isSelected,
-                                        hasBadge = isLogScreen && hasActiveDraft && !isSelected,
-                                        onClick = {
-                                            currentScreen = screen
-                                            lastPrimaryScreen = screen
-                                            selectedWorkoutForDetail = null
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                        ModernNavItem(
+                                            screen = screen,
+                                            isSelected = isSelected,
+                                            hasBadge = isLogScreen && hasActiveDraft && !isSelected,
+                                            onClick = {
+                                                currentScreen = screen
+                                                lastPrimaryScreen = screen
+                                                selectedWorkoutForDetail = null
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -579,6 +591,7 @@ class MainActivity : ComponentActivity() {
                                             workouts = repository.appData.workouts,
                                             getSetsForExercise = { exName -> repository.getSetsForExercise(exName) },
                                             goals = repository.getGoals(),
+                                            bodyWeights = repository.getBodyWeights(),
                                             trainingMode = trainingMode,
                                             onOpenModePicker = { showModePickerDialog = true },
                                             onNavigateGoals = { exName ->
@@ -764,7 +777,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * Modern responsive navigation item with smooth animated scale and micro-capsule.
+ * Crisp navigation item with ease-out indicator and 1-line label.
  */
 @Composable
 private fun ModernNavItem(
@@ -777,11 +790,8 @@ private fun ModernNavItem(
     val interactionSource = remember { MutableInteractionSource() }
 
     val iconScale by animateFloatAsState(
-        targetValue = if (isSelected) 1.08f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        targetValue = if (isSelected) 1.03f else 1.0f,
+        animationSpec = tween(durationMillis = 160, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)),
         label = "navIconScale"
     )
 
@@ -802,9 +812,9 @@ private fun ModernNavItem(
         Box(
             modifier = Modifier
                 .height(28.dp)
-                .width(48.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(if (isSelected) AccentOrange.copy(alpha = 0.18f) else Color.Transparent),
+                .width(46.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(if (isSelected) AccentOrange.copy(alpha = 0.14f) else Color.Transparent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -812,7 +822,7 @@ private fun ModernNavItem(
                 contentDescription = screen.title,
                 tint = contentColor,
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(19.dp)
                     .scale(iconScale)
             )
 
@@ -833,8 +843,8 @@ private fun ModernNavItem(
 
         Text(
             text = screen.title,
-            fontSize = 10.5.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             color = contentColor,
             maxLines = 1,
             softWrap = false,

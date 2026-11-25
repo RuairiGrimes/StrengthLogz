@@ -1,10 +1,9 @@
 package com.strengthlogz.mobile.ui.theme
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,16 +27,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
+
+val TabularStyle = TextStyle(fontFeatureSettings = "tnum")
+val CardHairline = BorderStroke(1.dp, BorderDark)
+private val CraftEaseOut = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 /**
- * Reusable high-contrast category or state tag pill.
+ * Quiet sentence-case category pill with a subtle category indicator dot.
  */
 @Composable
 fun CategoryPill(
@@ -45,37 +47,53 @@ fun CategoryPill(
     modifier: Modifier = Modifier,
     active: Boolean = false
 ) {
-    val (bgColor, textColor, borderColor) = when (category.lowercase()) {
-        "chest" -> Triple(Color(0x24FF7A45), AccentOrange, AccentOrange.copy(alpha = 0.45f))
-        "back" -> Triple(Color(0x2438BDF8), BlueAccent, BlueAccent.copy(alpha = 0.45f))
-        "legs" -> Triple(Color(0x2434D399), IncreaseGreen, IncreaseGreen.copy(alpha = 0.45f))
-        "shoulders" -> Triple(Color(0x24A78BFA), PurpleAccent, PurpleAccent.copy(alpha = 0.45f))
-        "arms" -> Triple(Color(0x24FFD166), GoldPR, GoldPR.copy(alpha = 0.45f))
-        "core" -> Triple(Color(0x24F472B6), Color(0xFFF472B6), Color(0xFFF472B6).copy(alpha = 0.45f))
-        else -> Triple(Color(0x1F8B93A7), TextSecondary, BorderDark)
+    val dotColor = when (category.trim().lowercase(Locale.US)) {
+        "chest" -> AccentOrange
+        "back" -> BlueAccent
+        "legs" -> IncreaseGreen
+        "shoulders" -> PurpleAccent
+        "arms" -> GoldPR
+        "core" -> Color(0xFFF472B6)
+        else -> TextSecondary
     }
+    val displayLabel = category.trim().ifBlank { "Other" }
+        .lowercase(Locale.US)
+        .replaceFirstChar { it.titlecase(Locale.US) }
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = if (active) textColor else bgColor,
-        border = if (active) null else BorderStroke(0.8.dp, borderColor)
+        shape = RoundedCornerShape(6.dp),
+        color = if (active) dotColor else SurfaceHighlight,
+        border = if (active) null else BorderStroke(0.8.dp, BorderDark)
     ) {
-        Text(
-            text = category.uppercase(),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (active) Color(0xFF140D07) else textColor,
-            letterSpacing = 0.6.sp,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+        ) {
+            if (!active) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(dotColor)
+                )
+            }
+            Text(
+                text = displayLabel,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (active) Color(0xFF140D07) else TextSecondary,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
 /**
- * Golden PR badge with trophy/fire indicator.
+ * Quiet gold PR badge without excessive weight or glow.
  */
 @Composable
 fun PrTrophyBadge(
@@ -85,34 +103,30 @@ fun PrTrophyBadge(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = if (isNewPr) Color(0x38FFD166) else Color(0x24FFD166),
-        border = BorderStroke(1.dp, if (isNewPr) GoldPR else GoldPR.copy(alpha = 0.5f))
+        shape = RoundedCornerShape(6.dp),
+        color = if (isNewPr) Color(0x28FFD166) else Color(0x1AFFD166),
+        border = BorderStroke(0.8.dp, if (isNewPr) GoldPR.copy(alpha = 0.7f) else GoldPR.copy(alpha = 0.4f))
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         ) {
-            Text(
-                text = if (isNewPr) "★" else "PR",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = GoldPR
-            )
             Text(
                 text = text,
                 fontSize = 11.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontWeight = FontWeight.SemiBold,
                 color = GoldPR,
-                maxLines = 1
+                maxLines = 1,
+                softWrap = false,
+                style = TabularStyle
             )
         }
     }
 }
 
 /**
- * Animated completion checkmark for workout sets with spring bounce.
+ * Crisp completion checkmark for workout sets with smooth ease-out feedback.
  */
 @Composable
 fun SetCompletionCheckButton(
@@ -121,23 +135,20 @@ fun SetCompletionCheckButton(
     modifier: Modifier = Modifier
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (isCompleted) 1.05f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        targetValue = if (isCompleted) 1.0f else 0.98f,
+        animationSpec = tween(durationMillis = 160, easing = CraftEaseOut),
         label = "checkScale"
     )
 
     val bgColor by animateColorAsState(
         targetValue = if (isCompleted) IncreaseGreen else SurfaceHighlight,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        animationSpec = tween(durationMillis = 160, easing = CraftEaseOut),
         label = "checkBg"
     )
 
     val iconColor by animateColorAsState(
-        targetValue = if (isCompleted) Color(0xFF092317) else TextMuted,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        targetValue = if (isCompleted) Color(0xFF0A1F14) else TextMuted,
+        animationSpec = tween(durationMillis = 160, easing = CraftEaseOut),
         label = "checkIcon"
     )
 
@@ -147,12 +158,12 @@ fun SetCompletionCheckButton(
         modifier = modifier
             .size(34.dp)
             .scale(scale)
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(
                 1.dp,
                 if (isCompleted) IncreaseGreenDark else BorderDark,
-                RoundedCornerShape(9.dp)
+                RoundedCornerShape(8.dp)
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -165,20 +176,21 @@ fun SetCompletionCheckButton(
             imageVector = Icons.Default.Check,
             contentDescription = if (isCompleted) "Completed" else "Mark Complete",
             tint = iconColor,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(18.dp)
         )
     }
 }
 
 /**
- * Modern card container with subtle gradient rim and dark surface.
+ * Clean dark card container with quiet hairline border and optional custom padding.
  */
 @Composable
 fun StrengthCard(
     modifier: Modifier = Modifier,
-    shape: RoundedCornerShape = RoundedCornerShape(16.dp),
-    border: BorderStroke? = BorderStroke(0.8.dp, BorderDark.copy(alpha = 0.65f)),
+    shape: RoundedCornerShape = RoundedCornerShape(14.dp),
+    border: BorderStroke? = BorderStroke(1.dp, BorderDark.copy(alpha = 0.85f)),
     gradientBrush: Brush? = null,
+    contentPadding: PaddingValues = PaddingValues(16.dp),
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -186,7 +198,7 @@ fun StrengthCard(
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed && onClick != null) 0.985f else 1.0f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        animationSpec = tween(durationMillis = 120, easing = CraftEaseOut),
         label = "cardPress"
     )
 
@@ -213,7 +225,7 @@ fun StrengthCard(
                     if (gradientBrush != null) Modifier.background(gradientBrush)
                     else Modifier
                 )
-                .padding(16.dp),
+                .padding(contentPadding),
             content = content
         )
     }
@@ -247,7 +259,7 @@ fun ModernSearchBar(
                 imageVector = Icons.Default.Search,
                 contentDescription = "Search",
                 tint = if (query.isNotBlank()) AccentOrange else TextSecondary,
-                modifier = Modifier.size(19.dp)
+                modifier = Modifier.size(18.dp)
             )
         },
         trailingIcon = {
@@ -266,7 +278,7 @@ fun ModernSearchBar(
         },
         singleLine = true,
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = TextPrimary,
             unfocusedTextColor = TextPrimary,
@@ -280,7 +292,7 @@ fun ModernSearchBar(
 }
 
 /**
- * Screen Header with modern bold typography, sub-caption, and optional right action.
+ * Screen Header that protects title space and avoids wrapping or squeezing.
  */
 @Composable
 fun ModernScreenHeader(
@@ -302,21 +314,28 @@ fun ModernScreenHeader(
             ) {
                 Text(
                     text = title,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = TextPrimary,
-                    letterSpacing = (-0.4).sp
+                    letterSpacing = (-0.2).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 if (!badgeText.isNullOrBlank()) {
                     Surface(
                         color = SurfaceHighlight,
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(0.8.dp, BorderDark)
                     ) {
                         Text(
                             text = badgeText,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
                             color = TextSecondary,
+                            maxLines = 1,
+                            softWrap = false,
+                            style = TabularStyle,
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
@@ -325,11 +344,11 @@ fun ModernScreenHeader(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    fontSize = 12.sp,
+                    fontSize = 12.5.sp,
                     color = TextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 1.dp)
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }

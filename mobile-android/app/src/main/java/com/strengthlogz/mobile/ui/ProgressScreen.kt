@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.OpenInFull
@@ -38,7 +39,6 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.strengthlogz.mobile.model.BodyWeightEntry
 import com.strengthlogz.mobile.model.Exercise
 import com.strengthlogz.mobile.model.ExerciseGoal
 import com.strengthlogz.mobile.model.TrainingMode
@@ -57,28 +58,35 @@ import com.strengthlogz.mobile.util.BodyWeightUtils
 import com.strengthlogz.mobile.util.DateUtils
 import com.strengthlogz.mobile.util.SetUtils
 import com.strengthlogz.mobile.util.SetUtils.formatWeightValue
+import com.strengthlogz.mobile.util.StrengthAnalytics
+import java.util.Locale
 import kotlin.math.roundToInt
 
 enum class ChartMetricMode(val label: String) {
     E1RM("Est. 1RM"),
-    SET_REPS("Top Weight"),
-    RELATIVE("Rel. ×BW")
+    SET_REPS("Top weight")
 }
 
 internal fun SessionProgressPoint.metricValue(mode: ChartMetricMode): Double = when (mode) {
     ChartMetricMode.E1RM -> e1rm
     ChartMetricMode.SET_REPS -> topWeight
-    ChartMetricMode.RELATIVE -> relativeStrength
 }
 
 internal fun SessionProgressPoint.isPrFor(mode: ChartMetricMode): Boolean = when (mode) {
     ChartMetricMode.E1RM -> isE1rmPr
     ChartMetricMode.SET_REPS -> isWeightPr
-    ChartMetricMode.RELATIVE -> isRelPr
 }
 
-internal fun ChartMetricMode.formatValue(v: Double): String =
-    if (this == ChartMetricMode.RELATIVE) "${"%.2f".format(v)}×" else "${formatWeightValue(v)}kg"
+internal fun ChartMetricMode.formatValue(v: Double): String = "${formatWeightValue(v)}kg"
+
+private fun compactShortDate(ddMonYyyy: String): String {
+    val parts = ddMonYyyy.trim().split("-")
+    if (parts.size != 3) return ddMonYyyy
+    val day = parts[0].trimStart('0').ifEmpty { parts[0] }
+    val mon = parts[1].lowercase(Locale.US).replaceFirstChar { it.titlecase(Locale.US) }
+    val yr = if (parts[2].length == 4) parts[2].substring(2) else parts[2]
+    return "$day $mon $yr"
+}
 
 private enum class ProgressDetailTab(val label: String) {
     OVERVIEW("Overview"),
@@ -260,6 +268,7 @@ fun ProgressScreen(
     workouts: List<Workout> = emptyList(),
     getSetsForExercise: (String) -> List<WorkoutSet>,
     goals: List<ExerciseGoal> = emptyList(),
+    bodyWeights: List<BodyWeightEntry> = emptyList(),
     trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     onOpenModePicker: () -> Unit = {},
     onNavigateGoals: (String?) -> Unit = {},
@@ -308,10 +317,12 @@ fun ProgressScreen(
             category = exerciseCategoryMap[activeExercise!!.lowercase()] ?: "Other",
             workoutMap = workoutMap,
             getSetsForExercise = getSetsForExercise,
+            bodyWeights = bodyWeights,
             activeGoal = goalByExerciseLower[activeExercise!!.trim().lowercase()],
             trainingMode = trainingMode,
             onOpenModePicker = onOpenModePicker,
             onNavigateGoalsForExercise = { onNavigateGoals(activeExercise) },
+            onNavigateBodyWeight = onNavigateBodyWeight,
             onBack = { activeExercise = null }
         )
     }
@@ -371,91 +382,101 @@ private fun ProgressDirectoryView(
 
         ModernScreenHeader(
             title = "Progress",
-            subtitle = "Charts, records & movement history",
+            subtitle = when (trainingMode) {
+                TrainingMode.BULK -> "Bulk view · Absolute strength & PR tracking"
+                TrainingMode.MAINGAIN -> "Charts, records & movement history"
+                TrainingMode.CUT -> "Cut view · Relative ×BW & ≥95% E1RM retention"
+            },
             badgeText = "${distinctExercises.size} lifts",
             action = {
-              Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(9.dp),
-                    color = SurfaceCard,
-                    border = BorderStroke(0.8.dp, BorderDark),
-                    modifier = Modifier.clickable { onOpenFourteenDaySummary() }
-                ) {
-                    Text(
-                        text = "14d",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AccentOrange,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(9.dp),
-                    color = SurfaceCard,
-                    border = BorderStroke(0.8.dp, BorderDark),
-                    modifier = Modifier.clickable { onNavigateBodyWeight() }
-                ) {
-                    Text(
-                        text = "Weight",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(9.dp),
-                    color = AccentOrange,
-                    modifier = Modifier.clickable { onNavigateGoals() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEvents,
-                            contentDescription = "Goals",
-                            tint = Color(0xFF140D07),
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = if (goalByExerciseLower.isNotEmpty()) "Goals (${goalByExerciseLower.size})" else "Goals",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF140D07),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-              }
+                TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
             }
         )
 
         Spacer(Modifier.height(10.dp))
 
+        // Balanced 3-button secondary action strip
         Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
-            Text(
-                text = when (trainingMode) {
-                    TrainingMode.BULK -> "Surplus view • Absolute strength & PR tracking"
-                    TrainingMode.MAINGAIN -> "Balanced view • Steady strength progression"
-                    TrainingMode.CUT -> "Cut view • Relative ×BW & ≥95% E1RM retention"
-                },
-                fontSize = 11.5.sp,
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = AccentOrange,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clickable { onNavigateGoals() }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EmojiEvents,
+                        contentDescription = "Goals",
+                        tint = Color(0xFF140D07),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = if (goalByExerciseLower.isNotEmpty()) "Goals (${goalByExerciseLower.size})" else "Goals",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF140D07),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TabularStyle
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = SurfaceCard,
+                border = BorderStroke(1.dp, BorderDark),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clickable { onNavigateBodyWeight() }
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(
+                        text = "Body weight",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(9.dp),
+                color = SurfaceCard,
+                border = BorderStroke(1.dp, BorderDark),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clickable { onOpenFourteenDaySummary() }
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(
+                        text = "14d summary",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -463,7 +484,7 @@ private fun ProgressDirectoryView(
         ModernSearchBar(
             query = searchQuery,
             onQueryChange = { searchQuery = it },
-            placeholder = "Search exercises..."
+            placeholder = "Search exercises"
         )
 
         Spacer(Modifier.height(10.dp))
@@ -475,7 +496,7 @@ private fun ProgressDirectoryView(
             items(categories) { cat ->
                 val isSelected = selectedCategory == cat
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = if (isSelected) AccentOrange else SurfaceCard,
                     border = if (isSelected) null else BorderStroke(0.8.dp, BorderDark),
                     modifier = Modifier.clickable { selectedCategory = cat }
@@ -483,33 +504,34 @@ private fun ProgressDirectoryView(
                     Text(
                         text = cat,
                         fontSize = 12.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                         color = if (isSelected) Color(0xFF140D07) else TextSecondary,
-                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 28.dp)
         ) {
             items(filteredExercises, key = { it }) { exName ->
-                val isBw = BodyWeightUtils.isBodyweightExercise(exName)
                 val cat = exerciseCategoryMap[exName.lowercase()] ?: "Other"
                 val summary = directorySummaries[exName]
                 val bestE1rm = summary?.bestE1rm ?: 0.0
                 val bestRel = summary?.bestRelStrength ?: 0.0
                 val sessCount = summary?.sessionCount ?: 0
-                val lastDate = summary?.lastDisplayDate
                 val latestReps = summary?.latestTopReps ?: 0
+                val exGoal = goalByExerciseLower[exName.trim().lowercase()]
 
                 StrengthCard(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     onClick = { onSelectExercise(exName) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -520,48 +542,54 @@ private fun ProgressDirectoryView(
                     ) {
                         Column(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
+                            Text(
+                                text = exName,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(
-                                    text = exName,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
                                 CategoryPill(category = cat)
-                                val exGoal = goalByExerciseLower[exName.trim().lowercase()]
                                 if (exGoal != null && exGoal.enabled) {
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = GoldPR.copy(alpha = 0.16f),
-                                        border = BorderStroke(0.7.dp, GoldPR.copy(alpha = 0.55f))
+                                        color = GoldPR.copy(alpha = 0.14f),
+                                        border = BorderStroke(0.7.dp, GoldPR.copy(alpha = 0.5f))
                                     ) {
                                         Text(
-                                            text = "🎯 GOAL",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.ExtraBold,
+                                            text = "Goal",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = GoldPR,
+                                            maxLines = 1,
+                                            softWrap = false,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
+                                Text(
+                                    text = "$sessCount sessions",
+                                    fontSize = 12.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = TabularStyle
+                                )
                             }
-                            Text(
-                                text = "$sessCount sessions" + (lastDate?.let { " • Last $it" } ?: ""),
-                                fontSize = 12.sp,
-                                color = TextSecondary
-                            )
                         }
+
+                        Spacer(Modifier.width(10.dp))
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Column(horizontalAlignment = Alignment.End) {
                                 if (bestE1rm > 0.0) {
@@ -572,34 +600,41 @@ private fun ProgressDirectoryView(
                                             "${formatWeightValue(bestE1rm)} kg"
                                         },
                                         fontSize = 15.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (trainingMode == TrainingMode.CUT && bestRel > 0.0) BlueAccent else GoldPR
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (trainingMode == TrainingMode.CUT && bestRel > 0.0) BlueAccent else GoldPR,
+                                        style = TabularStyle,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                     Text(
                                         text = if (trainingMode == TrainingMode.CUT && bestRel > 0.0) {
-                                            "Peak ${formatWeightValue(bestE1rm)}kg E1RM"
+                                            "Peak ${formatWeightValue(bestE1rm)}kg"
                                         } else if (bestRel > 0.0) {
                                             "${"%.2f".format(bestRel)}× BW PR"
                                         } else {
                                             "Best E1RM"
                                         },
                                         fontSize = 11.sp,
-                                        color = TextSecondary
+                                        color = TextSecondary,
+                                        style = TabularStyle,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 } else {
                                     Text(
                                         text = "$latestReps reps",
                                         fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary,
+                                        style = TabularStyle
                                     )
                                 }
                             }
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(20.dp)
+                                tint = TextMuted,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -615,10 +650,12 @@ private fun ExerciseProgressDetailView(
     category: String,
     workoutMap: Map<String, Workout>,
     getSetsForExercise: (String) -> List<WorkoutSet>,
+    bodyWeights: List<BodyWeightEntry> = emptyList(),
     activeGoal: ExerciseGoal? = null,
     trainingMode: TrainingMode = TrainingMode.MAINGAIN,
     onOpenModePicker: () -> Unit = {},
     onNavigateGoalsForExercise: () -> Unit = {},
+    onNavigateBodyWeight: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val isBwExercise = BodyWeightUtils.isBodyweightExercise(exerciseName)
@@ -627,15 +664,22 @@ private fun ExerciseProgressDetailView(
         buildSessionPoints(rawSets, workoutMap, isBwExercise)
     }
 
-    val hasRelData = remember(sessions) { sessions.any { it.relativeStrength > 0.0 } }
-    var activeTab by remember { mutableStateOf(ProgressDetailTab.OVERVIEW) }
-    var metricMode by remember(exerciseName, trainingMode, hasRelData) {
-        mutableStateOf(
-            if (trainingMode == TrainingMode.CUT && hasRelData) ChartMetricMode.RELATIVE
-            else ChartMetricMode.E1RM
+    val effectiveBwEntries = remember(bodyWeights) {
+        bodyWeights.ifEmpty { BodyWeightUtils.publishedEntriesSnapshot() }
+    }
+    val relativePoints = remember(rawSets, workoutMap, effectiveBwEntries, isBwExercise) {
+        StrengthAnalytics.buildExerciseRelativeStrengthSeries(
+            sets = rawSets,
+            workoutMap = workoutMap,
+            bodyWeights = effectiveBwEntries,
+            isBodyweightExercise = isBwExercise
         )
     }
+
+    var activeTab by remember { mutableStateOf(ProgressDetailTab.OVERVIEW) }
+    var metricMode by remember(exerciseName) { mutableStateOf(ChartMetricMode.E1RM) }
     var showFullChartModal by remember { mutableStateOf(false) }
+    var showRelativeStrengthModal by remember { mutableStateOf(false) }
 
     var selectedPointIndex by remember(exerciseName, sessions.size) {
         mutableIntStateOf((sessions.size - 1).coerceAtLeast(0))
@@ -660,77 +704,130 @@ private fun ExerciseProgressDetailView(
     ) {
         Spacer(Modifier.height(10.dp))
 
-        // Top Detail Header Bar
-        Row(
+        // 3-Tier Structured Header (eliminates title truncation & mid-word wrapping)
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Tier 1: Back + Full Exercise Name + Training Mode
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 IconButton(
                     onClick = onBack,
                     modifier = Modifier
-                        .size(38.dp)
-                        .background(SurfaceCard, CircleShape)
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(SurfaceCard)
+                        .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back to Exercises",
                         tint = TextPrimary,
-                        modifier = Modifier.size(19.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
-                Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = exerciseName,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
+            }
+
+            // Tier 2: Metadata Strip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CategoryPill(category = category)
+                Text(
+                    text = "${sessions.size} sessions",
+                    fontSize = 12.5.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    softWrap = false,
+                    style = TabularStyle
+                )
+                val latestRel = relativePoints.lastOrNull()?.relativeStrength
+                    ?: latestSession?.relativeStrength?.takeIf { it > 0.0 }
+                if (latestRel != null && latestRel > 0.0) {
                     Text(
-                        text = exerciseName,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TextPrimary,
+                        text = "· ${"%.2f".format(latestRel)}× BW",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = BlueAccent,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        softWrap = false,
+                        style = TabularStyle
                     )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        CategoryPill(category = category)
-                        Text(
-                            text = "${sessions.size} sessions",
-                            fontSize = 12.sp,
-                            color = TextSecondary
-                        )
-                        if ((latestSession?.relativeStrength ?: 0.0) > 0.0) {
-                            Text(
-                                text = "• ${"%.2f".format(latestSession!!.relativeStrength)}× BW",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (trainingMode == TrainingMode.CUT) BlueAccent else AccentPeach
-                            )
-                        }
-                    }
                 }
             }
 
+            // Tier 3: Dedicated Action Bar (Relative Strength + Goal + Expand Chart)
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = if (activeGoal != null) GoldPR.copy(alpha = 0.18f) else SurfaceCard,
-                    border = BorderStroke(1.dp, if (activeGoal != null) GoldPR else AccentOrange),
-                    modifier = Modifier.clickable { onNavigateGoalsForExercise() }
+                    color = SurfaceCard,
+                    border = BorderStroke(1.dp, BlueAccent.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .clickable { showRelativeStrengthModal = true }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ShowChart,
+                            contentDescription = "Relative Strength",
+                            tint = BlueAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Relative strength",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (activeGoal != null) GoldPR.copy(alpha = 0.14f) else SurfaceCard,
+                    border = BorderStroke(
+                        1.dp,
+                        if (activeGoal != null) GoldPR.copy(alpha = 0.6f) else BorderDark
+                    ),
+                    modifier = Modifier
+                        .height(38.dp)
+                        .clickable { onNavigateGoalsForExercise() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.EmojiEvents,
@@ -739,10 +836,12 @@ private fun ExerciseProgressDetailView(
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
-                            text = if (activeGoal != null) "Goal" else "+ Goal",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (activeGoal != null) GoldPR else AccentOrange
+                            text = if (activeGoal != null) "Goal" else "Add goal",
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (activeGoal != null) GoldPR else TextPrimary,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -752,28 +851,31 @@ private fun ExerciseProgressDetailView(
                         onClick = { showFullChartModal = true },
                         modifier = Modifier
                             .size(38.dp)
-                            .background(SurfaceCard, CircleShape)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(SurfaceCard)
+                            .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInFull,
                             contentDescription = "Full-Screen Chart",
                             tint = AccentOrange,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         // 3 Sub-Tabs: Overview | History | PRs
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(SurfaceCard, RoundedCornerShape(12.dp))
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                .background(SurfaceCard, RoundedCornerShape(10.dp))
+                .border(0.8.dp, BorderDark, RoundedCornerShape(10.dp))
+                .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             ProgressDetailTab.entries.forEach { tab ->
                 val active = activeTab == tab
@@ -785,32 +887,35 @@ private fun ExerciseProgressDetailView(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(9.dp))
+                        .clip(RoundedCornerShape(7.dp))
                         .background(if (active) AccentOrange else Color.Transparent)
                         .clickable { activeTab = tab }
-                        .padding(vertical = 9.dp),
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
                         color = if (active) Color(0xFF140D07) else TextSecondary,
-                        fontWeight = if (active) FontWeight.ExtraBold else FontWeight.SemiBold,
-                        fontSize = 12.5.sp
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                        fontSize = 12.5.sp,
+                        maxLines = 1,
+                        softWrap = false,
+                        style = TabularStyle
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         when (activeTab) {
             ProgressDetailTab.OVERVIEW -> {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 28.dp)
                 ) {
-                    // Clean 3-Stat KPI Strip
+                    // Equal-height 3-Stat KPI Strip
                     item {
                         val bestE1rmVal = peakE1rmSession?.e1rm ?: 0.0
                         val bestSetStr = peakE1rmSession?.bestE1rmSet?.let {
@@ -821,7 +926,6 @@ private fun ExerciseProgressDetailView(
                         val latestValStr = latestSession?.let {
                             when (metricMode) {
                                 ChartMetricMode.E1RM -> "${formatWeightValue(it.e1rm)} kg"
-                                ChartMetricMode.RELATIVE -> metricMode.formatValue(it.relativeStrength)
                                 ChartMetricMode.SET_REPS -> "${formatWeightValue(it.topWeight)}kg × ${it.topWeightReps}"
                             }
                         } ?: "–"
@@ -829,55 +933,72 @@ private fun ExerciseProgressDetailView(
                         val prevDeltaStr = if (latestSession != null && prevSession != null) {
                             val curr = latestSession.metricValue(metricMode)
                             val prev = prevSession.metricValue(metricMode)
-                            val d = if (metricMode == ChartMetricMode.RELATIVE) roundHundredth(curr - prev) else roundTenth(curr - prev)
+                            val d = roundTenth(curr - prev)
                             val sign = if (d > 0) "+" else ""
-                            if (metricMode == ChartMetricMode.RELATIVE) "$sign${"%.2f".format(d)}× vs prev"
-                            else "$sign${formatWeightValue(d)}kg vs prev"
+                            "$sign${formatWeightValue(d)}kg vs prev"
                         } else "Latest session"
 
-                        val gainMode = if (metricMode == ChartMetricMode.RELATIVE) ChartMetricMode.E1RM else metricMode
-                        val firstVal = firstSession?.metricValue(gainMode) ?: 0.0
-                        val latestVal = latestSession?.metricValue(gainMode) ?: 0.0
+                        val firstVal = firstSession?.metricValue(metricMode) ?: 0.0
+                        val latestVal = latestSession?.metricValue(metricMode) ?: 0.0
                         val totalGain = roundTenth(latestVal - firstVal)
                         val gainSign = if (totalGain >= 0) "+" else ""
                         val bestRel = sessions.maxOfOrNull { it.relativeStrength } ?: 0.0
 
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Min),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CompactKpiCard(
-                                label = "ALL-TIME PR",
+                                label = "All-time PR",
                                 value = if (bestE1rmVal > 0) "${formatWeightValue(bestE1rmVal)} kg" else "–",
                                 caption = bestSetStr,
                                 valueColor = GoldPR,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
                             )
                             CompactKpiCard(
-                                label = "LATEST",
+                                label = "Latest",
                                 value = latestValStr,
                                 caption = prevDeltaStr,
                                 valueColor = TextPrimary,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
                             )
                             if (trainingMode == TrainingMode.CUT && bestE1rmVal > 0.0 && latestSession != null) {
                                 val retentionPct = ((latestSession.e1rm / bestE1rmVal) * 100.0).coerceIn(0.0, 115.0)
                                 val isHeld = latestSession.e1rm >= bestE1rmVal * TrainingModePolicy.CUT_RETENTION_FLOOR_RATIO
                                 CompactKpiCard(
-                                    label = "STRENGTH HELD",
+                                    label = "Strength held",
                                     value = "${retentionPct.roundToInt()}%",
                                     caption = if (bestRel > 0.0) "Peak ${"%.2f".format(bestRel)}× BW" else "Target ≥95%",
                                     valueColor = if (isHeld) IncreaseGreen else BlueAccent,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                )
+                            } else if (isBwExercise && bestRel > 0.0) {
+                                CompactKpiCard(
+                                    label = "Rel. strength",
+                                    value = "${"%.2f".format(bestRel)}× BW",
+                                    caption = latestSession?.let { "BW ${formatWeightValue(it.bodyWeightKg)}kg" } ?: "–",
+                                    valueColor = if (totalGain >= 0) IncreaseGreen else DecreaseRed,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
                                 )
                             } else {
                                 CompactKpiCard(
-                                    label = if ((isBwExercise || metricMode == ChartMetricMode.RELATIVE) && bestRel > 0.0) "REL. STRENGTH" else "TOTAL GAIN",
-                                    value = if ((isBwExercise || metricMode == ChartMetricMode.RELATIVE) && bestRel > 0.0) "${"%.2f".format(bestRel)}× BW" else "$gainSign${formatWeightValue(totalGain)} kg",
-                                    caption = if ((isBwExercise || metricMode == ChartMetricMode.RELATIVE) && latestSession != null) "BW ${formatWeightValue(latestSession.bodyWeightKg)}kg"
-                                    else (firstSession?.displayDate?.let { "Since $it" } ?: "–"),
+                                    label = "Total gain",
+                                    value = "$gainSign${formatWeightValue(totalGain)} kg",
+                                    caption = firstSession?.displayDate?.let { "Since ${compactShortDate(it)}" } ?: "–",
                                     valueColor = if (totalGain >= 0) IncreaseGreen else DecreaseRed,
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
                                 )
                             }
                         }
@@ -886,43 +1007,44 @@ private fun ExerciseProgressDetailView(
                     // Main Chart Card with Metric Switcher & Compact Point Header
                     item {
                         StrengthCard(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Column(
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Progression Curve",
-                                        fontSize = 15.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary
+                                        text = "Progression curve",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary,
+                                        modifier = Modifier.weight(1f)
                                     )
 
                                     Row(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(BgDark, RoundedCornerShape(9.dp))
+                                            .background(BgDark, RoundedCornerShape(8.dp))
+                                            .border(0.8.dp, BorderDark, RoundedCornerShape(8.dp))
                                             .padding(2.dp),
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
-                                        ChartMetricMode.entries.filter { it != ChartMetricMode.RELATIVE || hasRelData }.forEach { mode ->
+                                        ChartMetricMode.entries.forEach { mode ->
                                             val active = metricMode == mode
                                             Box(
                                                 modifier = Modifier
-                                                    .weight(1f)
-                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .clip(RoundedCornerShape(6.dp))
                                                     .background(if (active) AccentOrange else Color.Transparent)
                                                     .clickable { metricMode = mode }
-                                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                    .padding(horizontal = 10.dp, vertical = 5.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
                                                     text = mode.label,
                                                     fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.Bold,
+                                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
                                                     color = if (active) Color(0xFF140D07) else TextSecondary,
                                                     maxLines = 1,
                                                     softWrap = false
@@ -946,8 +1068,6 @@ private fun ExerciseProgressDetailView(
                                         onJumpPr = {
                                             val prIdx = if (metricMode == ChartMetricMode.E1RM) {
                                                 sessions.indices.maxByOrNull { sessions[it].e1rm } ?: safeIdx
-                                            } else if (metricMode == ChartMetricMode.RELATIVE) {
-                                                sessions.indices.maxByOrNull { sessions[it].relativeStrength } ?: safeIdx
                                             } else {
                                                 sessions.indices.maxWithOrNull(
                                                     compareBy<Int> { sessions[it].topWeight }.thenBy { sessions[it].topWeightReps }
@@ -962,7 +1082,7 @@ private fun ExerciseProgressDetailView(
                                         metricMode = metricMode,
                                         selectedIndex = safeIdx,
                                         onSelectIndex = { selectedPointIndex = it },
-                                        chartHeight = 240.dp,
+                                        chartHeight = 230.dp,
                                         trainingMode = trainingMode
                                     )
                                 } else {
@@ -1055,6 +1175,18 @@ private fun ExerciseProgressDetailView(
             onDismiss = { showFullChartModal = false }
         )
     }
+
+    if (showRelativeStrengthModal) {
+        RelativeStrengthPerformanceDialog(
+            exerciseName = exerciseName,
+            category = category,
+            isBodyweight = isBwExercise,
+            points = relativePoints,
+            hasLoggedBodyWeights = effectiveBwEntries.isNotEmpty(),
+            onNavigateBodyWeight = onNavigateBodyWeight,
+            onDismiss = { showRelativeStrengthModal = false }
+        )
+    }
 }
 
 @Composable
@@ -1066,26 +1198,27 @@ internal fun CompactKpiCard(
     modifier: Modifier = Modifier
 ) {
     StrengthCard(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
         modifier = modifier
     ) {
         Text(
             text = label,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
             color = TextSecondary,
-            letterSpacing = 0.4.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = value,
-            fontSize = 15.5.sp,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
             color = valueColor,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            style = TabularStyle
         )
         Text(
             text = caption,
@@ -1093,6 +1226,7 @@ internal fun CompactKpiCard(
             color = TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            style = TabularStyle,
             modifier = Modifier.padding(top = 2.dp)
         )
     }
@@ -1113,15 +1247,15 @@ private fun InspectedPointBanner(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(BgDark)
             .border(
                 width = 1.dp,
                 color = if (isPr) GoldPR.copy(alpha = 0.55f) else BorderDark,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(10.dp)
             )
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1135,16 +1269,19 @@ private fun InspectedPointBanner(
             ) {
                 Text(
                     text = point.displayDate,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = AccentPeach
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AccentPeach,
+                    maxLines = 1,
+                    softWrap = false,
+                    style = TabularStyle
                 )
                 if (isPr) {
                     PrTrophyBadge(text = "PR", isNewPr = true)
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 IconButton(onClick = onPrev, enabled = pointIndex > 0, modifier = Modifier.size(26.dp)) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Older", tint = if (pointIndex > 0) TextPrimary else TextMuted, modifier = Modifier.size(18.dp))
                 }
@@ -1155,7 +1292,7 @@ private fun InspectedPointBanner(
                 ) {
                     Icon(Icons.Default.Star, contentDescription = null, tint = GoldPR, modifier = Modifier.size(12.dp))
                     Spacer(Modifier.width(3.dp))
-                    Text("Peak", fontSize = 11.sp, color = GoldPR, fontWeight = FontWeight.Bold)
+                    Text("Peak", fontSize = 11.5.sp, color = GoldPR, fontWeight = FontWeight.SemiBold)
                 }
                 IconButton(onClick = onNext, enabled = pointIndex < totalPoints - 1, modifier = Modifier.size(26.dp)) {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Newer", tint = if (pointIndex < totalPoints - 1) TextPrimary else TextMuted, modifier = Modifier.size(18.dp))
@@ -1163,27 +1300,24 @@ private fun InspectedPointBanner(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (point.e1rm > 0) "E1RM ${formatWeightValue(point.e1rm)} kg (${formatWeightValue(point.e1rmWeight)}×${point.e1rmReps})"
-                else "Top: ${point.topWeightReps} reps",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            Text(
-                text = SetUtils.formatSetsSummary(point.sets),
-                fontSize = 11.5.sp,
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 8.dp)
-            )
-        }
+        Text(
+            text = if (point.e1rm > 0) "E1RM ${formatWeightValue(point.e1rm)} kg (${formatWeightValue(point.e1rmWeight)}×${point.e1rmReps})"
+            else "Top: ${point.topWeightReps} reps",
+            fontSize = 13.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = TabularStyle
+        )
+        Text(
+            text = SetUtils.formatSetsSummary(point.sets),
+            fontSize = 11.5.sp,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = TabularStyle
+        )
     }
 }
 
@@ -1211,9 +1345,9 @@ fun InteractiveProgressChart(
     val textPaint = remember {
         Paint().apply {
             isAntiAlias = true
-            color = android.graphics.Color.parseColor("#949EB2")
-            textSize = 25f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            color = android.graphics.Color.parseColor("#A0A4AE")
+            textSize = 24f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         }
     }
 
@@ -1282,7 +1416,7 @@ fun InteractiveProgressChart(
             )
 
             drawContext.canvas.nativeCanvas.drawText(
-                if (metricMode == ChartMetricMode.RELATIVE) "${"%.2f".format(labelVal)}×" else "${formatWeightValue(roundHalf(labelVal.toDouble()))}kg",
+                "${formatWeightValue(roundHalf(labelVal.toDouble()))}kg",
                 6f,
                 y + 8f,
                 textPaint
@@ -1327,8 +1461,7 @@ fun InteractiveProgressChart(
                 val p1 = points[i + 1]
                 val v0 = values[i]
                 val v1 = values[i + 1]
-                val expectedCutDip = metricMode != ChartMetricMode.RELATIVE &&
-                    v1 < v0 &&
+                val expectedCutDip = v1 < v0 &&
                     TrainingModePolicy.isExpectedCutDip(
                         mode = trainingMode,
                         currentVal = v1.toDouble(),
@@ -1419,9 +1552,7 @@ fun InteractiveProgressChart(
 
             if (isSelected) {
                 val sess = sessions[idx]
-                val callout = if (metricMode == ChartMetricMode.RELATIVE) {
-                    metricMode.formatValue(sess.relativeStrength)
-                } else if (metricMode == ChartMetricMode.E1RM) {
+                val callout = if (metricMode == ChartMetricMode.E1RM) {
                     "${formatWeightValue(sess.e1rm)}kg"
                 } else {
                     "${formatWeightValue(sess.topWeight)}kg × ${sess.topWeightReps}"
@@ -1446,17 +1577,15 @@ private fun SessionHistoryRowCard(
 ) {
     val currVal = session.metricValue(metricMode)
     val prevVal = olderSession?.metricValue(metricMode)
-    val delta = if (prevVal != null && prevVal > 0) {
-        if (metricMode == ChartMetricMode.RELATIVE) roundHundredth(currVal - prevVal) else roundTenth(currVal - prevVal)
-    } else null
+    val delta = if (prevVal != null && prevVal > 0) roundTenth(currVal - prevVal) else null
 
     val setNotes = remember(session) {
         session.sets.mapNotNull { it.notes.takeIf { n -> n.isNotBlank() } }.distinct().joinToString("; ")
     }
 
     StrengthCard(
-        shape = RoundedCornerShape(14.dp),
-        border = if (isHighlighted) BorderStroke(1.5.dp, AccentOrange) else BorderStroke(0.8.dp, BorderDark.copy(alpha = 0.65f)),
+        shape = RoundedCornerShape(12.dp),
+        border = if (isHighlighted) BorderStroke(1.2.dp, AccentOrange) else BorderStroke(1.dp, BorderDark.copy(alpha = 0.85f)),
         onClick = onClick,
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -1473,9 +1602,12 @@ private fun SessionHistoryRowCard(
                 ) {
                     Text(
                         text = session.displayDate,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AccentPeach
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AccentPeach,
+                        maxLines = 1,
+                        softWrap = false,
+                        style = TabularStyle
                     )
                     if (session.workoutTitle.isNotBlank()) {
                         Text(
@@ -1483,10 +1615,13 @@ private fun SessionHistoryRowCard(
                             fontSize = 12.5.sp,
                             color = TextSecondary,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
                 }
+
+                Spacer(Modifier.width(8.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (session.isE1rmPr || session.isWeightPr) {
@@ -1494,16 +1629,15 @@ private fun SessionHistoryRowCard(
                             text = if (session.isE1rmPr) "E1RM PR" else "WT PR",
                             isNewPr = true
                         )
-                    } else if (session.isRelPr && (metricMode == ChartMetricMode.RELATIVE || trainingMode == TrainingMode.CUT)) {
+                    } else if (session.isRelPr && trainingMode == TrainingMode.CUT) {
                         PrTrophyBadge(
-                            text = "REL PR",
+                            text = "Rel PR",
                             isNewPr = true
                         )
                     }
                     if (delta != null && delta != 0.0) {
                         val sign = if (delta > 0) "+" else ""
-                        val expectedCutDip = metricMode != ChartMetricMode.RELATIVE &&
-                            delta < 0.0 &&
+                        val expectedCutDip = delta < 0.0 &&
                             olderSession != null &&
                             prevVal != null &&
                             TrainingModePolicy.isExpectedCutDip(
@@ -1518,12 +1652,15 @@ private fun SessionHistoryRowCard(
                             expectedCutDip -> BlueAccent
                             else -> DecreaseRed
                         }
-                        val baseDeltaText = if (metricMode == ChartMetricMode.RELATIVE) "$sign${"%.2f".format(delta)}×" else "$sign${formatWeightValue(delta)}kg"
+                        val baseDeltaText = "$sign${formatWeightValue(delta)}kg"
                         Text(
                             text = if (expectedCutDip) "$baseDeltaText (held)" else baseDeltaText,
                             color = deltaColor,
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            style = TabularStyle
                         )
                     }
                 }
@@ -1538,14 +1675,18 @@ private fun SessionHistoryRowCard(
                     text = SetUtils.formatSetsSummary(session.sets),
                     fontSize = 12.5.sp,
                     color = TextPrimary,
+                    style = TabularStyle,
                     modifier = Modifier.weight(1f)
                 )
                 if (session.e1rm > 0) {
                     Text(
                         text = "E1RM ${formatWeightValue(session.e1rm)}kg",
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Medium,
                         color = TextSecondary,
+                        maxLines = 1,
+                        softWrap = false,
+                        style = TabularStyle,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
@@ -1553,10 +1694,9 @@ private fun SessionHistoryRowCard(
 
             if (setNotes.isNotBlank()) {
                 Text(
-                    text = "“$setNotes”",
-                    fontSize = 11.5.sp,
-                    color = TextMuted,
-                    fontStyle = FontStyle.Italic
+                    text = setNotes,
+                    fontSize = 12.sp,
+                    color = TextMuted
                 )
             }
         }
@@ -1612,24 +1752,31 @@ private fun FullScreenChartInspectorDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = exerciseName,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextPrimary
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "${displayedSessions.size} sessions",
                             fontSize = 12.sp,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            style = TabularStyle
                         )
                     }
+
+                    Spacer(Modifier.width(8.dp))
 
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .background(SurfaceDark, CircleShape)
-                            .size(36.dp)
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(SurfaceDark)
+                            .border(1.dp, BorderDark, RoundedCornerShape(10.dp))
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary)
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(18.dp))
                     }
                 }
 
@@ -1638,11 +1785,10 @@ private fun FullScreenChartInspectorDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val dialogHasRel = allSessions.any { it.relativeStrength > 0.0 }
-                    ChartMetricMode.entries.filter { it != ChartMetricMode.RELATIVE || dialogHasRel }.forEach { mode ->
+                    ChartMetricMode.entries.forEach { mode ->
                         val active = metricMode == mode
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (active) AccentOrange else SurfaceCard,
                             border = if (active) null else BorderStroke(1.dp, BorderDark),
                             modifier = Modifier
@@ -1656,15 +1802,17 @@ private fun FullScreenChartInspectorDialog(
                                 Text(
                                     text = mode.label,
                                     color = if (active) Color(0xFF140D07) else TextPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.5.sp
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = if (prOnlyFilter) GoldPR else SurfaceCard,
                         border = if (prOnlyFilter) null else BorderStroke(1.dp, BorderDark),
                         modifier = Modifier.clickable { prOnlyFilter = !prOnlyFilter }
@@ -1674,10 +1822,12 @@ private fun FullScreenChartInspectorDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "PRs Only",
+                                text = "PRs only",
                                 color = if (prOnlyFilter) Color(0xFF140D07) else GoldPR,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.5.sp,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -1696,8 +1846,6 @@ private fun FullScreenChartInspectorDialog(
                     onJumpPr = {
                         val prIdx = if (metricMode == ChartMetricMode.E1RM) {
                             displayedSessions.indices.maxByOrNull { displayedSessions[it].e1rm } ?: safeIdx
-                        } else if (metricMode == ChartMetricMode.RELATIVE) {
-                            displayedSessions.indices.maxByOrNull { displayedSessions[it].relativeStrength } ?: safeIdx
                         } else {
                             displayedSessions.indices.maxWithOrNull(
                                 compareBy<Int> { displayedSessions[it].topWeight }.thenBy { displayedSessions[it].topWeightReps }

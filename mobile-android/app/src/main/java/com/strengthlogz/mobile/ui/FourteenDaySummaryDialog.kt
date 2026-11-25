@@ -772,23 +772,20 @@ private fun MuscleAndBalanceCard(
 
             if (totalWorkingSets > 0) {
                 HorizontalDivider(color = BorderDark, thickness = 0.6.dp)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
-                        text = "Upper/Lower: $upperSharePct% / ${100 - upperSharePct}%",
+                        text = "Upper / Lower: $upperSharePct% / ${100 - upperSharePct}%",
                         fontSize = 11.5.sp,
                         color = TextSecondary,
-                        style = TextStyle(fontFeatureSettings = "tnum")
+                        style = TabularStyle
                     )
                     Text(
-                        text = "Rep zones: $heavySets heavy • $strengthHypSets str-hyp • $hypertrophySets hyp • $enduranceSets end",
+                        text = "Rep zones: $heavySets heavy · $strengthHypSets str-hyp · $hypertrophySets hyp · $enduranceSets end",
                         fontSize = 11.sp,
                         color = TextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(fontFeatureSettings = "tnum")
+                        style = TabularStyle
                     )
                 }
             }
@@ -820,26 +817,22 @@ private fun LiftsProgressionCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = if (trainingMode == TrainingMode.CUT) "Retention & Strength" else "Strength Progression",
+                    text = if (trainingMode == TrainingMode.CUT) "Retention & strength" else "Strength progression",
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = TextPrimary
                 )
                 Text(
                     text = if (trainingMode == TrainingMode.CUT) {
-                        "$prsCount PR • $relPrsCount rel PR • ${holdingCount + retainedCount} held"
+                        "$prsCount PR · $relPrsCount rel PR · ${holdingCount + retainedCount} held"
                     } else {
-                        "$prsCount PR • $progressingCount up • $holdingCount steady • $regressingCount down"
+                        "$prsCount PR · $progressingCount up · $holdingCount steady · $regressingCount down"
                     },
-                    fontSize = 11.sp,
+                    fontSize = 11.5.sp,
                     color = TextSecondary,
-                    style = TextStyle(fontFeatureSettings = "tnum")
+                    style = TabularStyle
                 )
             }
 
@@ -1124,19 +1117,26 @@ private fun SavedSummariesListSection(
                 // Compact summary strip
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${entry.workoutsCount} sessions • ${entry.workingSetsCount} sets • ${formatTonnage(entry.totalVolumeKg)}",
+                        text = "${entry.workoutsCount} sessions · ${entry.workingSetsCount} sets · ${formatTonnage(entry.totalVolumeKg)}",
                         fontSize = 12.sp,
                         color = TextSecondary,
-                        style = TextStyle(fontFeatureSettings = "tnum")
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TabularStyle,
+                        modifier = Modifier.weight(1f)
                     )
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         text = entry.endBodyWeightKg?.let { "${formatWeightValue(it)} kg" } ?: "${entry.prsCount} PRs",
                         fontSize = 12.sp,
                         color = TextSecondary,
-                        style = TextStyle(fontFeatureSettings = "tnum")
+                        maxLines = 1,
+                        softWrap = false,
+                        style = TabularStyle
                     )
                 }
 

@@ -417,21 +417,21 @@ fun PlateCalculatorDialog(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "PLATES NEEDED EACH SIDE",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = TextSecondary,
-                            letterSpacing = 0.6.sp
+                            text = "Plates needed each side",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
                         )
 
                         Spacer(Modifier.height(10.dp))
 
                         if (isTooLight) {
                             Text(
-                                text = "⚠️ Weight is less than the ${SetUtils.formatWeightValue(barWeight)}kg bar",
+                                text = "Weight is less than the ${SetUtils.formatWeightValue(barWeight)}kg bar",
                                 color = DecreaseRed,
                                 fontSize = 12.5.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                style = TabularStyle
                             )
                         } else if (plateStack.isEmpty()) {
                             Text(
@@ -495,9 +495,10 @@ fun PlateCalculatorDialog(
                             if (!isExactMatch) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    text = "⚠️ Nearest achievable: ${SetUtils.formatWeightValue(totalLoadedWeight)} kg (diff: ${SetUtils.formatWeightValue(currentWeight - totalLoadedWeight)}kg)",
+                                    text = "Nearest achievable: ${SetUtils.formatWeightValue(totalLoadedWeight)} kg (diff: ${SetUtils.formatWeightValue(currentWeight - totalLoadedWeight)}kg)",
                                     fontSize = 11.sp,
-                                    color = GoldPR
+                                    color = GoldPR,
+                                    style = TabularStyle
                                 )
                             }
                         }

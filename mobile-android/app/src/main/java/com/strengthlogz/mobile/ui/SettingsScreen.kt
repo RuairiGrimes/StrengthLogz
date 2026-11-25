@@ -565,7 +565,7 @@ fun SettingsScreen(
                                 InstructionStepRow(
                                     stepNum = "4",
                                     title = "Paste Details Above & Tap Sync",
-                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, Programs, and Settings tabs!"
+                                    body = "Paste your Google Sheet link or ID in Step 1 and import/paste your JSON key in Step 2. StrengthLogz automatically creates the Workouts, Sets, Exercises, BodyWeights, Goals, Programs, and Settings tabs."
                                 )
                                 Surface(
                                     color = SurfaceCard,
@@ -573,10 +573,10 @@ fun SettingsScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text(
-                                        text = "💡 Offline-First Guarantee: You can use StrengthLogz 100% offline without Google Sheets. All workouts, programs, and exercises are saved locally on your device.",
-                                        fontSize = 11.sp,
+                                        text = "Offline-first guarantee: You can use StrengthLogz 100% offline without Google Sheets. All workouts, programs, and exercises are saved locally on your device.",
+                                        fontSize = 11.5.sp,
                                         color = AccentPeach,
-                                        lineHeight = 15.sp,
+                                        lineHeight = 15.5.sp,
                                         modifier = Modifier.padding(8.dp)
                                     )
                                 }
@@ -703,8 +703,9 @@ fun SettingsScreen(
                                 Text(
                                     text = "$count",
                                     fontSize = 16.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = AccentPeach
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AccentPeach,
+                                    style = TabularStyle
                                 )
                                 Text(
                                     text = label,

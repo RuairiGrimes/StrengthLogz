@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -348,9 +349,9 @@ private fun buildSuggestedExerciseItem(
             PrescribedSet(weight = "", reps = slot.defaultReps.toString())
         }
         val newReason = if (!benefitText.isNullOrBlank()) {
-            "✨ New Exercise Suggestion: $benefitText"
+            "New exercise suggestion: $benefitText"
         } else {
-            "🎯 New stimulus for $cat ($modeDefaultSets × ${slot.defaultReps})"
+            "New stimulus for $cat ($modeDefaultSets × ${slot.defaultReps})"
         }
         return SuggestedExerciseItem(
             slotTitle = slot.slotTitle,
@@ -425,29 +426,29 @@ private fun buildSuggestedExerciseItem(
     val reasonTag = when (trainingMode) {
         TrainingMode.CUT -> when {
             slotIndex >= 3 ->
-                "🛡 Low-Fatigue Volume: $numSets crisp sets for $cat without burnout ($overloadNote)$benefitSuffix"
+                "Low-fatigue volume: $numSets crisp sets for $cat without burnout ($overloadNote)$benefitSuffix"
             isBwChosen || (targetE1rm > peakE1rm && peakE1rm > 0) ->
-                "🏆 Rel. Strength Builder: $overloadNote — high payoff during weight loss$benefitSuffix"
+                "Rel. strength builder: $overloadNote — high payoff during weight loss$benefitSuffix"
             else ->
-                "🛡 Strength Retention: $overloadNote to protect peak strength$benefitSuffix"
+                "Strength retention: $overloadNote to protect peak strength$benefitSuffix"
         }
         TrainingMode.BULK -> when {
             targetE1rm > peakE1rm && peakE1rm > 0 ->
-                "🏆 PR Opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)!$benefitSuffix"
+                "PR opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)$benefitSuffix"
             volStat != null && volStat.setsLast7Days < volStat.targetWeeklySets * 0.7 ->
-                "💪 Hypertrophy Volume: $cat is at ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets this week — $numSets sets scheduled$benefitSuffix"
+                "Hypertrophy volume: $cat is at ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets this week — $numSets sets scheduled$benefitSuffix"
             else ->
-                "🔥 Surplus Overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
+                "Surplus overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
         }
         TrainingMode.MAINGAIN -> when {
             peakE1rm > 0 && currE1rm < peakE1rm * 0.94 ->
-                "🔧 Needs Improvement: Current E1RM (${formatWeightValue(currE1rm)}kg) is below your ${formatWeightValue(peakE1rm)}kg PR (${peakSession?.displayDate ?: ""})$benefitSuffix"
+                "Rebuild: Current E1RM (${formatWeightValue(currE1rm)}kg) is below your ${formatWeightValue(peakE1rm)}kg PR (${peakSession?.displayDate ?: ""})$benefitSuffix"
             targetE1rm > peakE1rm && peakE1rm > 0 ->
-                "🏆 PR Opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)!$benefitSuffix"
+                "PR opportunity: Hitting ${formatWeightValue(targetWeight)}kg × $targetReps sets a new E1RM PR (${formatWeightValue(targetE1rm)}kg)$benefitSuffix"
             volStat != null && volStat.setsLast7Days < volStat.targetWeeklySets / 2 ->
-                "📊 Weekly Volume Gap: $cat has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days$benefitSuffix"
+                "Weekly volume gap: $cat has only ${volStat.setsLast7Days}/${volStat.targetWeeklySets} sets in the last 7 days$benefitSuffix"
             else ->
-                "📈 Progressive Overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
+                "Progressive overload: Build on ${lastSession.displayDate} ($overloadNote)$benefitSuffix"
         }
     }
 
@@ -627,9 +628,9 @@ fun SuggestWorkoutScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     border = BorderStroke(1.dp, BorderDark),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                                    modifier = Modifier.height(38.dp)
+                                    modifier = Modifier.height(36.dp)
                                 ) {
-                                    Text("7-Day Volume", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("7d volume", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
                                 }
 
                                 IconButton(
@@ -637,9 +638,9 @@ fun SuggestWorkoutScreen(
                                     modifier = Modifier
                                         .background(SurfaceCard, RoundedCornerShape(10.dp))
                                         .border(0.8.dp, BorderDark, RoundedCornerShape(10.dp))
-                                        .size(38.dp)
+                                        .size(36.dp)
                                 ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Shuffle", tint = AccentOrange, modifier = Modifier.size(19.dp))
+                                    Icon(Icons.Default.Refresh, contentDescription = "Shuffle", tint = AccentOrange, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -651,12 +652,15 @@ fun SuggestWorkoutScreen(
                         TrainingModePill(mode = trainingMode, compact = true, onClick = onOpenModePicker)
                         Text(
                             text = when (trainingMode) {
-                                TrainingMode.BULK -> "3–4 sets/lift • +20% volume targets"
+                                TrainingMode.BULK -> "3–4 sets/lift · +20% volume targets"
                                 TrainingMode.MAINGAIN -> "Balanced 3-set progression"
-                                TrainingMode.CUT -> "2–3 sets • strength retention, low fatigue"
+                                TrainingMode.CUT -> "2–3 sets · strength retention, low fatigue"
                             },
                             fontSize = 11.5.sp,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -726,52 +730,59 @@ fun SuggestWorkoutScreen(
                 val isExpanded = expandedSlots[idx] == true
 
                 StrengthCard(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     onClick = { expandedSlots[idx] = !isExpanded },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = "${idx + 1}. ${item.exerciseName}",
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    CategoryPill(category = item.category)
-                                }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    text = item.slotTitle,
-                                    fontSize = 11.5.sp,
-                                    color = TextSecondary,
-                                    modifier = Modifier.padding(top = 2.dp)
+                                    text = "${idx + 1}. ${item.exerciseName}",
+                                    fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
+
+                                Spacer(Modifier.width(8.dp))
+
+                                OutlinedButton(
+                                    onClick = {
+                                        slotOffsets[idx] = (slotOffsets[idx] ?: 0) + 1
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(0.8.dp, BorderDark),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Icon(Icons.Default.SwapHoriz, contentDescription = "Swap", modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Swap", fontSize = 11.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
+                                }
                             }
 
-                            OutlinedButton(
-                                onClick = {
-                                    slotOffsets[idx] = (slotOffsets[idx] ?: 0) + 1
-                                },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                shape = RoundedCornerShape(9.dp),
-                                border = BorderStroke(0.8.dp, BorderDark),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-                                modifier = Modifier.height(32.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.SwapHoriz, contentDescription = "Swap", modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Swap", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                                CategoryPill(category = item.category)
+                                Text(
+                                    text = item.slotTitle,
+                                    fontSize = 12.sp,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
 
@@ -786,20 +797,27 @@ fun SuggestWorkoutScreen(
                             ) {
                                 Text(
                                     text = item.targetSummary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = AccentOrange,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    style = TabularStyle,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                 )
                             }
+
+                            Spacer(Modifier.width(8.dp))
 
                             Text(
                                 text = "Last: ${item.lastSummary}",
                                 fontSize = 12.sp,
                                 color = TextSecondary,
+                                textAlign = TextAlign.End,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 8.dp)
+                                style = TabularStyle,
+                                modifier = Modifier.weight(1f)
                             )
                         }
 

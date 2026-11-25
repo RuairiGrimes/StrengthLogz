@@ -17,14 +17,14 @@
       </div>
     </div>
     <nav>
-      <button class="nav-btn active" data-view="log"><span class="ico">＋</span>Log Workout <kbd>Ctrl 1</kbd></button>
-      <button class="nav-btn" data-view="program"><span class="ico">📅</span>Program <kbd>Ctrl 2</kbd></button>
-      <button class="nav-btn" data-view="suggest"><span class="ico">✦</span>Suggest Workout <kbd>Ctrl 3</kbd></button>
-      <button class="nav-btn" data-view="history"><span class="ico">☰</span>History <kbd>Ctrl 4</kbd></button>
-      <button class="nav-btn" data-view="progress"><span class="ico">↗</span>Progress <kbd>Ctrl 5</kbd></button>
-      <button class="nav-btn" data-view="goals"><span class="ico">🏆</span>Goals <kbd>Ctrl 6</kbd></button>
-      <button class="nav-btn" data-view="exercises"><span class="ico">🏋</span>Exercises <kbd>Ctrl 7</kbd></button>
-      <button class="nav-btn" data-view="settings"><span class="ico">⚙</span>Settings <kbd>Ctrl 8</kbd></button>
+      <button class="nav-btn active" data-view="log"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.25v9.5M3.25 8h9.5"/></svg></span>Log workout <kbd>Ctrl 1</kbd></button>
+      <button class="nav-btn" data-view="program"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="3" width="11.5" height="10.75" rx="2"/><path d="M2.25 6.5h11.5M5.25 1.75v2.5M10.75 1.75v2.5"/></svg></span>Program <kbd>Ctrl 2</kbd></button>
+      <button class="nav-btn" data-view="suggest"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.25l1.35 3.4 3.4 1.35-3.4 1.35L8 11.75l-1.35-3.4-3.4-1.35 3.4-1.35L8 2.25z"/></svg></span>Suggest workout <kbd>Ctrl 3</kbd></button>
+      <button class="nav-btn" data-view="history"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h6.5"/></svg></span>History <kbd>Ctrl 4</kbd></button>
+      <button class="nav-btn" data-view="progress"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 11.5l3.75-3.75 2.75 2.5L13.5 5"/><path d="M10.25 5H13.5v3.25"/></svg></span>Progress <kbd>Ctrl 5</kbd></button>
+      <button class="nav-btn" data-view="goals"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2.25"/></svg></span>Goals <kbd>Ctrl 6</kbd></button>
+      <button class="nav-btn" data-view="exercises"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.25 8h7.5M2.5 5.5v5M4.25 4.25v7.5M11.75 4.25v7.5M13.5 5.5v5"/></svg></span>Exercises <kbd>Ctrl 7</kbd></button>
+      <button class="nav-btn" data-view="settings"><span class="ico"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.25"/><path d="M8 2.25v1.5M8 12.25v1.5M2.25 8h1.5M12.25 8h1.5M3.93 3.93l1.06 1.06M11.01 11.01l1.06 1.06M12.07 3.93l-1.06 1.06M4.99 11.01l-1.06 1.06"/></svg></span>Settings <kbd>Ctrl 8</kbd></button>
     </nav>
     <div class="sidebar-foot">
       <button id="sidebar-mode-badge" class="mode-pill mode-maingain" title="Switch Training Phase">Maingain</button>
@@ -41,7 +41,7 @@
           <p class="muted" id="log-sub">Punch in your working sets. <kbd>Enter</kbd> adds a set, <kbd>Ctrl</kbd>+<kbd>S</kbd> saves.</p>
         </div>
         <div class="head-actions">
-          <button id="log-load-program-btn" class="ghost">📅 Load Program</button>
+          <button id="log-load-program-btn" class="ghost">Load program</button>
           <button id="log-discard" class="ghost">Discard</button>
           <button id="log-save" class="primary">Save workout</button>
         </div>
@@ -74,30 +74,30 @@
       <header class="view-head">
         <div class="program-header-left">
           <div class="program-switcher-container">
-            <button id="program-switcher-btn" class="program-selector-pill" title="Click to switch or manage programs">
-              <span class="ico">📅</span>
-              <span id="program-active-name">My Custom Program</span>
-              <span class="arrow">▼</span>
+            <button id="program-switcher-btn" class="program-selector-pill" title="Switch or manage programs">
+              <span class="ico"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="3" width="11.5" height="10.75" rx="2"/><path d="M2.25 6.5h11.5M5.25 1.75v2.5M10.75 1.75v2.5"/></svg></span>
+              <span id="program-active-name">My custom program</span>
+              <span class="arrow">▾</span>
             </button>
-            <button id="program-manage-btn" class="ghost icon-only" title="Manage Programs">⚙</button>
-            <button id="program-create-btn" class="primary compact">+ New Program</button>
+            <button id="program-manage-btn" class="ghost icon-only" title="Manage programs"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.25"/><path d="M8 2.25v1.5M8 12.25v1.5M2.25 8h1.5M12.25 8h1.5M3.93 3.93l1.06 1.06M11.01 11.01l1.06 1.06M12.07 3.93l-1.06 1.06M4.99 11.01l-1.06 1.06"/></svg></button>
+            <button id="program-create-btn" class="primary compact">+ New program</button>
           </div>
           <p class="muted" id="program-sub">Custom training split builder. Add days, assign exercises, and set target sets &amp; reps.</p>
         </div>
       </header>
 
       <div id="program-empty-state" class="card empty-card hidden">
-        <div class="empty-icon-circle">📅</div>
-        <h2>Build Your Custom Program</h2>
-        <p class="muted">Create your training split completely from scratch. Add workout days, customize exercises, and set target sets &amp; reps.</p>
-        <button id="program-empty-create-btn" class="primary">+ Create Your First Program</button>
+        <div class="empty-icon-circle"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.25" y="3" width="11.5" height="10.75" rx="2"/><path d="M2.25 6.5h11.5M5.25 1.75v2.5M10.75 1.75v2.5"/></svg></div>
+        <h2>Build your custom program</h2>
+        <p class="muted">Create your training split from scratch. Add workout days, customize exercises, and set target sets &amp; reps.</p>
+        <button id="program-empty-create-btn" class="primary">+ Create your first program</button>
       </div>
 
       <div id="program-content" class="program-content">
         <div class="program-days-bar-wrapper">
           <div class="days-bar-label">
-            <span class="muted small uppercase font-bold" id="program-days-label">WORKOUT DAYS (0)</span>
-            <button id="program-add-day-btn" class="text-btn orange">+ Add Day</button>
+            <span class="muted small font-bold" id="program-days-label">Workout days (0)</span>
+            <button id="program-add-day-btn" class="text-btn orange">+ Add day</button>
           </div>
           <div id="program-days-row" class="days-row"></div>
         </div>
@@ -190,8 +190,8 @@
         </div>
         <div class="head-actions">
           <button id="progress-back" class="ghost hidden">← All lifts</button>
-          <button id="progress-summary-btn" class="ghost">14-Day Summary</button>
-          <button id="progress-open-bw" class="ghost">Body Weight</button>
+          <button id="progress-summary-btn" class="ghost">14-day summary</button>
+          <button id="progress-open-bw" class="ghost">Body weight</button>
           <button id="progress-open-goals" class="primary">Goals</button>
           <input type="text" id="progress-input" list="exercise-list" placeholder="Search exercise…" autocomplete="off" />
         </div>
@@ -203,7 +203,10 @@
         <div id="progress-stats" class="stats"></div>
         <div class="card chart-card">
           <div class="chart-toolbar">
-            <div class="seg" id="metric-seg"></div>
+            <div class="chart-toolbar-left">
+              <div class="seg" id="metric-seg"></div>
+              <button id="progress-open-rel" class="ghost compact">Relative strength</button>
+            </div>
             <div class="seg" id="range-seg">
               <button data-range="90">3M</button>
               <button data-range="182">6M</button>
@@ -229,8 +232,8 @@
           <p class="muted" id="goals-sub">Set 1RM or Sets × Reps targets. Track progress and get automated session targets.</p>
         </div>
         <div class="head-actions">
-          <button id="goals-all-report" class="ghost">📊 All Reports</button>
-          <button id="goals-add-btn" class="primary">+ New Goal</button>
+          <button id="goals-all-report" class="ghost">All reports</button>
+          <button id="goals-add-btn" class="primary">+ New goal</button>
         </div>
       </header>
 
@@ -327,7 +330,7 @@
           <label>Weight (kg)<input type="number" id="bwd-input-kg" step="0.1" min="30" max="300" placeholder="e.g. 82.5" required /></label>
           <button type="submit" class="primary">+ Log Weight</button>
         </form>
-        <div class="muted small font-bold uppercase" style="margin: 12px 0 6px;">Readings</div>
+        <div class="muted small font-bold" style="margin: 12px 0 6px;">Readings</div>
         <div id="bwd-history" class="bw-history-list"></div>
       </div>
     </section>
@@ -372,7 +375,7 @@
         </div>
 
         <div class="btn-row" style="margin-bottom: 10px;">
-          <button type="button" id="bw-open-dashboard" class="ghost">⚖ Weight trend &amp; relative strength charts →</button>
+          <button type="button" id="bw-open-dashboard" class="ghost">Weight trend &amp; relative strength charts →</button>
         </div>
 
         <form id="bw-log-form" class="bw-log-form">
@@ -382,7 +385,7 @@
         </form>
 
         <div class="bw-history-container">
-          <div class="muted small font-bold uppercase" style="margin-bottom: 6px;">Recent Readings</div>
+          <div class="muted small font-bold" style="margin-bottom: 6px;">Recent readings</div>
           <div id="bw-history-list" class="bw-history-list"></div>
         </div>
       </div>

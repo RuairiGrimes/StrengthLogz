@@ -19,7 +19,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -219,33 +218,46 @@ fun HistoryScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = workout.title.ifBlank { "Workout Session" },
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary
+                                text = workout.title.ifBlank { "Workout session" },
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = model.displayDateWithDay,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = FontWeight.Medium,
                                 color = AccentPeach,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = TabularStyle,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
+
+                        Spacer(Modifier.width(8.dp))
 
                         Column(horizontalAlignment = Alignment.End) {
                             if (model.sessionVolume > 0) {
                                 Text(
                                     text = model.sessionVolumeFormatted,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = TextPrimary
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    style = TabularStyle
                                 )
                             }
                             Text(
-                                text = "${model.workingSetsCount} sets • ${model.liftCount} lifts",
+                                text = "${model.workingSetsCount} sets · ${model.liftCount} lifts",
                                 fontSize = 11.5.sp,
-                                color = TextSecondary
+                                color = TextSecondary,
+                                maxLines = 1,
+                                softWrap = false,
+                                style = TabularStyle
                             )
                         }
                     }
@@ -253,10 +265,9 @@ fun HistoryScreen(
                     if (workout.notes.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "“${workout.notes}”",
+                            text = workout.notes,
                             fontSize = 12.sp,
                             color = TextSecondary,
-                            fontStyle = FontStyle.Italic,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )

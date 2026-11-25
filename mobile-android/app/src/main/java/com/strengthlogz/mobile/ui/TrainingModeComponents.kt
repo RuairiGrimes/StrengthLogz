@@ -64,15 +64,17 @@ fun TrainingModePill(
     val clickableMod = if (onClick != null) baseMod.clickable(onClick = onClick) else baseMod
 
     Row(
-        modifier = clickableMod.padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 4.dp else 6.dp),
+        modifier = clickableMod.padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 5.dp else 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Text(
-            text = if (compact) mode.shortLabel else "${mode.shortLabel} MODE",
+            text = if (compact) mode.shortLabel else "${mode.shortLabel} mode",
             color = color,
-            fontSize = if (compact) 11.sp else 12.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = if (compact) 11.5.sp else 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false
         )
         if (onClick != null) {
             Icon(

@@ -16,6 +16,32 @@ object BodyWeightUtils {
 
     fun lbsToKg(lb: Double): Double = Math.round(lb / LB_PER_KG * 10.0) / 10.0
 
+    /**
+     * Resolves the [BodyWeightEntry] active on [date] using carry-forward of the latest earlier
+     * reading, or the earliest reading if [date] precedes all entries. Returns null when empty.
+     */
+    fun entryOn(date: String?, entries: List<BodyWeightEntry>): BodyWeightEntry? {
+        if (entries.isEmpty()) return null
+        val iso = DateUtils.toSortableIso(date).ifBlank { DateUtils.toSortableIso(DateUtils.todayDdMonYyyy()) }
+        var bestPriorIso: String? = null
+        var bestPriorEntry: BodyWeightEntry? = null
+        var earliestIso: String? = null
+        var earliestEntry: BodyWeightEntry? = null
+
+        for (e in entries) {
+            val eIso = DateUtils.toSortableIso(e.date)
+            if (earliestIso == null || eIso < earliestIso) {
+                earliestIso = eIso
+                earliestEntry = e
+            }
+            if (eIso <= iso && (bestPriorIso == null || eIso >= bestPriorIso)) {
+                bestPriorIso = eIso
+                bestPriorEntry = e
+            }
+        }
+        return bestPriorEntry ?: earliestEntry
+    }
+
     /** Weight on [date] using carry-forward of the latest earlier entry; earliest entry if date precedes all. */
     fun weightOn(date: String?, entries: List<BodyWeightEntry>, fallbackKg: Double = FALLBACK_KG): Double {
         if (entries.isEmpty()) return fallbackKg
@@ -102,4 +128,5 @@ object BodyWeightUtils {
     fun latestKg(): Double = weightOnPublished(DateUtils.todayDdMonYyyy())
     /** True when at least one real body weight reading has been published. */
     fun hasEntries(): Boolean = sortedPublishedEntries.isNotEmpty()
+    fun publishedEntriesSnapshot(): List<BodyWeightEntry> = publishedEntries
 }

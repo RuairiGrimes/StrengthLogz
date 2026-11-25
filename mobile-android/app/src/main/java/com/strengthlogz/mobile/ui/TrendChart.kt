@@ -57,9 +57,9 @@ fun TrendLineChart(
     val textPaint = remember {
         Paint().apply {
             isAntiAlias = true
-            color = android.graphics.Color.parseColor("#949EB2")
-            textSize = 25f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            color = android.graphics.Color.parseColor("#A0A4AE")
+            textSize = 24f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         }
     }
 
@@ -98,10 +98,10 @@ fun TrendLineChart(
             val frac = i.toFloat() / gridSteps
             val y = topPad + plotH * (1f - frac)
             drawLine(
-                color = BorderDark.copy(alpha = 0.7f),
+                color = BorderDark.copy(alpha = 0.55f),
                 start = Offset(leftPad, y),
                 end = Offset(leftPad + plotW, y),
-                strokeWidth = 1.2f
+                strokeWidth = 1.1f
             )
             drawContext.canvas.nativeCanvas.drawText(yLabel(minVal + span * frac), 6f, y + 8f, textPaint)
         }

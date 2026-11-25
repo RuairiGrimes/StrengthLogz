@@ -117,8 +117,7 @@ fun ExercisesScreen(
             // HEADER ROW
             ModernScreenHeader(
                 title = "Exercises",
-                subtitle = "${exercises.size} catalogued movements • Google Sheets Synced",
-                badgeText = "${exercises.size} LIFTS",
+                subtitle = "${exercises.size} movements · Cloud synced",
                 action = {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -138,14 +137,14 @@ fun ExercisesScreen(
                                 }
                             },
                             modifier = Modifier
-                                .background(SurfaceDark, CircleShape)
-                                .size(38.dp)
+                                .background(SurfaceDark, RoundedCornerShape(10.dp))
+                                .size(36.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CloudSync,
                                 contentDescription = "Backup to Google Sheets",
                                 tint = if (isSyncing) AccentOrange else AccentPeach,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(19.dp)
                             )
                         }
 
@@ -156,13 +155,13 @@ fun ExercisesScreen(
                                 containerColor = AccentOrange,
                                 contentColor = Color(0xFF140D07)
                             ),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            modifier = Modifier.height(38.dp)
+                            modifier = Modifier.height(36.dp)
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("+ New", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            Text("New", fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp, maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -174,7 +173,7 @@ fun ExercisesScreen(
             ModernSearchBar(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
-                placeholder = "Search exercises, category, form cues..."
+                placeholder = "Search exercises or cues"
             )
 
             Spacer(Modifier.height(10.dp))
@@ -259,59 +258,63 @@ fun ExercisesScreen(
                             ) {
                                 Column(
                                     modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
+                                    Text(
+                                        text = exercise.name,
+                                        fontSize = 15.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Text(
-                                            text = exercise.name,
-                                            fontSize = 15.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-
                                         CategoryPill(category = exercise.category.ifBlank { "Other" })
 
                                         if (exercise.bodyweight) {
                                             Surface(
-                                                color = GoldPR.copy(alpha = 0.15f),
+                                                color = GoldPR.copy(alpha = 0.14f),
                                                 shape = RoundedCornerShape(6.dp),
-                                                border = BorderStroke(0.5.dp, GoldPR.copy(alpha = 0.5f))
+                                                border = BorderStroke(0.6.dp, GoldPR.copy(alpha = 0.45f))
                                             ) {
                                                 Text(
                                                     text = "BW",
                                                     color = GoldPR,
                                                     fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false,
                                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }
-                                    }
 
-                                    val workoutCount = validSets.map { it.workoutId }.distinct().size
-                                    val statsLine = buildString {
-                                        if (workoutCount > 0) {
-                                            append("$workoutCount sessions")
-                                            if (peakWeight > 0.0) append(" • Top ${formatWeightValue(peakWeight)}kg")
-                                        } else {
-                                            append("No sessions logged yet")
+                                        val workoutCount = validSets.map { it.workoutId }.distinct().size
+                                        val statsLine = buildString {
+                                            if (workoutCount > 0) {
+                                                append("$workoutCount sessions")
+                                                if (peakWeight > 0.0) append(" · Top ${formatWeightValue(peakWeight)}kg")
+                                            } else {
+                                                append("No sessions")
+                                            }
+                                            if (exercise.safeDescription.isNotBlank()) {
+                                                append(" · ${exercise.safeDescription}")
+                                            }
                                         }
-                                        if (exercise.safeDescription.isNotBlank()) {
-                                            append(" • ${exercise.safeDescription}")
-                                        }
+                                        Text(
+                                            text = statsLine,
+                                            fontSize = 12.sp,
+                                            color = TextSecondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = TabularStyle,
+                                            modifier = Modifier.weight(1f)
+                                        )
                                     }
-                                    Text(
-                                        text = statsLine,
-                                        fontSize = 12.sp,
-                                        color = TextSecondary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
 
                                 Icon(
